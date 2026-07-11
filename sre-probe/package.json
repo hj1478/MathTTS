@@ -1,0 +1,16 @@
+{
+  "name": "sre-probe",
+  "version": "1.0.0",
+  "description": "Probe: LaTeX -> MathML (temml) -> Korean math speech (speech-rule-engine)",
+  "private": true,
+  "scripts": {
+    "probe": "node index.js",
+    "speak": "node speak.js --dir ../output"
+  },
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "speech-rule-engine": "^5.0.0-rc.4",
+    "temml": "^0.13.3"
+  }
+}
