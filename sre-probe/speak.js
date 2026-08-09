@@ -103,18 +103,59 @@ const AZURE_SSML = (voice, body) =>
   '<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="ko-KR">' +
   `<voice name="${voice}">${body}</voice></speak>`;
 
-/** Split text into alternating prose / math-span parts, keeping order. */
+/**
+ * Best-effort reading for LaTeX temml cannot parse (broken OCR output).
+ * Keeps the human-readable content (\text bodies, numbers, operators) and
+ * drops commands/braces — NEVER let a ParseError message reach the speech.
+ */
+/**
+ * Post-SRE speech rewrites for SRE-ko misreads with a known better Korean form.
+ * \Box (fill-in-the-blank □) is read "흰색 정사각형" (lit. "white square");
+ * Korean math speech calls the blank "네모".
+ */
+function fixMisreads(speech) {
+  return speech.replace(/흰색 정사각형/g, '네모');
+}
+
+const SALVAGE_KO = {
+  pm: '플러스 마이너스', sqrt: '루트', times: '곱하기', div: '나누기',
+  cdot: '곱하기', frac: '분수', pi: '파이', infty: '무한대',
+  sin: '싸인', cos: '코싸인', tan: '탄젠트', leq: '작거나 같다', geq: '크거나 같다',
+};
+
+function salvage(latex) {
+  return latex
+    .replace(/\\text\s*\{([^{}]*)\}/g, ' $1 ')
+    .replace(/\\([a-zA-Z]+)\*?/g, (m, c) => (SALVAGE_KO[c] ? ` ${SALVAGE_KO[c]} ` : ' '))
+    .replace(/[\\{}$~&^_]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Split text into alternating prose / math-span parts, keeping order.
+ * \text{..} bodies are masked first so a genuine math span whose only Hangul
+ * lives in \text arguments (normalize.py preserves those) still matches SPAN's
+ * no-Hangul rule, then restored so temml/SRE see the real content. */
 function splitSpans(text) {
+  const bodies = [];
+  const masked = text.replace(/\\text\s*\{([^{}]*)\}/g, (_, b) => {
+    bodies.push(b);
+    return `\\text{\x00${bodies.length - 1}\x00}`;
+  });
+  const unmask = (s) => s.replace(/\x00(\d+)\x00/g, (_, i) => bodies[+i]);
   const parts = []; // {prose} | {latex}
   let last = 0;
-  for (const m of text.matchAll(SPAN)) {
-    if (m.index > last) parts.push({ prose: text.slice(last, m.index) });
+  for (const m of masked.matchAll(SPAN)) {
+    if (m.index > last) parts.push({ prose: unmask(masked.slice(last, m.index)) });
     const raw = m[0];
     const latex = raw.startsWith('$$') ? raw.slice(2, -2) : raw.slice(1, -1);
-    parts.push({ latex: latex.trim() });
+    // an empty "$ $" (stray-dollar pairing) is not math — keep it out of the
+    // pipeline entirely or it would stitch as "[지원되지 않는 수식: ]"
+    if (latex.trim()) parts.push({ latex: unmask(latex.trim()) });
+    else parts.push({ prose: ' ' });
     last = m.index + raw.length;
   }
-  if (last < text.length) parts.push({ prose: text.slice(last) });
+  if (last < masked.length) parts.push({ prose: unmask(masked.slice(last)) });
   return parts;
 }
 
@@ -141,7 +182,12 @@ async function main() {
     for (const part of doc.parts) {
       if (part.latex === undefined || mathml.has(part.latex)) continue;
       try {
-        mathml.set(part.latex, { mathml: temml.renderToString(part.latex, { xml: true }) });
+        // throwOnError so broken LaTeX lands in the catch; belt-and-suspenders
+        // <merror> check in case temml still renders an inline error message
+        // (SRE would read it aloud: "백슬래시 ParseError 콜론 ...").
+        const xml = temml.renderToString(part.latex, { xml: true, throwOnError: true });
+        if (xml.includes('<merror')) throw new Error('temml emitted <merror>');
+        mathml.set(part.latex, { mathml: xml });
       } catch (err) {
         mathml.set(part.latex, { error: String(err) });
       }
@@ -162,7 +208,7 @@ async function main() {
         continue;
       }
       try {
-        speech.get(latex).set(key, sre.toSpeech(conv.mathml));
+        speech.get(latex).set(key, fixMisreads(sre.toSpeech(conv.mathml)));
       } catch (err) {
         speech.get(latex).set(key, { error: String(err) });
       }
@@ -202,9 +248,9 @@ async function main() {
         .map((part) => {
           if (part.latex === undefined) return escapeXml(part.prose);
           const out = speech.get(part.latex).get(stitchKey);
-          return typeof out === 'string' && out.trim()
-            ? ` ${ssmlInner(out)} `
-            : ` [지원되지 않는 수식: ${escapeXml(part.latex)}] `;
+          if (typeof out === 'string' && out.trim()) return ` ${ssmlInner(out)} `;
+          const saved = salvage(part.latex);
+          return saved ? ` ${escapeXml(saved)} ` : ` [지원되지 않는 수식: ${escapeXml(part.latex)}] `;
         })
         .join('')
         .replace(/ +/g, ' ')
@@ -219,7 +265,9 @@ async function main() {
         .map((part) => {
           if (part.latex === undefined) return part.prose;
           const out = speech.get(part.latex).get(stitchKey);
-          return typeof out === 'string' && out.trim() ? ` ${out.trim()} ` : ` [지원되지 않는 수식: ${part.latex}] `;
+          if (typeof out === 'string' && out.trim()) return ` ${out.trim()} `;
+          const saved = salvage(part.latex);
+          return saved ? ` ${saved} ` : ` [지원되지 않는 수식: ${part.latex}] `;
         })
         .join('')
         .replace(/ +/g, ' ')
