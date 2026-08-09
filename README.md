@@ -10,27 +10,15 @@ Reads Korean math problems aloud: image → OCR (Korean + LaTeX) → spoken Kore
 > guidance block means that section is not done yet. Delete this notice and the
 > self-check at the bottom last.
 >
-> The structure and the questions are provided; the content is yours to write.
-> The research question, the dead ends, and the results can only come from the
+> The mechanical sections (Approach table, Running it, Limitations, Verified
+> versions, Tools used) are filled in; the research narrative — the problem,
+> the questions, the results, the worked example — can only come from the
 > person who did the work.
->
-> **Order.** The sections are ordered for a reader who will *not* run the code:
-> problem, question, approach, results. You do not have to write them in that
-> order — *Verified versions* and *Worked example* are mostly transcription, so
-> they are the easiest places to start.
 >
 > **Language.** This file is in English, matching the code comments and
 > docstrings. Writing the research narrative in Korean instead is fine — switch
 > deliberately and say so in one line. Being consistent is what matters, not
 > which language you pick (issue #12, guideline 9).
->
-> **Length.** Aim for two screens total. If it outgrows that, move the per-stage
-> detail into a file under `docs/` and leave a link here.
-
-> [!TIP]
-> **Guidance — the one-liner above.** This is the line already in the repository
-> description. Keep it, or sharpen it. Say only what the project does; motivation
-> and background belong in the next section.
 
 ## The problem
 
@@ -71,37 +59,26 @@ TODO
 
 ## Approach
 
-> [!TIP]
-> **Guidance.** Fill in the stage table below. The first row is filled in only to
-> show the format; rewrite it in your own words along with the rest.
->
-> Then one paragraph under the table. Answer:
-> - Why is this split into separate stages at all?
-> - Why can the OCR output not go straight into TTS?
-> - What breaks if you remove stage 2 (normalize)? What breaks without stage 3
->   (math to speech)?
->
-> Why that paragraph matters: the list of stages can be recovered by reading the
-> code. The reasoning behind the split cannot.
-
 | Stage | Entry point | In → out | What it does |
 |---|---|---|---|
-| 1. OCR | `ocr_vl.py` | `*.png` → `output/*.md` | TODO (example row — rewrite this) |
-| 2. TODO | TODO | TODO | TODO |
-| 3. TODO | TODO | TODO | TODO |
-| 4. TODO | TODO | TODO | TODO |
+| 0 (optional) | `pdf_to_images.py` | `*.pdf` → `pages/*.png` | Renders PDF pages to PNGs the OCR can read (200 DPI default) |
+| 1. OCR | `ocr_vl.py` | `*.png` → `output/*.md` | PaddleOCR-VL, locally on CPU: Korean prose + inline `$...$` LaTeX |
+| 2. Normalize | `normalize.py` | `*.md` → `*.norm.md` | Canonicalizes the OCR's inconsistent math (unicode, bare runs, stray `$`) into `$...$` LaTeX |
+| 3. Math → speech | `sre-probe/speak.js` | `*.norm.md` → `stitched/*.stitched.txt` / `.ssml` | temml → MathML → SRE (locale ko); stitches Korean speech back into the prose |
+| 4. TTS | `tts_full.py` | `stitched/*` → `audio/*.wav` | Azure Neural TTS; plain and SSML versions per problem for A/B listening |
 
-TODO — one paragraph on why the pipeline is split this way
+The split exists because no single tool crosses the whole gap: the OCR emits
+math notation, not words, so its output cannot go straight to a TTS voice
+(which would spell out or skip the LaTeX). Stage 2 exists because the OCR
+emits math in three inconsistent shapes (`$...$`, unicode `x²≤`, plain
+`2x(3x+1)`) — without it, stage 3 would only find the spans that happened to
+arrive already delimited. Stage 3 is the actual subject of the project:
+turning LaTeX into *Korean* math speech, which only SRE attempts.
 
-> [!TIP]
-> **Guidance.** List the investigation tools separately from the stages.
-> `sre-probe/index.js` and `tts_probe.py` are not pipeline stages; they are tools
-> built to check something. Keep them out of the table and give them a line or two
-> here. Right now that distinction lives only inside each file's docstring, so
-> anyone opening the repository for the first time assumes all six files are part
-> of the pipeline.
-
-TODO — the two investigation tools
+Two files are investigation tools, not stages: `sre-probe/index.js` (does SRE
+support Korean math speech at all, and in which domains/styles?) and
+`tts_probe.py` (is the resulting Korean speech intelligible by ear? A/B wavs).
+Their docstrings record what each one established.
 
 ## Results
 
@@ -116,9 +93,8 @@ TODO — the two investigation tools
 >
 > One rule: distinguish what you actually verified from what you are assuming.
 > The code comments already do this ("confirmed from real output, not assumed" /
-> "verify by ear before trusting the say-as tags"). If something has not been
-> checked, write that it has not been checked — a document that says so is more
-> trustworthy, not less.
+> "verify by ear"). If something has not been checked, write that it has not
+> been checked — a document that says so is more trustworthy, not less.
 >
 > Give the things that did not work the same weight as the things that did. In
 > research a negative result is a result, not an appendix.
@@ -143,70 +119,97 @@ TODO
 
 ## Running it
 
-> [!TIP]
-> **Guidance.** Someone who just cloned this has to be able to follow it (#10).
-> Easy things to leave out:
-> - Installing the Python dependencies. `requirements.txt` currently does not
->   install anywhere except macOS — either say so here, or fix #7 first.
-> - The separate `npm install` inside `sre-probe/`. It is its own dependency tree,
->   which is why it is the most commonly missed step.
-> - Credentials: which environment variables are needed and where `.env` goes.
->   Point at `.env.example`, which already exists. Never write an actual key here.
-> - The four commands in order, including that the folder names have to line up
->   between stages and that stage 3 has to be run from inside `sre-probe/`.
-> - First-run cost: stage 1 downloads hundreds of MB of model weights the first
->   time and takes tens of seconds per image on CPU. Without a warning, that reads
->   as the program having hung.
-> - Which stages need the network or a paid service, and which are fully local.
->
-> Run each command once and then write it down. Commands written from memory are
-> wrong.
+Two dependency trees — Python **and** Node:
 
-TODO
+```sh
+python3.11 -m venv venv && venv/bin/pip install -r requirements.txt
+cd sre-probe && npm install && cd ..
+```
+
+**First run is expensive:** `ocr_vl.py` downloads model weights (hundreds of
+MB) to `~/.paddlex/official_models/`, and CPU inference takes tens of seconds
+per image. Both are printed at runtime; it is not hung.
+
+**Credentials** — stages 0–3 are fully local; stage 4 (Azure TTS) and the LLM
+eval scripts are the only network/paid parts. Copy `.env.example` to `.env`
+next to the scripts, or export the same variables: `AZURE_SPEECH_KEY` plus
+`AZURE_SPEECH_ENDPOINT` (or `AZURE_SPEECH_REGION`) for TTS; `OPENAI_API_KEY`
+for `inbox_eval.py` / `dot_check.py`.
+
+`run.py` chains everything:
+
+```sh
+python run.py "kr question 1.png"          # image → wav
+python run.py kma_sheet_13_8_prob.pdf      # PDF → pages → wav
+python run.py --dir pages --skip-tts       # stop before Azure synthesis
+```
+
+Per-stage skip flags (`--skip-ocr`, `--skip-normalize`, `--skip-speak`,
+`--skip-tts`) reuse the previous stage's artifacts, and every stage is still
+runnable alone:
+
+```sh
+python ocr_vl.py "kr question 1.png" --out ./output
+python normalize.py --dir output
+node sre-probe/speak.js --ssml --write ./stitched --dir ./output
+python tts_full.py --stitched ./stitched --out ./audio
+```
+
+Checks:
+
+```sh
+venv/bin/python -m pytest tests/       # normalize.py contract + span grammar
+cd sre-probe && node --test            # JS span grammar (same fixtures) + SSML checker
+python ocr_vl.py --eval .              # OCR each image, score against *.expect sidecars
+```
+
+- `<image>.expect` sidecars hold ground truth (`math` / `none`); images
+  without one score as `unverified`.
+- `speak.js` prints a per-file `SUMMARY:` line and, with `--strict`, exits
+  non-zero when a formula stitched as salvage or a placeholder (`run.py` uses
+  this to stop before paying Azure to read a placeholder aloud).
+- Larger harnesses: `tts_eval.py` (golden cases + lint), `inbox_eval.py`
+  (drop PDFs in `inbox/`, OCR → stitch → LLM judge), `dot_eval.py` (순환소수
+  dot restoration).
 
 ## Limitations and what is unverified
 
-> [!TIP]
-> **Guidance.** Having this section makes the whole document more credible.
-> Separate three things:
-> - What is deliberately not handled, and the reasoning behind that
-> - What has not been checked yet
-> - Known failures, and which inputs trigger them
->
-> This is an easy section to write: most of it already exists in the code. See the
-> `DOESN'T` list in `normalize.py`'s docstring and the open say-as question in
-> `sre-probe/speak.js`.
->
-> What not to do: claim something the code cannot do. There is a PDF in this
-> repository but no code that processes one; if the docs say PDF input works, a
-> reader will believe it (#8).
+Deliberately not handled (see `normalize.py`'s docstring for the reasoning):
+a lone variable with no math signal stays unwrapped (`x의` stays `x의` — the
+alternative risks `A형` → `$A$형`); bare numbers and list numbering stay
+text; ambiguous digit ranges are accepted as a known edge.
 
-TODO
+Not yet checked: whether SRE's `<say-as>` tags audibly improve the speech.
+The attribute is now rewritten to Azure's documented `"characters"` (see
+`speak.js`), but the A/B ear check with `tts_probe.py` has not been done.
+Whether SRE's Korean fraction/relation grouping is intelligible by ear is
+likewise an open listening question — `tts_probe.py`'s four cases exist for
+it.
+
+Known failure: `page.png`'s pseudo-LaTeX integral does not parse; it stitches
+via the best-effort salvage path (visible in the `SUMMARY:` line).
 
 ## Verified versions
 
-> [!TIP]
-> **Guidance.** Version, date, platform. Why this is needed: "SRE supports
-> Korean" is a claim with a shelf life; "SRE 5.0.0-rc.4, checked 2026-07" is a
-> record. Six months from now, when something breaks, this table is the only
-> reference for what changed.
->
-> The code comments already work this way, so this is mostly transcription.
-> Always include the date you checked.
-
 | Component | Version | Date checked |
 |---|---|---|
-| TODO | TODO | TODO |
+| paddleocr / paddlex / paddlepaddle | 3.7.0 / 3.7.2 / 3.3.1 | 2026-07 |
+| speech-rule-engine | 5.0.0-rc.4 | 2026-07 |
+| temml | ^0.13.3 | 2026-07 |
+| azure-cognitiveservices-speech | 1.50.0 | 2026-07 |
+| Azure SSML say-as docs (`characters`) | page dated 2026-02 | 2026-08 |
+| pypdfium2 | 5.11.0 | 2026-08 |
 
-Environment used: TODO (OS, CPU or GPU)
+Environment used: macOS arm64 (Apple Silicon), Python 3.11 venv, CPU-only
+(no CUDA).
 
 ## Tools used
 
-> [!TIP]
-> **Guidance.** Name, one line on its role in the pipeline, one link each. This
-> section is allowed to be short.
-
-TODO
+- [PaddleOCR-VL](https://github.com/PaddlePaddle/PaddleOCR) — local Korean + math OCR (stage 1)
+- [temml](https://temml.org/) — LaTeX → MathML (stage 3)
+- [speech-rule-engine](https://github.com/Speech-Rule-Engine/speech-rule-engine) — MathML → Korean math speech (stage 3)
+- [Azure Speech](https://learn.microsoft.com/azure/ai-services/speech-service/) — Korean neural TTS (stage 4)
+- [pypdfium2](https://github.com/pypdfium2-team/pypdfium2) — PDF page rendering (stage 0)
 
 ---
 
@@ -220,15 +223,15 @@ TODO
 > - [ ] What was being investigated?
 > - [ ] Did it work, and what is the evidence?
 > - [ ] What was tried that did not work?
-> - [ ] Can I run one problem through to audio on my own machine, and do I know in
+> - [x] Can I run one problem through to audio on my own machine, and do I know in
 >       advance what the first run costs in time and disk?
-> - [ ] Which parts are known-broken, and which are simply unverified?
-> - [ ] Which claims were actually verified, against which versions, on what date?
+> - [x] Which parts are known-broken, and which are simply unverified?
+> - [x] Which claims were actually verified, against which versions, on what date?
 >
 > And one that applies to you specifically as the author:
 >
-> - [ ] Six months from now, reading this README, will you still know why math is
+> - [x] Six months from now, reading this README, will you still know why math is
 >       normalized to `$...$` and why `engine="transformers"` must not be added?
->       (both are currently lost from the repository — issue #3)
+>       (both are now recorded in `ocr_vl.py`'s module docstring — issue #3)
 >
 > If any of these has no answer, that section is not finished.
