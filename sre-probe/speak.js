@@ -23,8 +23,10 @@
  * <voice>, which Azure rejects — so the stitched view strips each span down to
  * its inner markup and re-wraps the whole document in the Azure envelope
  * (version="1.0", xml:lang="ko-KR", <voice name=...>). Prose is XML-escaped.
- * Caveat: SRE writes interpret-as="character"; Azure documents "characters" —
- * verify by ear with tts_probe.py before trusting the say-as tags.
+ * SRE writes interpret-as="character"; Azure documents only "characters"
+ * (checked against learn.microsoft.com 2026-08), so ssmlInner() rewrites the
+ * attribute during the re-wrap. An A/B ear check with tts_probe.py is still
+ * the way to confirm the say-as tags audibly change anything.
  */
 
 'use strict';
@@ -95,12 +97,16 @@ function parseArgs(argv) {
 
 const escapeXml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-/** SRE SSML -> inner markup only (drop its <speak>/<prosody> envelope). */
+/** SRE SSML -> inner markup only (drop its <speak>/<prosody> envelope).
+ * Also normalizes SRE's interpret-as="character" to Azure's "characters":
+ * Azure's say-as table (learn.microsoft.com SSML pronunciation page, dated
+ * 2026-02, checked 2026-08) lists only "characters"/"spell-out" — the
+ * singular form is not a documented value, so Azure would silently ignore
+ * the tag and the disambiguation the SSML path exists for would be lost. */
 function ssmlInner(s) {
   const pros = s.match(/<prosody[^>]*>([\s\S]*)<\/prosody>/);
-  if (pros) return pros[1].trim();
-  const speak = s.match(/<speak[^>]*>([\s\S]*)<\/speak>/);
-  return (speak ? speak[1] : s).trim();
+  const inner = pros ? pros[1] : (s.match(/<speak[^>]*>([\s\S]*)<\/speak>/) ?? [, s])[1];
+  return inner.replace(/interpret-as="character"/g, 'interpret-as="characters"').trim();
 }
 
 const AZURE_SSML = (voice, body) =>
