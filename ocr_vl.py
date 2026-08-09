@@ -1,10 +1,47 @@
 #!/usr/bin/env python3
+"""Local PaddleOCR-VL harness for Korean math problems (stage 1). No paid API.
 
+Verified against paddleocr 3.7.0 / paddlex 3.7.2 / paddlepaddle 3.3.1 on
+macOS arm64 (CPU), 2026-07. Two findings below are cited by comments in this
+file — they were established by running the model, not assumed.
+
+THE $...$ CONVENTION (what LATEX/SPAN and everything downstream depend on)
+  PaddleOCR-VL emits inline math wrapped in single dollars. Observed verbatim
+  in real output on the repo fixtures (output/*.md), e.g. from
+  "kr question 2.png":
+
+      4.  $ -2^5 \\div \\{(-2)^4 \\times (-2)\\} $를 계산하시오.
+
+  and from "kr question 1.png" (note the mis-placed closing $ — the case
+  normalize.py's _emit_inline repairs):
+
+      ... 범위는 $p\\leq k<q(p, q$는 상수)이다. 이때 $p^{2}+9q^{2}$의 값을 ...
+
+  So $...$ is confirmed from real model output, not assumed. The model cannot
+  be forced to emit any other delimiter; normalize.py canonicalizes whatever
+  arrives into $...$ / $$...$$.
+
+WHY engine="transformers" MUST NOT BE ADDED
+  PaddleOCRVL accepts an `engine=` kwarg (paddle, paddle_static,
+  paddle_dynamic, transformers, onnxruntime), but it is a GLOBAL switch: it
+  applies to every sub-model in the pipeline, including the PP-DocLayoutV3
+  layout model, which is paddle-only — so engine="transformers" crashes the
+  pipeline. The knob that selects the VL recognizer backend is the separate
+  `vl_rec_backend=` ("native" = in-process, no server; the *-server values
+  need a running server + vl_rec_server_url). Leave `engine` unset and use
+  vl_rec_backend="native".
+
+INSTALL GOTCHA
+  `pip install paddleocr` alone raises DependencyError at pipeline creation;
+  `pip install "paddlex[ocr]==3.7.2"` is also required (see requirements.txt).
+  Model weights (PP-DocLayoutV3 + PaddleOCR-VL) auto-download from HuggingFace
+  to ~/.paddlex/official_models/ on first run — hundreds of MB.
+"""
 import argparse, re, sys, traceback
 from pathlib import Path
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
-# $$block$$ | $inline$ | \(..\) | \[..\] | \begin{}..\end{}. The $...$ convention
+# $$block$$ | $inline$ | \\(..\\) | \\[..\\] | \\begin{}..\\end{}. The $...$ convention
 # is confirmed from real PaddleOCR-VL output (see module docstring), not assumed.
 # Inline $..$ may not contain Hangul/'$'/newline — keep in sync with normalize.py
 # SPAN and sre-probe/speak.js SPAN (stray-'$' robustness, same rule everywhere).
