@@ -1,0 +1,510 @@
+[
+  {
+    "id": "unnatural-phrasing-value",
+    "input": "값을 구하시오",
+    "must": [
+      "값을"
+    ],
+    "mustnot": [
+      "잦을"
+    ],
+    "why": "The phrase '잦을 구하시오' should be '값을 구하시오', as the word '잦을' is not standard and might confuse the listener.",
+    "from": "kma_sheet_13_8_prob/kma_sheet_13_8_prob_1"
+  },
+  {
+    "id": "incorrect-inequality-interpretation",
+    "input": "<a,3>，3>=4",
+    "must": [
+      "a 보다 작다 3 보다 크거나 같다 4"
+    ],
+    "mustnot": [
+      "는 a 보다 작다 콤마 3 은 보다 크다"
+    ],
+    "why": "The speech misreads '<a,3>，3>=4' as a comparison involving 'a' and '3', omitting '3>=4'.",
+    "from": "kma_sheet_13_8_prob/kma_sheet_13_8_prob_4"
+  },
+  {
+    "id": "inequality-interpretation",
+    "input": "<a,3>,3>=4",
+    "must": [
+      "보다 작다",
+      "보다 크다"
+    ],
+    "mustnot": [
+      "쉼표"
+    ],
+    "why": "Inequality expression for a<3 was misread as a comma-separated list.",
+    "from": "kma_sheet_13_8_prob/kma_sheet_13_8_prob_4"
+  },
+  {
+    "id": "unnatural-pi-meter",
+    "input": "2번 트랙에서 뛰는 선수는 1번 트랙에서 뛰는 선수보다 파이 m 앞에서 출발해야",
+    "must": [
+      "파이 미터"
+    ],
+    "mustnot": [
+      "집합 파이 m"
+    ],
+    "why": "The term '집합 파이 m' is unnatural in Korean, it should be '파이 미터'.",
+    "from": "kma_2/kma_2_3"
+  },
+  {
+    "id": "residue-in-absolute-value",
+    "input": "⑤ 절맞았이 가장 작은 수는 \\( \\frac{3}{4} \\)이다.",
+    "must": [
+      "절댓값이"
+    ],
+    "mustnot": [
+      "절맞았이"
+    ],
+    "why": "'절맞았이' should be '절댓값이', preserving intent and correct reading for absolute value comparison.",
+    "from": "중1-1_단원평가-1_수와_연산_02_정수와_유리수/중1-1_단원평가-1_수와_연산_02_정수와_유리수_0"
+  },
+  {
+    "id": "residue-in-absolute-value-discussion",
+    "input": "절맞았어 같고, 부호가 다른 두 수가 있다.",
+    "must": [
+      "절댓값"
+    ],
+    "mustnot": [
+      "절맞았어"
+    ],
+    "why": "'절맞았어' should be '절댓값' as it refers to absolute values which are conventionally used.', '절맞았어' can detract from understanding.",
+    "from": "중1-1_단원평가-1_수와_연산_02_정수와_유리수/중1-1_단원평가-1_수와_연산_02_정수와_유리수_0"
+  },
+  {
+    "id": "inequality-fraction-misread",
+    "input": "c\\frac{2}{7} 초과 3 이하이다.",
+    "mustnot": [
+      "c 7 분의 2"
+    ],
+    "why": "SPEECH reads denominator-first fraction c (2/7) incorrectly as c (7/2).",
+    "from": "중1-1_단원평가-1_수와_연산_02_정수와_유리수/중1-1_단원평가-1_수와_연산_02_정수와_유리수_1"
+  },
+  {
+    "id": "fraction-reading-issue",
+    "input": "③ +\\frac{5}{4}",
+    "must": [
+      "4 분의 5"
+    ],
+    "mustnot": [
+      "{5}{4}"
+    ],
+    "why": "The fraction 5/4 (\\frac{5}{4}) should be read as '4 분의 5', not '{5}{4}'.",
+    "from": "중1-1_단원평가-1_수와_연산_02_정수와_유리수/중1-1_단원평가-1_수와_연산_02_정수와_유리수_2"
+  },
+  {
+    "id": "fraction-reading-order",
+    "input": "⑤ -\\frac{29}{8}",
+    "must": [
+      "29 분의 8"
+    ],
+    "mustnot": [
+      "8 분의 29"
+    ],
+    "why": "The fraction 29/8 (\\frac{29}{8}) should be read as '29 분의 8', not '8 분의 29'.",
+    "from": "중1-1_단원평가-1_수와_연산_02_정수와_유리수/중1-1_단원평가-1_수와_연산_02_정수와_유리수_2"
+  },
+  {
+    "id": "simple-wrong-speech",
+    "input": "(1) 2, 0, + \frac{12}{4}, -5",
+    "must": [
+      "마이너스 5"
+    ],
+    "mustnot": [
+      "곱하기",
+      "빼기"
+    ],
+    "why": "The phrase '마이너스 5 곱하기 2 빼기 5' is incorrect; it should simply be '마이너스 5'.",
+    "from": "중1-1_단원평가-1_수와_연산_02_정수와_유리수/중1-1_단원평가-1_수와_연산_02_정수와_유리수_4"
+  },
+  {
+    "id": "ocr-error-absolute-value",
+    "input": "절댓값 |0|=0",
+    "must": [
+      "절댓값"
+    ],
+    "mustnot": [
+      "절맛값"
+    ],
+    "why": "The OCR misread '절댓값' as '절맛값', which is incorrect in speech.",
+    "from": "중1-1_단원평가-1_수와_연산_02_정수와_유리수/중1-1_단원평가-1_수와_연산_02_정수와_유리수_4"
+  },
+  {
+    "id": "negative-numerator-exponent",
+    "input": "(-\\frac{3y^{A}}{x^{3}})^{2}",
+    "must": [
+      "마이너스 3 y"
+    ],
+    "mustnot": [],
+    "why": "The speech omits '마이너스' on the numerator '-3y^A'.",
+    "from": "kma_2/kma_2_0"
+  },
+  {
+    "id": "garbled-speech-dialogue",
+    "input": "세찬: 간이 최소 및 시간을 초과하면",
+    "mustnot": [
+      "세차 닷 간허사이하단사용은어떻게돼?"
+    ],
+    "why": "Garbled phrase in dialogue renders content confusing.",
+    "from": "kma_2/kma_2_1"
+  },
+  {
+    "id": "exponent-error",
+    "input": " \\frac{a}{2^{3}\\times3\\times5\\times b}",
+    "must": [
+      "2의 3제곱"
+    ],
+    "mustnot": [
+      "2 세제곱"
+    ],
+    "why": "The exponent '3' should be read as '2의 3제곱', whereas it was read as '2 세제곱' which is incorrect.",
+    "from": "kma_2/kma_2_3"
+  },
+  {
+    "id": "fraction-reading-confusion",
+    "input": "9. \\frac{11}{6} 을",
+    "must": [
+      "11 분의 6"
+    ],
+    "mustnot": [
+      "6 분의 11"
+    ],
+    "why": "6 분의 11 reverses the fraction, contradicting the source \\frac{11}{6}.",
+    "from": "중1-1_단원평가-1_수와_연산_02_정수와_유리수/중1-1_단원평가-1_수와_연산_02_정수와_유리수_1"
+  },
+  {
+    "id": "absolute-value-reading-error",
+    "input": "어떤 두 수의 절댓값은",
+    "must": [
+      "절댓값"
+    ],
+    "mustnot": [
+      "절망"
+    ],
+    "why": "'절댓값' incorrectly read as '절망', misleading about the math involved.",
+    "from": "중1-1_단원평가-1_수와_연산_02_정수와_유리수/중1-1_단원평가-1_수와_연산_02_정수와_유리수_1"
+  },
+  {
+    "id": "missing-abs-value",
+    "input": "절맞은 항상 양수이다.",
+    "must": [
+      "절댓값은 항상 양수이다."
+    ],
+    "mustnot": [
+      "절맞은"
+    ],
+    "why": "The speech reads '절맞은' which makes no sense and misses the intended '절댓값은 always positive'.",
+    "from": "kma_21/kma_21_1"
+  },
+  {
+    "id": "absolute-value-mistake",
+    "input": "a 의 절맛값은 b 의 절맛값의 3배이다.",
+    "must": [
+      "절댓값"
+    ],
+    "mustnot": [
+      "절맛값"
+    ],
+    "why": "The speech says '절맛값', which is incorrect and should be '절댓값'.",
+    "from": "kma_21/kma_21_3"
+  },
+  {
+    "id": "equation-denominator-error",
+    "input": "4a-\\frac{2}{a}=12",
+    "must": [
+      "4a 빼기 2 분의 a 는"
+    ],
+    "mustnot": [
+      "a 분의 2 는"
+    ],
+    "why": "Speech mistakes 'a 분의 2' for '2 분의 a'.",
+    "from": "kma3/kma3_1"
+  },
+  {
+    "id": "wrong-math-sqrt-subtraction",
+    "input": "$\\sqrt{200-x}-\\sqrt{300+y}$",
+    "must": [
+      "루트 200 빼기 x 빼기 루트 300 빼기 y"
+    ],
+    "mustnot": [
+      "더하기 y"
+    ],
+    "why": "The speech incorrectly says '더하기 y' instead of '빼기 y', changing the operation.",
+    "from": "kma3/kma3_4"
+  },
+  {
+    "id": "missing-multiplication",
+    "input": "1-2n",
+    "must": [
+      "곱하기"
+    ],
+    "mustnot": [],
+    "why": "The speech lacks '곱하기', which could mislead listeners to not understand the expression as \"1 - 2*n\".",
+    "from": "kma_21/kma_21_4"
+  },
+  {
+    "id": "fraction-swap-error",
+    "input": "-\\frac{11}{4}",
+    "must": [
+      "마이너스 11 분의 4"
+    ],
+    "mustnot": [
+      "마이너스 4 분의 11"
+    ],
+    "why": "The speech incorrectly reads the fraction with the denominator and numerator swapped.",
+    "from": "kma_21/kma_21_5"
+  },
+  {
+    "id": "mixed-number-2-1-over-3",
+    "input": "대분수 2$\\frac{1}{3}$",
+    "must": [
+      "2 3 분의 1"
+    ],
+    "mustnot": [
+      "2 와 3 분의 1"
+    ],
+    "why": "Speech reads '2 와 3 분의 1' which adds ambiguity due to '와'.",
+    "from": "korean_math_tts_stress_test/korean_math_tts_stress_test_1"
+  },
+  {
+    "id": "mixed-number-3-1-over-6",
+    "input": "$3\\frac{1}{6}$과",
+    "must": [
+      "3 6 분의 1 과"
+    ],
+    "mustnot": [
+      "3 과 6 분의 1 과"
+    ],
+    "why": "Speech reads '3 과 6 분의 1 과' adding ambiguity with '과'.",
+    "from": "korean_math_tts_stress_test/korean_math_tts_stress_test_1"
+  },
+  {
+    "id": "fraction-2-over-3",
+    "input": "번분수 $\\frac{2}{3}$",
+    "must": [
+      "번분수 2 분의 3"
+    ],
+    "mustnot": [
+      "번분수 3 분의 2"
+    ],
+    "why": "Fraction reading is reversed due to wrong order.",
+    "from": "korean_math_tts_stress_test/korean_math_tts_stress_test_1"
+  },
+  {
+    "id": "mixed-number-2-3-over-4",
+    "input": "우유 2$\\frac{3}{4}$L",
+    "must": [
+      "우유 2 와 4 분의 3 L"
+    ],
+    "mustnot": [
+      "우유 2 4 분의 3 L"
+    ],
+    "why": "Missing '와' between whole number and fraction causes confusion.",
+    "from": "korean_math_tts_stress_test/korean_math_tts_stress_test_1"
+  },
+  {
+    "id": "garbled-tangents",
+    "input": "\\tan 60^{\\circ} \\times \\tan 30^{\\circ}",
+    "must": [
+      "탄젠트 60 도 곱하기 탄젠트 30 도"
+    ],
+    "mustnot": [
+      "제곱",
+      "중괄호"
+    ],
+    "why": "The speech contains extraneous '제곱' and '중괄호' terms that garble the intended math expression.",
+    "from": "korean_math_tts_stress_test/korean_math_tts_stress_test_2"
+  },
+  {
+    "id": "reversed-trig-fraction",
+    "input": "\\tan A = \\frac{\\sin A}{\\cos A}",
+    "must": [
+      "싸인 A 를 코싸인 A 로 나눈 값"
+    ],
+    "mustnot": [
+      "코싸인",
+      "싸인"
+    ],
+    "why": "The fraction reading is reversed; it should convey sin/cos rather than cos/sin.",
+    "from": "korean_math_tts_stress_test/korean_math_tts_stress_test_2"
+  },
+  {
+    "id": "garbled-dot",
+    "input": "제 5 절. 좌표평면 · 정비례와 반비례",
+    "must": [
+      "제 5 절 좌표평면과 정비례와 반비례"
+    ],
+    "mustnot": [
+      "닷"
+    ],
+    "why": "The word '닷' is read instead of the intended '·', causing confusion.",
+    "from": "korean_math_tts_stress_test/korean_math_tts_stress_test_2"
+  },
+  {
+    "id": "fraction-representation-misread",
+    "input": "\\frac{4}{11} 을 순환소수로 나타내면",
+    "must": [
+      "영 점 삼십육"
+    ],
+    "mustnot": [
+      "점육"
+    ],
+    "why": "The TTS incorrectly reads '36' as '삼십육 점 육' instead of the correct '36' ('삼십육') for 0.363636...",
+    "from": "korean_math_tts_stress_test/korean_math_tts_stress_test_4"
+  },
+  {
+    "id": "ambiguous-square-root",
+    "input": "$ \\sqrt{3+2\\sqrt{2}} $",
+    "must": [
+      "루트 괄호 열고 3 더하기 2 루트 2 괄호 닫고"
+    ],
+    "mustnot": [
+      "루트 3 더하기 2 루트 2"
+    ],
+    "why": "The speech omits the brackets around 3 + 2√2, which could mislead the listener.",
+    "from": "korean_math_tts_stress_test/korean_math_tts_stress_test_5"
+  },
+  {
+    "id": "fraction-error",
+    "input": "호의 길이 \\ell = 2\\pi r \\times \\frac{60}{360}",
+    "must": [
+      "6 분의 1"
+    ],
+    "mustnot": [
+      "360 분의 60"
+    ],
+    "why": "The speech incorrectly states '360 분의 60' instead of '6 분의 1'.",
+    "from": "korean_math_tts_stress_test/korean_math_tts_stress_test_6"
+  },
+  {
+    "id": "ambiguous-square-symbol",
+    "input": "□ABCD",
+    "must": [
+      "사각형"
+    ],
+    "mustnot": [
+      "네모"
+    ],
+    "why": "The visual symbol '□' for square/shape is read as '네모', which could confuse its intended meaning with a text box in the context.",
+    "from": "korean_math_tts_stress_test/korean_math_tts_stress_test_0"
+  },
+  {
+    "id": "garbled-letters",
+    "input": "4 are figure-dependent",
+    "must": [
+      "4개는 도형에 의존합니다"
+    ],
+    "mustnot": [
+      "f 의 i g 의 u r e"
+    ],
+    "why": "Non-math terms are spelled out and 'f 의' appears by mistake, so it's garbled.",
+    "from": "untested-topics/untested-topics_0"
+  },
+  {
+    "id": "garbled-ocr-figures",
+    "input": "각기동·원기동 전개도 figures OCR limitation",
+    "must": [
+      "각기동 원기동 전개도"
+    ],
+    "mustnot": [
+      "OCR limitation"
+    ],
+    "why": "The speech incorrectly includes 'OCR limitation', which is not present in the speech.",
+    "from": "untested-topics/untested-topics_0"
+  },
+  {
+    "id": "garbled-must-test",
+    "input": "사각형의 성질 ☐ABCD MUST TEST",
+    "must": [
+      "사각형의 성질 네모"
+    ],
+    "mustnot": [
+      "MUST TEST"
+    ],
+    "why": "The speech includes 'MUST TEST', which makes it garbled.",
+    "from": "untested-topics/untested-topics_0"
+  },
+  {
+    "id": "arc-mark-notation",
+    "input": "원의 성질 원주각 $ \\angle APB $, 호 AB (arc-mark notation)",
+    "mustnot": [
+      "a r c",
+      "m a r k",
+      "n o t a t i o n"
+    ],
+    "why": "The phrase 'arc-mark notation' is read as spelled letters rather than as proper words, confusing the listener.",
+    "from": "untested-topics/untested-topics_1"
+  },
+  {
+    "id": "table-extraction-at-scale",
+    "input": "P6 도수분포표 pages (table extraction at scale)",
+    "mustnot": [
+      "t a b l e",
+      "e x t r a c t i o n"
+    ],
+    "why": "The English note 'table extraction at scale' is spelled out as letters, losing meaning.",
+    "from": "untested-topics/untested-topics_1"
+  },
+  {
+    "id": "section-reading-issue",
+    "input": "## 조1-2",
+    "must": [
+      "1 2"
+    ],
+    "mustnot": [
+      "빼기"
+    ],
+    "why": "The speech says '조 1 빼기 2' (section 1 minus 2) where it should just mention section label '조 1 2'.",
+    "from": "untested-topics-worksheet/untested-topics-worksheet_0"
+  },
+  {
+    "id": "section-reading-issue",
+    "input": "## 조3-4",
+    "must": [
+      "3 4"
+    ],
+    "mustnot": [
+      "빼기"
+    ],
+    "why": "The speech says '조 3 빼기 4' (section 3 minus 4) where it should just mention section label '조 3 4'.",
+    "from": "untested-topics-worksheet/untested-topics-worksheet_0"
+  },
+  {
+    "id": "section-reading-issue",
+    "input": "## 조5-6",
+    "must": [
+      "5 6"
+    ],
+    "mustnot": [
+      "빼기"
+    ],
+    "why": "The speech says '조 5 빼기 6' (section 5 minus 6) where it should just mention section label '조 5 6'.",
+    "from": "untested-topics-worksheet/untested-topics-worksheet_0"
+  },
+  {
+    "id": "fraction-misread",
+    "input": "I=2\\pi r\\times\\frac{45}{360}",
+    "must": [
+      "45 분의 360"
+    ],
+    "mustnot": [
+      "360 분의 45"
+    ],
+    "why": "The fraction is misread; should be '45 분의 360' according to source.",
+    "from": "untested-topics-worksheet/untested-topics-worksheet_1"
+  },
+  {
+    "id": "ambiguous-root-a",
+    "input": "\\sqrt{a^{2}}=\\Box\\quad(a<0)",
+    "must": [
+      "루트 a 제곱 같다 네모",
+      "괄호 열고 a 는 0 보다 작다 괄호 닫고"
+    ],
+    "mustnot": [
+      "곱하기"
+    ],
+    "why": "The speech accidentally suggests multiplication instead of a clause due to missing comma.",
+    "from": "untested-topics-problems-2/untested-topics-problems-2_2"
+  }
+]

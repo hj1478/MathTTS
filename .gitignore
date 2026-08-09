@@ -10,6 +10,8 @@ __pycache__/
 node_modules/
 
 # Generated pipeline artifacts
+inbox/
+runs/
 output/
 output_kma/
 stitched/

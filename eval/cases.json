@@ -1,0 +1,609 @@
+[
+  {
+    "id": "abs-value",
+    "input": "|-3|+|2|를 계산하시오.",
+    "must": [
+      "절댓값 마이너스 3",
+      "절댓값 2"
+    ]
+  },
+  {
+    "id": "abs-variable",
+    "input": "이때 |a|의 값을 구하시오.",
+    "must": [
+      "절댓값 a"
+    ]
+  },
+  {
+    "id": "angle-degree",
+    "input": "∠A=65°일 때, ∠x의 크기를 구하시오.",
+    "must": [
+      "각 A",
+      "65 도",
+      "각 x"
+    ]
+  },
+  {
+    "id": "perp-parallel",
+    "input": "AB⊥CD이고 l∥m일 때, 다음을 구하시오.",
+    "must": [
+      "수직",
+      "평행"
+    ]
+  },
+  {
+    "id": "congruence",
+    "input": "△ABC≡△DEF이고 AB=5cm일 때, DE의 길이를 구하시오.",
+    "must": [
+      "삼각형",
+      "합동",
+      "5 센티미터"
+    ]
+  },
+  {
+    "id": "lean-inequality",
+    "input": "a≦b≦c일 때, 다음 중 옳은 것은?",
+    "must": [
+      "작거나 같다"
+    ]
+  },
+  {
+    "id": "ratio",
+    "input": "x:y=3:4일 때, (x+y):y를 구하시오.",
+    "must": [
+      "x 콜론 y",
+      "3 콜론 4"
+    ]
+  },
+  {
+    "id": "label-colon-stays-prose",
+    "input": "자연수 2개의 합: 1+2=3=3¹이므로",
+    "mustnot": [
+      "콜론"
+    ]
+  },
+  {
+    "id": "unit-power",
+    "input": "직육면체의 부피가 24a³b²cm³일 때, 높이를 구하시오.",
+    "must": [
+      "센티미터 세제곱"
+    ],
+    "mustnot": [
+      "c m"
+    ]
+  },
+  {
+    "id": "bare-braces",
+    "input": "-2⁵÷{(-2)⁴×(-2)}를 계산하시오.",
+    "must": [
+      "중괄호 열고",
+      "중괄호 닫고"
+    ]
+  },
+  {
+    "id": "problem-number-ejected",
+    "input": "5. (3x+4)-(x-1)=ax+b일 때, a+b의 값을 구하시오.",
+    "mustnot": [
+      "마침표"
+    ]
+  },
+  {
+    "id": "system-of-equations",
+    "input": "연립방정식 $\\left\\{\\begin{aligned}&x+y=5\\\\ &2x+y=7\\end{aligned}\\right.$ 의 해를 구하시오.",
+    "must": [
+      "케이스 1: x 더하기 y 는 5"
+    ],
+    "mustnot": [
+      "빈 칸"
+    ]
+  },
+  {
+    "id": "empty-env-rows",
+    "input": " $$\\begin{aligned}&\\begin{cases}\\\\ &-2.4,\\ 1,\\ \\frac{5}{3}\\\\ &\\end{cases}\\\\ \\end{aligned}$$ ",
+    "must": [
+      "마이너스 2.4"
+    ],
+    "mustnot": [
+      "빈 칸",
+      "케이스"
+    ]
+  },
+  {
+    "id": "html-figure",
+    "input": "<div style=\"text-align: center;\"><img src=\"imgs/box_1.jpg\" alt=\"Image\" width=\"15%\" /></div>",
+    "mustnot": [
+      "t e x t",
+      "j p g",
+      "width",
+      "style"
+    ]
+  },
+  {
+    "id": "html-table",
+    "input": "<table border=1 style='margin: auto;'><tr><td style='text-align: center;'>일</td><td>월</td></tr></table>",
+    "mustnot": [
+      "border",
+      "t d",
+      "style",
+      "margin"
+    ]
+  },
+  {
+    "id": "sqrt",
+    "input": "√2×√8을 계산하시오.",
+    "must": [
+      "루트 2",
+      "곱하기",
+      "루트 8"
+    ]
+  },
+  {
+    "id": "inline-latex-span",
+    "input": "일차부등식 $3(x-k)\\leq 2x+5$가 성립한다.",
+    "must": [
+      "작거나 같다"
+    ]
+  },
+  {
+    "id": "unmatched-paren-ejected",
+    "input": "상수 k의 값의 범위는 p≤k<q(p, q는 상수)이다.",
+    "must": [
+      "작거나 같다"
+    ],
+    "mustnot": [
+      "괄호 열고 p"
+    ]
+  },
+  {
+    "id": "percent-prose",
+    "input": "25%를 분수로 나타내시오.",
+    "must": [
+      "25"
+    ],
+    "mustnot": [
+      "퍼센트 기호"
+    ]
+  },
+  {
+    "id": "repeating-decimal-dots",
+    "input": "순환소수 0.2̇3̇을 분수로 나타내시오.",
+    "must": [
+      "순환마디"
+    ],
+    "known": "SRE-ko says '0 마침표 2 위의 점 3 위의 점' — notation survives but a listener won't recognize 순환소수; needs a post-SRE rewrite"
+  },
+  {
+    "id": "repeating-decimal-overline",
+    "input": "$1.\\overline{23}$을 분수로 나타내시오.",
+    "must": [
+      "순환마디"
+    ],
+    "known": "SRE-ko says '1 마침표 23 윗줄' — same 순환소수 phrasing gap"
+  },
+  {
+    "id": "similarity",
+    "input": "△ABC∽△DEF일 때, 닮음비를 구하시오.",
+    "must": [
+      "닮음 삼각형"
+    ],
+    "known": "SRE-ko reads ∽ (\\sim) as '물결표', not 닮음"
+  },
+  {
+    "id": "degree-circ-latex",
+    "input": "$\\angle A=65^\\circ$일 때",
+    "must": [
+      "65 도"
+    ]
+  },
+  {
+    "id": "function-application",
+    "input": "f(x)=2x+1에서 f(3)의 값을 구하시오.",
+    "must": [
+      "f 3"
+    ],
+    "known": "SRE-ko clearspeak says 'f 의 3', ambiguous with multiplication/possessive"
+  },
+  {
+    "id": "garbled-ocr-latex",
+    "input": " $$\\int\\Box^{\\wedge}\\infty\\mathrm{\\boldmath~e~}^{\\wedge}\\left\\{-x^2\\right\\}$$ ",
+    "mustnot": [
+      "백슬래시",
+      "흰색 정사각형",
+      "논리곱"
+    ]
+  },
+  {
+    "id": "html-table-content",
+    "input": "다음에서 소수와 합성수의 개수를 각각 구하시오.\n<table border=1 style='margin: auto;'><tr><td style='text-align: center;'>1,</td><td>2,</td><td>9,</td></tr><tr><td>47,</td><td>59</td><td></td></tr></table>",
+    "must": [
+      "1, 2, 9,",
+      "47, 59"
+    ],
+    "mustnot": [
+      "border",
+      "style"
+    ]
+  },
+  {
+    "id": "list-marker-not-math",
+    "input": "(1) 45",
+    "must": [
+      "45"
+    ],
+    "mustnot": [
+      "괄호 열고"
+    ]
+  },
+  {
+    "id": "adjacent-list-markers",
+    "input": "(3)(2)에서 가장 작은 기약분수가 되려면",
+    "mustnot": [
+      "곱하기"
+    ]
+  },
+  {
+    "id": "bracket-list-marker",
+    "input": "[3] (1) 소인수분해: 3²×5, 소인수: 3, 5",
+    "must": [
+      "3 제곱 곱하기 5"
+    ],
+    "mustnot": [
+      "3 곱하기 1"
+    ]
+  },
+  {
+    "id": "bare-latex-prose",
+    "input": "9=3^{2}, 26=2\\times13",
+    "must": [
+      "3 제곱",
+      "2 곱하기 13"
+    ],
+    "mustnot": [
+      "t i m e s",
+      "집합"
+    ]
+  },
+  {
+    "id": "bare-latex-exponent-times",
+    "input": "12=2^{2}\\times3",
+    "must": [
+      "2 제곱 곱하기 3"
+    ],
+    "mustnot": [
+      "집합"
+    ]
+  },
+  {
+    "id": "hangul-text-in-math",
+    "input": "즉, $ \\frac{(9\\text{와 }12\\text{의 공배수})}{(26\\text{과 }13\\text{의 공약수})} $의 꼴이어야 한다.",
+    "must": [
+      "공 배 수",
+      "분모가",
+      "인 분수"
+    ],
+    "mustnot": [
+      "백슬래시",
+      "ParseError",
+      "frac"
+    ]
+  },
+  {
+    "id": "custom-angle-notation",
+    "input": "<1,2>=1이므로 $$ <a,3>，3>=4 $$",
+    "mustnot": [
+      "보다 작다"
+    ],
+    "known": "problem-defined <x,y>=z notation (KMA sheet p4): OCR splits it across prose and math and '<'/'>' read as 부등호 — pipeline cannot know problem-local notation semantics"
+  },
+  {
+    "id": "box-blank-math",
+    "input": "□안에 공통으로 들어갈 수를 구하시오. $$ \\frac{9}{40}=\\frac{9\\times\\Box}{2^{3}\\times5\\times\\Box}=0.225 $$",
+    "must": [
+      "네모"
+    ],
+    "mustnot": [
+      "흰색 정사각형"
+    ]
+  },
+  {
+    "id": "box-blank-prose",
+    "input": "어떤 수를 □라 하면",
+    "must": [
+      "네모"
+    ],
+    "mustnot": [
+      "흰색 정사각형"
+    ]
+  },
+  {
+    "id": "dollar-wrapped-array",
+    "input": " $ \\begin{array}{r}\n\n-4,\\quad1.5,\\quad\\frac{3}{4},\\quad0,\\quad+5\\\\\n\n\\end{array} $ ",
+    "must": [
+      "마이너스 4",
+      "1.5"
+    ],
+    "mustnot": [
+      "지원되지 않는",
+      "r 마이너스",
+      "r 빼기"
+    ]
+  },
+  {
+    "id": "bare-frac-choice-list",
+    "input": "① +4 ② +\\frac{27}{8} ③ +\\frac{5}{4}",
+    "must": [
+      "8 분의 27",
+      "4 분의 5"
+    ],
+    "mustnot": [
+      "{5}{4}",
+      "frac"
+    ]
+  },
+  {
+    "id": "boxed-blank",
+    "input": "2번 트랙에서 뛰는 선수는 1번 트랙에서 뛰는 선수보다 \\boxed{\\pi m} 앞에서 출발해야 한다.",
+    "must": [
+      "네모"
+    ],
+    "mustnot": [
+      "집합",
+      "boxed"
+    ]
+  },
+  {
+    "id": "answer-key-inline-markers",
+    "input": "[1] (1) 2, 0, + $ \\frac{12}{4} $, -5 (2) -5",
+    "must": [
+      "마이너스 5"
+    ],
+    "mustnot": [
+      "곱하기"
+    ]
+  },
+  {
+    "id": "paren-only-marker-schedule",
+    "input": "1) 2026.06.24 (수) 14:00 문제, 정답 공개",
+    "mustnot": [
+      "괄호 닫고"
+    ]
+  },
+  {
+    "id": "degree-circ-in-span",
+    "input": "$\\angle ACB=90^{\\circ}$, $(S-2)^{2}$의 값을 구하시오.",
+    "must": [
+      "각 A C B",
+      "90 도"
+    ],
+    "mustnot": [
+      "합성 함수"
+    ]
+  },
+  {
+    "id": "ocr-typo-jeoldaetgab",
+    "input": "(가) $a$의 절맛값은 $b$의 절맛값의 3배이다. 절맞은 항상 양수이다. 절맞았어 같고, 부호가 다른 두 수가 있다.",
+    "must": [
+      "절댓값은",
+      "절댓값이 같고"
+    ],
+    "mustnot": [
+      "절맛",
+      "절맞"
+    ]
+  },
+  {
+    "id": "quadrilateral-not-blank",
+    "input": "□ABCD가 평행사변형일 때, □안에 알맞은 수를 구하시오.",
+    "must": [
+      "사각형 ABCD",
+      "네모 안에"
+    ],
+    "mustnot": [
+      "네모 A B C D"
+    ]
+  },
+  {
+    "id": "mixed-number-in-span",
+    "input": "1. $ 2\\frac{1}{3} $ 을 가분수로 고치시오.",
+    "must": [
+      "2 와 3 분의 1"
+    ]
+  },
+  {
+    "id": "mixed-number-digit-outside-span",
+    "input": "표기 대상: 대분수 2$\\frac{1}{3}$, 가분수, 번분수",
+    "must": [
+      "2 와 3 분의 1"
+    ]
+  },
+  {
+    "id": "mixed-number-bare",
+    "input": "우유가 2\\frac{3}{4}L 있다.",
+    "must": [
+      "2 와 4 분의 3"
+    ]
+  },
+  {
+    "id": "trig-bare-words",
+    "input": "1. sin 30°, cos 30°, tan 30°의 값을 각각 구하시오.",
+    "must": [
+      "싸인 30 도",
+      "코싸인 30 도",
+      "탄젠트 30 도"
+    ]
+  },
+  {
+    "id": "trig-bare-latex-circ",
+    "input": "3. \\tan 60^{\\circ} \\times \\tan 30^{\\circ} \\text{의 값을 구하시오.",
+    "must": [
+      "탄젠트 60 도 곱하기 탄젠트 30 도"
+    ],
+    "mustnot": [
+      "중괄호",
+      "제곱"
+    ]
+  },
+  {
+    "id": "sqrt-hangul-arg",
+    "input": "12. 표준편차 $\\sigma=\\sqrt{분산}$ 임을 이용하여 표준편차를 구하시오.",
+    "must": [
+      "루트"
+    ],
+    "mustnot": [
+      "sqrt"
+    ]
+  },
+  {
+    "id": "division-remainder-dots",
+    "input": "13÷4=3⋯1이다. 한편 수열 1, 4, 7, 10, ⋯ 의 열째 항을 구하시오.",
+    "must": [
+      "몫 3 나머지 1"
+    ],
+    "mustnot": [
+      "⋯"
+    ]
+  },
+  {
+    "id": "middot-header-not-math",
+    "input": "## 제 5 절. 좌표평면 · 정비례와 반비례",
+    "mustnot": [
+      "닷"
+    ]
+  },
+  {
+    "id": "salvage-symbol-list",
+    "input": "표기 대상: $\\pm \\sqrt$ , 중첩 근호, 유리화",
+    "must": [
+      "플러스 마이너스 루트"
+    ],
+    "mustnot": [
+      "지원되지"
+    ]
+  },
+  {
+    "id": "nested-radical-grouping",
+    "input": "$ \\sqrt{3+2\\sqrt{2}} $ 를 간단히 하시오.",
+    "must": [
+      "괄호 열고 3 더하기 2 루트 2 괄호 닫고"
+    ],
+    "known": "SRE-ko clearspeak reads nested radicals without grouping — '루트 3 더하기 2 루트 2' is ambiguous (√3+2√2 vs √(3+2√2))"
+  },
+  {
+    "id": "nested-fraction-collision",
+    "input": "$\\frac{1}{\\frac{2}{3}}$ 을 계산하시오.",
+    "must": [
+      "분모가"
+    ],
+    "known": "번분수: (1/2)/3 and 1/(2/3) both speak as '3 분의 2 분의 1' — SRE-ko has the verbose 분모가/분자가 form but doesn't use it for nested fractions"
+  },
+  {
+    "id": "subscript-expression-ambiguity",
+    "input": "$x_{n+1}=x_n+3$ 인 수열이 있다.",
+    "must": [
+      "괄호"
+    ],
+    "known": "x_{n+1} speaks as 'x 아래첨자 n 더하기 1' — indistinguishable from x_n + 1; recurrence relations (수열) need grouping cues"
+  },
+  {
+    "id": "piecewise-basic",
+    "input": "$f(x)=\\begin{cases} x+1 & (x\\geq 0) \\\\ -x & (x<0) \\end{cases}$ 일 때 f(-2)를 구하시오.",
+    "must": [
+      "케이스 1: x 더하기 1",
+      "0 보다 크거나 같다",
+      "케이스 2: 마이너스 x"
+    ]
+  },
+  {
+    "id": "piecewise-double-align",
+    "input": "함수 $f(x)=\\left\\{\\begin{aligned}&2x+1 && (x>1)\\\\ &-x+4 && (x\\leq 1)\\end{aligned}\\right.$ 에서 f(3)을 구하시오.",
+    "must": [
+      "케이스 2: 마이너스 x 더하기 4"
+    ],
+    "mustnot": [
+      "빈 칸"
+    ]
+  },
+  {
+    "id": "piecewise-hangul-condition",
+    "input": "$f(x)=\\begin{cases} \\frac{x}{2} & (x는 짝수) \\\\ 3x+1 & (x는 홀수) \\end{cases}$ 로 정의한다.",
+    "must": [
+      "2 분의 x",
+      "짝 수",
+      "홀 수"
+    ],
+    "mustnot": [
+      "백슬래시",
+      "cases"
+    ]
+  },
+  {
+    "id": "english-prose-not-math",
+    "input": "25 topics have never been tested. 4 are figure-dependent (arc-mark notation).",
+    "mustnot": [
+      "o p i c s",
+      "빼기",
+      "곱하기"
+    ]
+  },
+  {
+    "id": "ballot-box-variant",
+    "input": "☐ABCD가 평행사변형일 때, ☐안에 알맞은 수를 쓰시오.",
+    "must": [
+      "사각형 ABCD",
+      "네모 안에"
+    ]
+  },
+  {
+    "id": "english-prose-with-symbols",
+    "input": "근의 공식 — nested fraction + √ + ± 표기를 시험한다.",
+    "must": [
+      "루트",
+      "플러스 마이너스"
+    ],
+    "mustnot": [
+      "r a c t i o n"
+    ]
+  },
+  {
+    "id": "grade-band-label",
+    "input": "## 초$1-2$ 받아올림 문제입니다. 중1-1 단원평가를 풀어보세요.",
+    "mustnot": [
+      "빼기"
+    ]
+  },
+  {
+    "id": "english-prose-superscript",
+    "input": "test classes: ±√, √(a²)=|a| 확인",
+    "must": [
+      "제곱",
+      "루트"
+    ]
+  },
+  {
+    "id": "box-adjacent-unit",
+    "input": "네 변의 길이의 합은 $\\Box cm$입니다.",
+    "must": [
+      "네모 센티미터"
+    ],
+    "mustnot": [
+      "c m"
+    ]
+  },
+  {
+    "id": "quad-spaced-condition",
+    "input": "$\\sqrt{a^{2}}=\\Box\\quad(a<0)$ 일 때 □안의 식을 구하시오.",
+    "must": [
+      "콤마 괄호 열고 a 는 0 보다 작다"
+    ],
+    "mustnot": [
+      "곱하기 괄호 열고 a"
+    ]
+  },
+  {
+    "id": "ocr-typo-quadrant",
+    "input": "점 C(-3, -2)는 제물 사분면 위의 점입니까?",
+    "must": [
+      "제몇 사분면"
+    ]
+  }
+]

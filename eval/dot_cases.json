@@ -1,0 +1,76 @@
+[
+  {
+    "id": "expanded-form-proof",
+    "input": "**5.** 순환소수 $0.24$ 를 분수로 나타내는 과정이다. $x=0.242424\\cdots$ 라 하면 $100x=24.242424\\cdots$ 이므로 $99x=24$, 즉 $x=\\frac{24}{99}=\\frac{8}{33}$ 이다.",
+    "expect": [{"number": "0.24", "period": "24"}],
+    "why": "expanded form 0.242424... uniquely determines the period"
+  },
+  {
+    "id": "stated-madi",
+    "input": "$\\frac{1}{6}$ 을 소수로 나타내면 $0.16$ 이고 순환마디는 $6$ 이다.",
+    "expect": [{"number": "0.16", "period": "6"}],
+    "why": "the text states the 순환마디 outright"
+  },
+  {
+    "id": "fraction-equation",
+    "input": "다음은 순환소수를 분수로 나타낸 것이다. $0.45=\\frac{45}{99}=\\frac{5}{11}$",
+    "expect": [{"number": "0.45", "period": "45"}],
+    "why": "45/99 pins the period to 45"
+  },
+  {
+    "id": "three-digit-madi",
+    "input": "순환소수 $0.123$ 의 순환마디는 $123$ 이다.",
+    "expect": [{"number": "0.123", "period": "123"}],
+    "why": "3-digit period -> dots on first and last digit only (0.1̇23̇)"
+  },
+  {
+    "id": "mixed-page",
+    "input": "# 순환소수\n\n**5.** 순환소수 $0.24$ 를 분수로 나타내는 과정이다. $x=0.242424\\cdots$ 라 하면 $100x=24.242424\\cdots$ 이므로 $99x=24$, 즉 $x=\\frac{24}{99}=\\frac{8}{33}$ 이다.\n\n**6.** $\\frac{1}{6}$ 을 소수로 나타내면 $0.16$ 이고 순환마디는 $6$ 이다.\n\n**7.** 다음 중 유한소수는? ① $0.35$ ② $\\frac{7}{12}$\n\n**8.** 톱니바퀴가 $2.5$ 바퀴 회전할 때",
+    "expect": [{"number": "0.24", "period": "24"},
+               {"number": "0.16", "period": "6"}],
+    "why": "realistic page shape: two provable numbers among finite decimals that must stay untouched"
+  },
+  {
+    "id": "finite-despite-keyword",
+    "input": "다음 중 순환소수가 아닌 것은? ① $0.35$ ② $2.5$ ③ $\\frac{1}{3}$",
+    "expect": [],
+    "why": "순환소수 keyword on the page, but every printed decimal is finite"
+  },
+  {
+    "id": "ambiguous-period",
+    "input": "순환소수 $0.24$ 를 분수로 나타내시오.",
+    "expect": [],
+    "why": "labeled repeating but the period is undetermined — 0.2̇4̇ and 0.24̇ both fit; text-only must not guess"
+  },
+  {
+    "id": "expanded-form-only",
+    "input": "$0.242424\\cdots$ 를 분수로 나타내시오.",
+    "expect": [],
+    "why": "the expanded writing already shows the repetition and must stay as printed"
+  },
+  {
+    "id": "gate-no-signal",
+    "input": "자연수 $1, 2, 3$ 중에서 $0.7$ 배 한 수를 구하시오.",
+    "expect": [],
+    "why": "decimal but no repetition signal — needs_check must skip without an API call"
+  },
+  {
+    "id": "sequence-ellipsis",
+    "input": "순환소수 단원 복습. 자연수 $1, 2, 3, \\cdots$ 에 대하여 $0.7$ 을 곱한 수를 생각하자.",
+    "expect": [],
+    "why": "the ellipsis belongs to a sequence, not to the decimal 0.7"
+  },
+  {
+    "id": "wrong-fraction-pairing",
+    "input": "순환소수 $0.245$ 와 분수 $\\frac{24}{99}$ 의 크기를 비교하시오.",
+    "expect": [],
+    "why": "tempts pairing 0.245 with 24/99; period 24 fails the printed-trailing-digits check, and no 마디 is stated"
+  },
+  {
+    "id": "partial-dot-restore",
+    "input": "순환소수 $0.2̇4$ 의 순환마디는 $24$ 이다.",
+    "expect": [{"number": "0.24", "period": "24"}],
+    "known": "the patch regex can only rewrite a fully undotted token, so a number that kept one of its dots through OCR can't be completed",
+    "why": "OCR kept the first dot, text pins the period — completing to 0.2̇4̇ is the ideal outcome"
+  }
+]
