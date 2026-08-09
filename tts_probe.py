@@ -133,7 +133,7 @@ def main():
     br = f'<break time="{a.break_ms}ms"/>'
 
     print(f"voice: {a.voice}   break: {a.break_ms}ms   out: {out.resolve()}\n")
-    rows, failures = [], 0
+    failures = 0
     for num, slug, plain, body, listen in TESTS:
         for tag, kwargs in (
             ("a", {"text": plain}),
@@ -145,7 +145,6 @@ def main():
             except Exception as e:  # one failure must not kill the batch
                 ok, detail = False, f"{type(e).__name__}: {e}"
             failures += not ok
-            rows.append((path.name, ok, detail))
             print(f"  [{'ok' if ok else 'FAIL':>4}] {path.name:<28} {detail}")
 
     print("\n" + "=" * 72)

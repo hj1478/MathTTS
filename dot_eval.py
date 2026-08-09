@@ -159,9 +159,9 @@ def run_score(cfg, paths):
         failed |= bool((truth - s2) | (s2 - truth))
     n_true = t1[0] + t1[2]
     print("-" * 96)
+    prec = f"{t2[0]}/{t2[0] + t2[1]}" if t2[0] + t2[1] else "n/a (nothing applied)"
     print(f"recall  {t1[0]}/{n_true} -> {t2[0]}/{n_true}   "
-          f"precision after pass: {t2[0]}/{t2[0] + t2[1] if t2[0] + t2[1] else 1}"
-          f"   (over {len(rows)} page(s))")
+          f"precision after pass: {prec}   (over {len(rows)} page(s))")
     return failed
 
 

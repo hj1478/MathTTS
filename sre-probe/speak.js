@@ -124,14 +124,16 @@ const AZURE_SSML = (voice, body) =>
  * Returns null if well-formed, else a short error string.
  */
 function checkWellFormed(xml) {
-  const ENTITY = /^&(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);/;
-  const TAG = /^<(\/)?([A-Za-z_][A-Za-z0-9._:-]*)((?:\s+[A-Za-z_][A-Za-z0-9._:-]*\s*=\s*(?:"[^"<]*"|'[^'<]*'))*)\s*(\/)?>/;
+  // sticky (/y) so each token is matched in place — no per-token slicing
+  const ENTITY = /&(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);/y;
+  const TAG = /<(\/)?([A-Za-z_][A-Za-z0-9._:-]*)((?:\s+[A-Za-z_][A-Za-z0-9._:-]*\s*=\s*(?:"[^"<]*"|'[^'<]*'))*)\s*(\/)?>/y;
   const stack = [];
   let i = 0;
   while (i < xml.length) {
     const ch = xml[i];
     if (ch === '<') {
-      const m = TAG.exec(xml.slice(i));
+      TAG.lastIndex = i;
+      const m = TAG.exec(xml);
       if (!m) return `unparseable tag at offset ${i}: ${JSON.stringify(xml.slice(i, i + 40))}`;
       const [whole, closing, name, , selfClosing] = m;
       if (closing) {
@@ -143,7 +145,8 @@ function checkWellFormed(xml) {
       }
       i += whole.length;
     } else if (ch === '&') {
-      const m = ENTITY.exec(xml.slice(i));
+      ENTITY.lastIndex = i;
+      const m = ENTITY.exec(xml);
       if (!m) return `bare '&' at offset ${i}: ${JSON.stringify(xml.slice(i, i + 20))}`;
       i += m[0].length;
     } else if (ch === '>') {
@@ -156,11 +159,6 @@ function checkWellFormed(xml) {
 }
 
 /**
- * Best-effort reading for LaTeX temml cannot parse (broken OCR output).
- * Keeps the human-readable content (\text bodies, numbers, operators) and
- * drops commands/braces — NEVER let a ParseError message reach the speech.
- */
-/**
  * Post-SRE speech rewrites for SRE-ko misreads with a known better Korean form.
  * \Box (fill-in-the-blank □) is read "흰색 정사각형" (lit. "white square");
  * Korean math speech calls the blank "네모".
@@ -169,6 +167,11 @@ function fixMisreads(speech) {
   return speech.replace(/흰색 정사각형/g, '네모');
 }
 
+/**
+ * Best-effort reading for LaTeX temml cannot parse (broken OCR output).
+ * Keeps the human-readable content (\text bodies, numbers, operators) and
+ * drops commands/braces — NEVER let a ParseError message reach the speech.
+ */
 const SALVAGE_KO = {
   pm: '플러스 마이너스', sqrt: '루트', times: '곱하기', div: '나누기',
   cdot: '곱하기', frac: '분수', pi: '파이', infty: '무한대',
@@ -226,7 +229,7 @@ async function main() {
   // the (global) engine is set up once per combo instead of once per span.
   const docs = files.map((file) => {
     const text = fs.readFileSync(file, 'utf8').trim();
-    return { file, text, parts: splitSpans(text) };
+    return { file, parts: splitSpans(text) };
   });
 
   const mathml = new Map(); // latex -> {mathml} | {error}
