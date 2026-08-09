@@ -58,10 +58,13 @@ function parseArgs(argv) {
   let ssml = false;
   let voice = 'ko-KR-SunHiNeural';
   let write = null;
+  let strict = false;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--ssml') {
       ssml = true;
+    } else if (a === '--strict') {
+      strict = true;
     } else if (a === '--voice') {
       voice = argv[++i] ?? voice;
     } else if (a === '--write') {
@@ -86,11 +89,11 @@ function parseArgs(argv) {
   }
   if (!files.length) {
     console.error(
-      'usage: node speak.js <file.norm.md ...> | --dir FOLDER [--combos d/s,d/s] [--ssml] [--voice NAME] [--write DIR]'
+      'usage: node speak.js <file.norm.md ...> | --dir FOLDER [--combos d/s,d/s] [--ssml] [--voice NAME] [--write DIR] [--strict]'
     );
     process.exit(1);
   }
-  return { files, combos, ssml, voice, write };
+  return { files, combos, ssml, voice, write, strict };
 }
 
 /* ----------------------------- SSML helpers ----------------------------- */
@@ -112,6 +115,45 @@ function ssmlInner(s) {
 const AZURE_SSML = (voice, body) =>
   '<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="ko-KR">' +
   `<voice name="${voice}">${body}</voice></speak>`;
+
+/**
+ * Well-formedness check for the assembled SSML (issue #11). The Azure envelope
+ * is built by string-joining regex-extracted markup, and nothing downstream
+ * parses it until Azure does — so a stray '<', an unclosed tag or bad nesting
+ * would only surface as a synthesis error in stage 4. Catch it here instead.
+ * Returns null if well-formed, else a short error string.
+ */
+function checkWellFormed(xml) {
+  const ENTITY = /^&(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);/;
+  const TAG = /^<(\/)?([A-Za-z_][A-Za-z0-9._:-]*)((?:\s+[A-Za-z_][A-Za-z0-9._:-]*\s*=\s*(?:"[^"<]*"|'[^'<]*'))*)\s*(\/)?>/;
+  const stack = [];
+  let i = 0;
+  while (i < xml.length) {
+    const ch = xml[i];
+    if (ch === '<') {
+      const m = TAG.exec(xml.slice(i));
+      if (!m) return `unparseable tag at offset ${i}: ${JSON.stringify(xml.slice(i, i + 40))}`;
+      const [whole, closing, name, , selfClosing] = m;
+      if (closing) {
+        if (stack[stack.length - 1] !== name)
+          return `</${name}> closes <${stack[stack.length - 1] ?? '(nothing)'}>`;
+        stack.pop();
+      } else if (!selfClosing) {
+        stack.push(name);
+      }
+      i += whole.length;
+    } else if (ch === '&') {
+      const m = ENTITY.exec(xml.slice(i));
+      if (!m) return `bare '&' at offset ${i}: ${JSON.stringify(xml.slice(i, i + 20))}`;
+      i += m[0].length;
+    } else if (ch === '>') {
+      return `stray '>' at offset ${i}`;
+    } else {
+      i++;
+    }
+  }
+  return stack.length ? `unclosed <${stack[stack.length - 1]}>` : null;
+}
 
 /**
  * Best-effort reading for LaTeX temml cannot parse (broken OCR output).
@@ -170,7 +212,7 @@ function splitSpans(text) {
 }
 
 async function main() {
-  const { files, combos, ssml, voice, write } = parseArgs(process.argv.slice(2));
+  const { files, combos, ssml, voice, write, strict } = parseArgs(process.argv.slice(2));
   if (write) fs.mkdirSync(write, { recursive: true });
   const writeStitched = (file, content) => {
     if (!write) return;
@@ -228,6 +270,12 @@ async function main() {
   // The stitched view uses the FIRST combo's speech.
   const stitchKey = `${combos[0].domain}/${combos[0].style}`;
 
+  // Failure accounting (issue #11): a span that stitched as salvage or a
+  // placeholder used to be one console line scrolling past while the run
+  // still finished "successfully". Count per doc, summarize, and let
+  // --strict turn any failure into a non-zero exit for wrapper scripts.
+  const totals = { spans: 0, ok: 0, salvaged: 0, unsupported: 0, badXml: 0 };
+
   for (const doc of docs) {
     console.log();
     console.log(HR);
@@ -250,45 +298,80 @@ async function main() {
       }
     }
 
+    // Render one span for the stitched view, recording how it went:
+    // ok (real speech) / salvaged (best-effort words) / unsupported (placeholder).
+    const stats = { spans: 0, ok: 0, salvaged: 0, unsupported: 0, badXml: 0 };
+    const renderSpan = (latex, escape) => {
+      stats.spans++;
+      const out = speech.get(latex).get(stitchKey);
+      if (typeof out === 'string' && out.trim()) {
+        stats.ok++;
+        return ssml ? ` ${ssmlInner(out)} ` : ` ${out.trim()} `;
+      }
+      const saved = salvage(latex);
+      if (saved) {
+        stats.salvaged++;
+        return ` ${escape(saved)} `;
+      }
+      stats.unsupported++;
+      return ` [지원되지 않는 수식: ${escape(latex)}] `;
+    };
+
     console.log(hr);
     if (ssml) {
       console.log(`STITCHED SSML (${stitchKey}, Azure envelope, voice=${voice}):`);
       console.log(hr);
       const body = doc.parts
-        .map((part) => {
-          if (part.latex === undefined) return escapeXml(part.prose);
-          const out = speech.get(part.latex).get(stitchKey);
-          if (typeof out === 'string' && out.trim()) return ` ${ssmlInner(out)} `;
-          const saved = salvage(part.latex);
-          return saved ? ` ${escapeXml(saved)} ` : ` [지원되지 않는 수식: ${escapeXml(part.latex)}] `;
-        })
+        .map((part) =>
+          part.latex === undefined ? escapeXml(part.prose) : renderSpan(part.latex, escapeXml)
+        )
         .join('')
         .replace(/ +/g, ' ')
         .trim();
       const doc_ssml = AZURE_SSML(voice, body);
       console.log(doc_ssml);
-      writeStitched(doc.file, doc_ssml);
+      const xmlErr = checkWellFormed(doc_ssml);
+      if (xmlErr) {
+        stats.badXml++;
+        console.error(`  !! SSML NOT WELL-FORMED (${xmlErr}) — not writing this file`);
+      } else {
+        writeStitched(doc.file, doc_ssml);
+      }
     } else {
       console.log(`STITCHED (${stitchKey}) — what a TTS voice would read:`);
       console.log(hr);
       const stitched = doc.parts
-        .map((part) => {
-          if (part.latex === undefined) return part.prose;
-          const out = speech.get(part.latex).get(stitchKey);
-          if (typeof out === 'string' && out.trim()) return ` ${out.trim()} `;
-          const saved = salvage(part.latex);
-          return saved ? ` ${saved} ` : ` [지원되지 않는 수식: ${part.latex}] `;
-        })
+        .map((part) =>
+          part.latex === undefined ? part.prose : renderSpan(part.latex, (s) => s)
+        )
         .join('')
         .replace(/ +/g, ' ')
         .trim();
       console.log(stitched);
       writeStitched(doc.file, stitched);
     }
+
+    // Same shape as stage 1's eval summary: one scannable line per doc.
+    const flags = [
+      stats.salvaged && `salvaged: ${stats.salvaged}`,
+      stats.unsupported && `UNSUPPORTED (placeholder in output): ${stats.unsupported}`,
+      stats.badXml && 'SSML MALFORMED',
+    ].filter(Boolean);
+    console.log(`SUMMARY: ${stats.spans} span(s), ok: ${stats.ok}` +
+      (flags.length ? `   ${flags.join('   ')}` : ''));
+    for (const k of Object.keys(totals)) totals[k] += stats[k];
+  }
+
+  const failures = totals.salvaged + totals.unsupported + totals.badXml;
+  if (failures) {
+    console.error(`\n${failures} span(s)/doc(s) FAILED across ${docs.length} file(s) ` +
+      `(salvaged: ${totals.salvaged}, unsupported: ${totals.unsupported}, malformed SSML: ${totals.badXml}).`);
+    if (strict) process.exitCode = 2;
+    else console.error('(exit 0 without --strict; pass --strict to fail the run on this)');
   }
 }
 
-module.exports = { SPAN };
+module.exports = { SPAN, checkWellFormed };
 
 if (require.main === module) {
   main().catch((err) => {

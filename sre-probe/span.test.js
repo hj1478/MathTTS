@@ -15,7 +15,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 
-const { SPAN } = require('./speak.js');
+const { SPAN, checkWellFormed } = require('./speak.js');
 
 const cases = JSON.parse(
   fs.readFileSync(path.join(__dirname, '..', 'eval', 'fixtures', 'span_cases.json'), 'utf8')
@@ -27,3 +27,18 @@ for (const c of cases) {
     assert.deepStrictEqual(found, c.spans);
   });
 }
+
+test('checkWellFormed accepts a real Azure envelope', () => {
+  const ok =
+    '<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="ko-KR">' +
+    '<voice name="ko-KR-SunHiNeural">값은 <say-as interpret-as="characters">x</say-as>' +
+    ' <break time="250ms"/> 3 &lt; 4 입니다</voice></speak>';
+  assert.strictEqual(checkWellFormed(ok), null);
+});
+
+test('checkWellFormed rejects bad nesting, unclosed tags, stray characters', () => {
+  assert.match(checkWellFormed('<speak><voice></speak></voice>'), /closes/);
+  assert.match(checkWellFormed('<speak><voice>x</voice>'), /unclosed/);
+  assert.match(checkWellFormed('<speak>a &amp b</speak>'), /bare '&'/);
+  assert.match(checkWellFormed('<speak>a < b</speak>'), /unparseable tag/);
+});
