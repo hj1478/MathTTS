@@ -87,3 +87,21 @@ def test_balanced_parens_not_ejected():
 def test_idempotent(src, _):
     once = normalize_math(src)
     assert normalize_math(once) == once
+
+
+def test_text_masks_never_leak():
+    # regression: the second \text-masking pass must skip already-masked
+    # bodies, or the single unmask pass restores a bare \x00N\x00 sentinel
+    # instead of the Hangul body (found on the hangul-text-in-math case)
+    src = (r"즉, $ \frac{(9\text{와 }12\text{의 공배수})}"
+           r"{(26\text{과 }13\text{의 공약수})} $의 꼴이어야 한다.")
+    out = normalize_math(src)
+    assert "\x00" not in out
+    assert "공배수" in out and "공약수" in out
+
+
+def test_dollar_env_leaves_block_math_alone():
+    # regression: the "$ \begin..\end $" -> bare-env rule must not fire on the
+    # inner dollars of an already-canonical $$..$$ block (broke idempotency)
+    src = r"$$\begin{aligned}x&=1\\y&=2\end{aligned}$$"
+    assert normalize_math(src) == src

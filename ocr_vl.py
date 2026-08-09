@@ -61,7 +61,14 @@ def pipeline(device):
         from paddleocr import PaddleOCRVL
         # native = in-process VL, no server. Do NOT add engine="transformers": it is
         # a global switch that crashes the paddle-only layout model (see module docstring).
-        _pipeline = PaddleOCRVL(vl_rec_backend="native", device=device)
+        # Preprocessing modules OFF: worksheet PDFs are born-digital (flat, upright,
+        # no seals/charts), so orientation-classify/unwarping/seal/chart models are
+        # per-page CPU cost with nothing to find.
+        _pipeline = PaddleOCRVL(vl_rec_backend="native", device=device,
+                                use_doc_orientation_classify=False,
+                                use_doc_unwarping=False,
+                                use_seal_recognition=False,
+                                use_chart_recognition=False)
     return _pipeline
 
 
