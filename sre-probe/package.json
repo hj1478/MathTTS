@@ -5,7 +5,8 @@
   "private": true,
   "scripts": {
     "probe": "node index.js",
-    "speak": "node speak.js --dir ../output"
+    "speak": "node speak.js --dir ../output",
+    "test": "node --test"
   },
   "license": "ISC",
   "type": "commonjs",

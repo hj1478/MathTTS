@@ -1,0 +1,69 @@
+[
+  {
+    "name": "plain prose, no math",
+    "text": "다음 물음에 답하시오.",
+    "spans": []
+  },
+  {
+    "name": "simple inline span",
+    "text": "반지름이 $r$인 원의 넓이",
+    "spans": [
+      "$r$"
+    ]
+  },
+  {
+    "name": "stray unpaired dollar cannot swallow prose",
+    "text": "가격은 $5 이고 값은 $3(x+1)$",
+    "spans": [
+      "$3(x+1)$"
+    ]
+  },
+  {
+    "name": "span containing Hangul is not math",
+    "text": "가격은 $5달러$이다",
+    "spans": []
+  },
+  {
+    "name": "multi-line $$ block",
+    "text": "다음 식을 보자:\n$$\nx^2+1\n$$\n답을 구하시오.",
+    "spans": [
+      "$$\nx^2+1\n$$"
+    ]
+  },
+  {
+    "name": "inline span may not cross a newline",
+    "text": "값 $a\nb$ 끝",
+    "spans": []
+  },
+  {
+    "name": "whitespace-only span still matches the grammar",
+    "text": "금액 $ $ 원",
+    "spans": [
+      "$ $"
+    ]
+  },
+  {
+    "name": "adjacent inline spans",
+    "text": "$a$$b$",
+    "spans": [
+      "$a$",
+      "$b$"
+    ]
+  },
+  {
+    "name": "two spans separated by prose",
+    "text": "두 수 $a$와 $b$의 합",
+    "spans": [
+      "$a$",
+      "$b$"
+    ]
+  },
+  {
+    "name": "block and inline mixed",
+    "text": "$$\\frac{1}{2}$$ 이므로 $x=3$이다",
+    "spans": [
+      "$$\\frac{1}{2}$$",
+      "$x=3$"
+    ]
+  }
+]

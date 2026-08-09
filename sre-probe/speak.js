@@ -34,8 +34,12 @@ const path = require('path');
 const sre = require('speech-rule-engine');
 const temml = require('temml');
 
-// same span grammar as normalize.py: $$block$$ | $inline$. Inline may not
-// contain Hangul/'$'/newline so a stray '$' in prose can't swallow text.
+// Same span grammar as normalize.py SPAN, restricted to the $-forms (this
+// stage consumes normalize.py output, which only ever emits $..$ / $$..$$).
+// Inline may not contain Hangul/'$'/newline so a stray '$' in prose can't
+// swallow text. JS cannot share Python's regex, so this copy is held in sync
+// by the shared fixtures in ../eval/fixtures/span_cases.json — span.test.js
+// here and tests/test_span_grammar.py both check their regex against it.
 const SPAN = /\$\$.+?\$\$|\$[^$\n가-힣]+?\$/gs;
 
 const DEFAULT_COMBOS = [
@@ -278,7 +282,11 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error('FATAL:', err);
-  process.exit(1);
-});
+module.exports = { SPAN };
+
+if (require.main === module) {
+  main().catch((err) => {
+    console.error('FATAL:', err);
+    process.exit(1);
+  });
+}

@@ -41,12 +41,12 @@ import argparse, re, sys, traceback
 from pathlib import Path
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
-# $$block$$ | $inline$ | \\(..\\) | \\[..\\] | \\begin{}..\\end{}. The $...$ convention
-# is confirmed from real PaddleOCR-VL output (see module docstring), not assumed.
-# Inline $..$ may not contain Hangul/'$'/newline — keep in sync with normalize.py
-# SPAN and sre-probe/speak.js SPAN (stray-'$' robustness, same rule everywhere).
-LATEX = re.compile(r"\$\$.+?\$\$|\$[^$\n가-힣]+?\$|\\\(.+?\\\)|\\\[.+?\\\]"
-                   r"|\\begin\{[^}]+\}.*?\\end\{[^}]+\}", re.DOTALL)
+# Math-span grammar: single source of truth is normalize.SPAN (the $...$
+# convention is confirmed from real PaddleOCR-VL output — see module docstring).
+# sre-probe/speak.js keeps a JS copy of the inline rule; the shared fixtures in
+# eval/fixtures/span_cases.json are checked by both test suites so the two
+# languages cannot silently drift apart.
+from normalize import SPAN as LATEX
 HANGUL = re.compile(r"[가-힣ᄀ-ᇿ]")
 
 _pipeline = None
