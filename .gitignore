@@ -12,6 +12,7 @@ node_modules/
 # Generated pipeline artifacts
 inbox/
 runs/
+pages/
 output/
 output_kma/
 stitched/
