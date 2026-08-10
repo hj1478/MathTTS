@@ -35,6 +35,11 @@
  * spoken — a paren pair wrapping the whole radicand is dropped outright. The
  * plain-text path cannot switch voices and is unchanged (still ambiguous for
  * nested radicals — the known nested-radical-grouping gap).
+ *
+ * Repeating decimals (순환소수, both modes): \dot{}/​\overline{} decimals are
+ * spoken as reading C from the #17 experiment ("영 점 일 이삼 이삼 반복" —
+ * pattern twice, then 반복). PROVISIONAL: one candidate among several, adopted
+ * as interim default before the dot_reading_probe.py listening verdict.
  */
 
 'use strict';
@@ -128,6 +133,75 @@ function ssmlInner(s) {
 const AZURE_SSML = (voice, body) =>
   '<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="ko-KR">' +
   `<voice name="${voice}">${body}</voice></speak>`;
+
+/* --------------------- repeating decimals (순환소수) --------------------- */
+
+// PROVISIONAL (#17): repeating decimals speak as reading C from the
+// dot_reading_probe.py experiment — pattern twice, then 반복:
+//   0.\dot{2}\dot{4}   -> "영 점 이사 이사 반복"
+//   0.1\dot{2}\dot{3}  -> "영 점 일 이삼 이삼 반복"
+// This is ONE OPTION adopted as the interim default BEFORE the listening
+// verdict (the probe's case3-vs-case5 pair tests exactly this reading's
+// weakness on partial repetends). Swap readRepeating() when #17 is decided.
+
+const DIGIT_KO = { 0: '영', 1: '일', 2: '이', 3: '삼', 4: '사',
+                   5: '오', 6: '육', 7: '칠', 8: '팔', 9: '구' };
+const wordsKo = (digits) => [...digits].map((d) => DIGIT_KO[d]).join('');
+
+// dotted form 0.1\dot{2}\dot{3} (normalize.py's canonical output for 2̇) or
+// overline form 1.\overline{23}
+const REPDEC = /(\d+)\.((?:\d|\\dot\{\d\})*\\dot\{\d\}(?:\d|\\dot\{\d\})*|\d*\\overline\{\d+\})/g;
+
+/** (integer digits, fractional latex) -> reading-C Korean text, or null when
+ * the notation is invalid (digits after the last dot). Integer part is read
+ * digit-by-digit — 순환소수 problems rarely exceed one digit before the point. */
+function readRepeating(intPart, fracRaw) {
+  let pre;
+  let rep;
+  const over = fracRaw.match(/^(\d*)\\overline\{(\d+)\}$/);
+  if (over) {
+    [, pre, rep] = over;
+  } else {
+    const toks = [...fracRaw.matchAll(/\\dot\{(\d)\}|(\d)/g)]
+      .map((m) => ({ d: m[1] ?? m[2], dotted: m[1] !== undefined }));
+    const first = toks.findIndex((t) => t.dotted);
+    const last = toks.length - 1 - [...toks].reverse().findIndex((t) => t.dotted);
+    if (last !== toks.length - 1) return null; // trailing undotted digits: not valid notation
+    pre = toks.slice(0, first).map((t) => t.d).join('');
+    rep = toks.slice(first).map((t) => t.d).join('');
+  }
+  const r = wordsKo(rep);
+  return `${wordsKo(intPart)} 점${pre ? ` ${wordsKo(pre)}` : ''} ${r} ${r} 반복`;
+}
+
+/** Split a span's LaTeX at repeating decimals: [{latex}|{text}, ...] where
+ * {text} is ready-made Korean prose that bypasses temml/SRE entirely. */
+function splitRepeating(latex) {
+  const segs = [];
+  let last = 0;
+  for (const m of latex.matchAll(REPDEC)) {
+    const text = readRepeating(m[1], m[2]);
+    if (text === null) continue;
+    const before = latex.slice(last, m.index);
+    if (before.trim()) segs.push({ latex: before });
+    segs.push({ text });
+    last = m.index + m[0].length;
+  }
+  if (!segs.length) return [{ latex }];
+  const after = latex.slice(last);
+  if (after.trim()) segs.push({ latex: after });
+  return segs;
+}
+
+/** Repeating-decimal split (both modes) + radical split (SSML only). */
+function splitSpecials(latex, withRadicals) {
+  const out = [];
+  for (const seg of splitRepeating(latex)) {
+    if (seg.latex !== undefined && withRadicals) out.push(...splitRadicals(seg.latex));
+    else out.push(seg);
+  }
+  return out;
+}
 
 /* --------------------- radical grouping by voice change ------------------ */
 
@@ -312,8 +386,8 @@ async function main() {
     for (const part of doc.parts) {
       if (part.latex === undefined) continue;
       wanted.add(part.latex);
-      if (ssml) {
-        for (const seg of splitRadicals(part.latex)) wanted.add(seg.root ?? seg.latex);
+      for (const seg of splitSpecials(part.latex, ssml)) {
+        if (seg.text === undefined) wanted.add(seg.root ?? seg.latex);
       }
     }
   }
@@ -389,30 +463,33 @@ async function main() {
     const stats = { spans: 0, ok: 0, salvaged: 0, unsupported: 0, badXml: 0 };
     const renderSpan = (latex, escape) => {
       stats.spans++;
-      // SSML: speak a complex radicand in the alternate-gender voice — the
-      // voice change marks the extent of the root instead of grouping parens.
-      // Any segment without clean speech falls back to the whole-span path.
-      if (ssml) {
-        const segs = splitRadicals(latex);
-        if (segs.some((s) => s.root !== undefined)) {
-          const rendered = [];
-          for (const seg of segs) {
-            const segOut = speech.get(seg.root ?? seg.latex)?.get(stitchKey);
-            if (typeof segOut !== 'string' || !segOut.trim()) {
-              rendered.length = 0;
-              break;
-            }
-            // \x01/\x02 mark the alt-voice region; Azure forbids a <voice>
-            // inside a <voice>, so the envelope assembly turns the markers
-            // into SIBLING voice elements instead of nesting them.
-            rendered.push(seg.root !== undefined
-              ? ` 루트 \x01${ssmlInner(segOut)}\x02 `
-              : ` ${ssmlInner(segOut)} `);
+      // Segment path: repeating decimals speak as ready-made Korean text in
+      // BOTH modes (reading C, provisional — see #17 note above); a complex
+      // radicand switches to the alternate-gender voice (SSML only). Any
+      // segment without clean speech falls back to the whole-span path.
+      const segs = splitSpecials(latex, ssml);
+      if (segs.some((s) => s.text !== undefined || s.root !== undefined)) {
+        const rendered = [];
+        for (const seg of segs) {
+          if (seg.text !== undefined) {
+            rendered.push(` ${escape(seg.text)} `);
+            continue;
           }
-          if (rendered.length) {
-            stats.ok++;
-            return rendered.join('');
+          const segOut = speech.get(seg.root ?? seg.latex)?.get(stitchKey);
+          if (typeof segOut !== 'string' || !segOut.trim()) {
+            rendered.length = 0;
+            break;
           }
+          // \x01/\x02 mark the alt-voice region; Azure forbids a <voice>
+          // inside a <voice>, so the envelope assembly turns the markers
+          // into SIBLING voice elements instead of nesting them.
+          rendered.push(seg.root !== undefined
+            ? ` 루트 \x01${ssmlInner(segOut)}\x02 `
+            : ssml ? ` ${ssmlInner(segOut)} ` : ` ${segOut.trim()} `);
+        }
+        if (rendered.length) {
+          stats.ok++;
+          return rendered.join('');
         }
       }
       const out = speech.get(latex).get(stitchKey);
@@ -488,7 +565,7 @@ async function main() {
   }
 }
 
-module.exports = { SPAN, checkWellFormed, splitRadicals };
+module.exports = { SPAN, checkWellFormed, splitRadicals, splitRepeating };
 
 if (require.main === module) {
   main().catch((err) => {

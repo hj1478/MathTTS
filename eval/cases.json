@@ -168,17 +168,22 @@
     "id": "repeating-decimal-dots",
     "input": "순환소수 0.2̇3̇을 분수로 나타내시오.",
     "must": [
-      "순환마디"
+      "이삼 이삼 반복"
     ],
-    "known": "SRE-ko says '0 마침표 2 위의 점 3 위의 점' — notation survives but a listener won't recognize 순환소수; needs a post-SRE rewrite"
+    "mustnot": [
+      "위의 점",
+      "마침표"
+    ]
   },
   {
     "id": "repeating-decimal-overline",
     "input": "$1.\\overline{23}$을 분수로 나타내시오.",
     "must": [
-      "순환마디"
+      "일 점 이삼 이삼 반복"
     ],
-    "known": "SRE-ko says '1 마침표 23 윗줄' — same 순환소수 phrasing gap"
+    "mustnot": [
+      "윗줄"
+    ]
   },
   {
     "id": "similarity",

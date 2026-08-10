@@ -15,7 +15,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 
-const { SPAN, checkWellFormed, splitRadicals } = require('./speak.js');
+const { SPAN, checkWellFormed, splitRadicals, splitRepeating } = require('./speak.js');
 
 const cases = JSON.parse(
   fs.readFileSync(path.join(__dirname, '..', 'eval', 'fixtures', 'span_cases.json'), 'utf8')
@@ -63,4 +63,23 @@ test('splitRadicals drops a paren pair wrapping the whole radicand', () => {
   // parens NOT wrapping the whole radicand stay
   assert.deepStrictEqual(splitRadicals('\\sqrt{(a+b)(c+d)}'),
     [{ root: '(a+b)(c+d)' }]);
+});
+
+test('splitRepeating speaks reading C for repeating decimals (provisional, #17)', () => {
+  assert.deepStrictEqual(splitRepeating('0.\\dot{2}\\dot{4}'),
+    [{ text: '영 점 이사 이사 반복' }]);
+  // partial repetend: the 1 does not repeat
+  assert.deepStrictEqual(splitRepeating('0.1\\dot{2}\\dot{3}'),
+    [{ text: '영 점 일 이삼 이삼 반복' }]);
+  // ambiguity foil: whole fractional part repeats
+  assert.deepStrictEqual(splitRepeating('0.\\dot{1}2\\dot{3}'),
+    [{ text: '영 점 일이삼 일이삼 반복' }]);
+  assert.deepStrictEqual(splitRepeating('1.\\overline{23}'),
+    [{ text: '일 점 이삼 이삼 반복' }]);
+});
+
+test('splitRepeating keeps surrounding latex and plain decimals', () => {
+  assert.deepStrictEqual(splitRepeating('0.\\dot{3}=\\frac{1}{3}'),
+    [{ text: '영 점 삼 삼 반복' }, { latex: '=\\frac{1}{3}' }]);
+  assert.deepStrictEqual(splitRepeating('0.24+x'), [{ latex: '0.24+x' }]);
 });
