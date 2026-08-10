@@ -186,6 +186,22 @@ Whether SRE's Korean fraction/relation grouping is intelligible by ear is
 likewise an open listening question — `tts_probe.py`'s four cases exist for
 it.
 
+Known failure: 순환소수 (repeating decimals) come out wrong on every path today,
+for two independent reasons.
+
+*The notation is lost.* PaddleOCR-VL drops the small dots printed above the
+repeating digits, so `0.2̇4̇` arrives as a plain `0.24` and is spoken as if it
+terminated. `dot_check.py` restores them from surrounding context, but nothing
+in `run.py` calls it — today it runs inside `inbox_eval.py`, or by hand with
+`python dot_check.py --write FILE.md`.
+
+*The reading does not exist.* Even with the dots restored, nothing turns them
+into the Korean 순환소수 reading. `normalize.py` has no U+0307 rule, so the
+combining dots pass through untouched and SRE ends up describing the typography:
+`$0.2̇4̇$` speaks as `0 마침표 2 위의 점 4 위의 점` (measured against SRE
+5.0.0-rc.4, clearspeak/default, 2026-08), where a listener needs something like
+`영 점 이사 순환`.
+
 Known failure: `page.png`'s pseudo-LaTeX integral does not parse; it stitches
 via the best-effort salvage path (visible in the `SUMMARY:` line).
 
