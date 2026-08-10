@@ -15,7 +15,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 
-const { SPAN, checkWellFormed } = require('./speak.js');
+const { SPAN, checkWellFormed, splitRadicals } = require('./speak.js');
 
 const cases = JSON.parse(
   fs.readFileSync(path.join(__dirname, '..', 'eval', 'fixtures', 'span_cases.json'), 'utf8')
@@ -41,4 +41,26 @@ test('checkWellFormed rejects bad nesting, unclosed tags, stray characters', () 
   assert.match(checkWellFormed('<speak><voice>x</voice>'), /unclosed/);
   assert.match(checkWellFormed('<speak>a &amp b</speak>'), /bare '&'/);
   assert.match(checkWellFormed('<speak>a < b</speak>'), /unparseable tag/);
+});
+
+test('splitRadicals leaves simple radicands whole', () => {
+  assert.deepStrictEqual(splitRadicals('\\sqrt{2}'), [{ latex: '\\sqrt{2}' }]);
+  assert.deepStrictEqual(splitRadicals('x+1'), [{ latex: 'x+1' }]);
+});
+
+test('splitRadicals marks a complex radicand', () => {
+  assert.deepStrictEqual(splitRadicals('\\sqrt{3+2\\sqrt{2}}'),
+    [{ root: '3+2\\sqrt{2}' }]);
+});
+
+test('splitRadicals keeps surrounding latex as segments', () => {
+  assert.deepStrictEqual(splitRadicals('x=\\sqrt{a+b}+1'),
+    [{ latex: 'x=' }, { root: 'a+b' }, { latex: '+1' }]);
+});
+
+test('splitRadicals drops a paren pair wrapping the whole radicand', () => {
+  assert.deepStrictEqual(splitRadicals('\\sqrt{(a+b)}'), [{ root: 'a+b' }]);
+  // parens NOT wrapping the whole radicand stay
+  assert.deepStrictEqual(splitRadicals('\\sqrt{(a+b)(c+d)}'),
+    [{ root: '(a+b)(c+d)' }]);
 });

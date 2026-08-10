@@ -486,7 +486,7 @@
     "must": [
       "괄호 열고 3 더하기 2 루트 2 괄호 닫고"
     ],
-    "known": "SRE-ko clearspeak reads nested radicals without grouping — '루트 3 더하기 2 루트 2' is ambiguous (√3+2√2 vs √(3+2√2))"
+    "known": "plain path: SRE-ko reads nested radicals without grouping — '루트 3 더하기 2 루트 2' is ambiguous (√3+2√2 vs √(3+2√2)). The SSML path now marks the radicand by switching to the opposite-gender voice (speak.js splitRadicals) instead of speaking parens; this plain-text suite still exercises the unchanged ambiguous path"
   },
   {
     "id": "nested-fraction-collision",

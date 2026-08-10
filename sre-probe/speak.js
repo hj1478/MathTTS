@@ -27,6 +27,14 @@
  * (checked against learn.microsoft.com 2026-08), so ssmlInner() rewrites the
  * attribute during the re-wrap. An A/B ear check with tts_probe.py is still
  * the way to confirm the say-as tags audibly change anything.
+ *
+ * Radical grouping by voice (--ssml only): a \sqrt with a complex radicand is
+ * stitched as "루트" + the radicand's speech inside a <voice> of the OPPOSITE
+ * gender (--alt-voice overrides the default SunHi<->InJoon pairing). The voice
+ * change marks where the root starts and ends, so no grouping parentheses are
+ * spoken — a paren pair wrapping the whole radicand is dropped outright. The
+ * plain-text path cannot switch voices and is unchanged (still ambiguous for
+ * nested radicals — the known nested-radical-grouping gap).
  */
 
 'use strict';
@@ -59,6 +67,7 @@ function parseArgs(argv) {
   let voice = 'ko-KR-SunHiNeural';
   let write = null;
   let strict = false;
+  let altVoice = null;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--ssml') {
@@ -67,6 +76,8 @@ function parseArgs(argv) {
       strict = true;
     } else if (a === '--voice') {
       voice = argv[++i] ?? voice;
+    } else if (a === '--alt-voice') {
+      altVoice = argv[++i] ?? altVoice;
     } else if (a === '--write') {
       write = argv[++i] ?? '.';
     } else if (a === '--dir') {
@@ -89,11 +100,13 @@ function parseArgs(argv) {
   }
   if (!files.length) {
     console.error(
-      'usage: node speak.js <file.norm.md ...> | --dir FOLDER [--combos d/s,d/s] [--ssml] [--voice NAME] [--write DIR] [--strict]'
+      'usage: node speak.js <file.norm.md ...> | --dir FOLDER [--combos d/s,d/s] [--ssml] [--voice NAME] [--alt-voice NAME] [--write DIR] [--strict]'
     );
     process.exit(1);
   }
-  return { files, combos, ssml, voice, write, strict };
+  // radicand voice defaults to the opposite gender of the main voice
+  altVoice ??= voice.includes('InJoon') ? 'ko-KR-SunHiNeural' : 'ko-KR-InJoonNeural';
+  return { files, combos, ssml, voice, altVoice, write, strict };
 }
 
 /* ----------------------------- SSML helpers ----------------------------- */
@@ -115,6 +128,65 @@ function ssmlInner(s) {
 const AZURE_SSML = (voice, body) =>
   '<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="ko-KR">' +
   `<voice name="${voice}">${body}</voice></speak>`;
+
+/* --------------------- radical grouping by voice change ------------------ */
+
+// a radicand worth marking: contains an operator or a nested structure, i.e.
+// the "where does the root end?" ambiguity actually exists. \sqrt{2}, \sqrt{ab}
+// stay whole-span.
+const COMPLEX_RADICAND = /[+\-±×÷]|\\(?:frac|sqrt|pm|times|div|cdot)\b/;
+
+const parenBalanced = (s) => {
+  let d = 0;
+  for (const c of s) {
+    if (c === '(') d++;
+    else if (c === ')' && --d < 0) return false;
+  }
+  return d === 0;
+};
+
+/**
+ * Split a span's LaTeX at top-level complex radicals so the SSML stitcher can
+ * speak each radicand in the alternate-gender voice: the voice change marks
+ * where the root starts and ends, replacing spoken grouping parentheses
+ * (a paren pair wrapping the whole radicand is dropped for the same reason).
+ * Returns [{latex}|{root}, ...]; a single {latex} segment means nothing to do.
+ * Only the OUTERMOST complex radical splits — a nested radical stays inside
+ * its parent's segment, so voices don't ping-pong mid-expression.
+ */
+function splitRadicals(latex) {
+  const segs = [];
+  let plain = '';
+  let i = 0;
+  while (i < latex.length) {
+    if (latex.startsWith('\\sqrt', i) && !/[a-zA-Z]/.test(latex[i + 5] ?? '')) {
+      let j = i + 5;
+      while (latex[j] === ' ') j++;
+      if (latex[j] === '{') {
+        let depth = 1;
+        let k = j + 1;
+        while (k < latex.length && depth) {
+          if (latex[k] === '{') depth++;
+          else if (latex[k] === '}') depth--;
+          k++;
+        }
+        let inner = latex.slice(j + 1, k - 1);
+        if (!depth && COMPLEX_RADICAND.test(inner)) {
+          const m = inner.match(/^\((.*)\)$/s);
+          if (m && parenBalanced(m[1])) inner = m[1]; // 괄호 words -> voice change
+          if (plain.trim()) segs.push({ latex: plain });
+          plain = '';
+          segs.push({ root: inner });
+          i = k;
+          continue;
+        }
+      }
+    }
+    plain += latex[i++];
+  }
+  if (plain.trim()) segs.push({ latex: plain });
+  return segs;
+}
 
 /**
  * Well-formedness check for the assembled SSML (issue #11). The Azure envelope
@@ -215,7 +287,7 @@ function splitSpans(text) {
 }
 
 async function main() {
-  const { files, combos, ssml, voice, write, strict } = parseArgs(process.argv.slice(2));
+  const { files, combos, ssml, voice, altVoice, write, strict } = parseArgs(process.argv.slice(2));
   if (write) fs.mkdirSync(write, { recursive: true });
   const writeStitched = (file, content) => {
     if (!write) return;
@@ -232,20 +304,31 @@ async function main() {
     return { file, parts: splitSpans(text) };
   });
 
-  const mathml = new Map(); // latex -> {mathml} | {error}
+  // Everything needing speech: each span whole, plus (SSML mode) its radical
+  // segments — the whole span stays registered as the fallback if a segment
+  // fails to convert.
+  const wanted = new Set();
   for (const doc of docs) {
     for (const part of doc.parts) {
-      if (part.latex === undefined || mathml.has(part.latex)) continue;
-      try {
-        // throwOnError so broken LaTeX lands in the catch; belt-and-suspenders
-        // <merror> check in case temml still renders an inline error message
-        // (SRE would read it aloud: "백슬래시 ParseError 콜론 ...").
-        const xml = temml.renderToString(part.latex, { xml: true, throwOnError: true });
-        if (xml.includes('<merror')) throw new Error('temml emitted <merror>');
-        mathml.set(part.latex, { mathml: xml });
-      } catch (err) {
-        mathml.set(part.latex, { error: String(err) });
+      if (part.latex === undefined) continue;
+      wanted.add(part.latex);
+      if (ssml) {
+        for (const seg of splitRadicals(part.latex)) wanted.add(seg.root ?? seg.latex);
       }
+    }
+  }
+
+  const mathml = new Map(); // latex -> {mathml} | {error}
+  for (const latex of wanted) {
+    try {
+      // throwOnError so broken LaTeX lands in the catch; belt-and-suspenders
+      // <merror> check in case temml still renders an inline error message
+      // (SRE would read it aloud: "백슬래시 ParseError 콜론 ...").
+      const xml = temml.renderToString(latex, { xml: true, throwOnError: true });
+      if (xml.includes('<merror')) throw new Error('temml emitted <merror>');
+      mathml.set(latex, { mathml: xml });
+    } catch (err) {
+      mathml.set(latex, { error: String(err) });
     }
   }
 
@@ -306,6 +389,32 @@ async function main() {
     const stats = { spans: 0, ok: 0, salvaged: 0, unsupported: 0, badXml: 0 };
     const renderSpan = (latex, escape) => {
       stats.spans++;
+      // SSML: speak a complex radicand in the alternate-gender voice — the
+      // voice change marks the extent of the root instead of grouping parens.
+      // Any segment without clean speech falls back to the whole-span path.
+      if (ssml) {
+        const segs = splitRadicals(latex);
+        if (segs.some((s) => s.root !== undefined)) {
+          const rendered = [];
+          for (const seg of segs) {
+            const segOut = speech.get(seg.root ?? seg.latex)?.get(stitchKey);
+            if (typeof segOut !== 'string' || !segOut.trim()) {
+              rendered.length = 0;
+              break;
+            }
+            // \x01/\x02 mark the alt-voice region; Azure forbids a <voice>
+            // inside a <voice>, so the envelope assembly turns the markers
+            // into SIBLING voice elements instead of nesting them.
+            rendered.push(seg.root !== undefined
+              ? ` 루트 \x01${ssmlInner(segOut)}\x02 `
+              : ` ${ssmlInner(segOut)} `);
+          }
+          if (rendered.length) {
+            stats.ok++;
+            return rendered.join('');
+          }
+        }
+      }
       const out = speech.get(latex).get(stitchKey);
       if (typeof out === 'string' && out.trim()) {
         stats.ok++;
@@ -330,8 +439,13 @@ async function main() {
         )
         .join('')
         .replace(/ +/g, ' ')
-        .trim();
-      const doc_ssml = AZURE_SSML(voice, body);
+        .trim()
+        // alt-voice markers -> sibling <voice> elements (nesting is rejected
+        // by Azure: "[voice] should not contain [voice]")
+        .replaceAll('\x01', `</voice><voice name="${altVoice}">`)
+        .replaceAll('\x02', `</voice><voice name="${voice}">`);
+      const doc_ssml = AZURE_SSML(voice, body)
+        .replace(/<voice name="[^"]*">\s*<\/voice>/g, ''); // drop empty runs
       console.log(doc_ssml);
       const xmlErr = checkWellFormed(doc_ssml);
       if (xmlErr) {
@@ -374,7 +488,7 @@ async function main() {
   }
 }
 
-module.exports = { SPAN, checkWellFormed };
+module.exports = { SPAN, checkWellFormed, splitRadicals };
 
 if (require.main === module) {
   main().catch((err) => {
