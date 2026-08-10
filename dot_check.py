@@ -23,12 +23,13 @@ Dot placement follows the Korean convention: first and last digit of the
 순환마디 (one dot when it's a single digit): 0.24 period 24 -> 0.2̇4̇,
 0.245 period 45 -> 0.24̇5̇, 0.16 period 6 -> 0.16̇.
 
-Restoring the dots is NOT sufficient for the number to be heard correctly: the
-dots reach SRE untouched and $0.2̇4̇$ speaks as "0 마침표 2 위의 점 4 위의 점" —
-the typography described, not the number — where a listener needs something like
-"영 점 이사 순환". Converting them to LaTeX instead is not the fix: $\dot{2}$ and
-$\overline{24}$ read the same way ("2 위의 점", "24 윗줄"). What is missing is a
-reading rule, not an encoding (measured, SRE 5.0.0-rc.4, 2026-08). See the
+Restoring the dots alone was NOT sufficient: SRE reads the notation as
+typography, not as a number — $0.2̇4̇$ / $\dot{2}$ / $\overline{24}$ all speak
+as descriptions of the mark ("위의 점", "윗줄"; measured, SRE 5.0.0-rc.4,
+2026-08). The missing reading rule now exists PROVISIONALLY: speak.js
+intercepts \dot{}/\overline{} decimals before SRE and speaks reading C from
+the #17 experiment ("영 점 이사 이사 반복") — which reading is actually
+unambiguous by ear is still open (#17, dot_reading_probe.py). See the
 README's "Limitations".
 
 Used by inbox_eval.py when the judge is enabled; also runs standalone:
