@@ -49,9 +49,15 @@ _DECIMAL = re.compile(r"[0-9]\.[0-9]")
 _SIGNAL = re.compile(r"순환|[0-9]̇|[0-9]+\.[0-9]+ ?(?:\.\.\.|…|⋯|\\cdots)")
 _NUMBER = re.compile(r"[0-9]+\.[0-9]+")
 # evidence is compared verbatim-modulo-cosmetics: the model quotes LaTeX spans
-# inconsistently ("$x=0.242424\\cdots$" vs "x = 0.242424\cdots"), so strip
-# whitespace, '$' and '\' from both sides before the substring check
+# inconsistently ("$x=0.242424\\cdots$" vs "x = 0.242424\cdots", or \(..\) for
+# the page's $..$), so drop LaTeX delimiter pairs, then strip whitespace, '$'
+# and '\' from both sides before the substring check
+_LATEX_DELIM = re.compile(r"\\[()\[\]]")
 _COSMETIC = re.compile(r"[\s$\\]+")
+
+
+def _canon(s):
+    return _COSMETIC.sub("", _LATEX_DELIM.sub("", s))
 MAX_CHARS = 15000  # sent to the model; worksheet pages are normally way below
 
 SYSTEM = """\
@@ -68,7 +74,16 @@ the surrounding text uniquely determines both that it repeats AND its exact \
   - the number still carries SOME dots and the text pins down the rest
 NOT evidence: the word 순환소수 merely appearing somewhere (problems mix \
 repeating and finite decimals); a decimal "looking" repeating; a period you \
-could only get by solving the problem yourself.
+could only get by solving the problem yourself. In particular, a number merely \
+LABELED 순환소수 ("순환소수 0.24 를 분수로 나타내시오"), or a problem that \
+ASKS for its 순환마디 ("0.63 의 순환마디를 구하시오"), proves the number \
+repeats but NEVER determines WHICH digits repeat — for 0.24 both 0.2̇4̇ and \
+0.24̇ fit, and the 마디 may even be the answer the student must find. Omit \
+such numbers UNLESS other on-page evidence (an expanded form, a fraction \
+equation, a stated 마디) independently pins the period. Worksheets often \
+restate a number before asking about it — a page showing "$0.477777\\cdots$" \
+alongside the compact 0.47 proves period "7" no matter what the problem \
+then asks; the question wording never cancels printed evidence.
 
 Report the compact printed number (e.g. 0.24) whose dots were lost — never the \
 expanded "0.242424..." writing itself; with its ellipsis it already shows the \
@@ -81,7 +96,12 @@ Reply with ONLY this JSON (no prose):
 {"analysis": "<brief scratchpad: candidates and why kept/dropped>",
  "numbers": [{"number": "<verbatim as printed, e.g. 0.24>",
               "period": "<repeating block, e.g. 24>",
-              "evidence": "<verbatim quote from TEXT that proves it>"}]}"""
+              "evidence": "<verbatim quote from TEXT that proves it>"}]}
+
+The evidence must be ONE contiguous verbatim span of TEXT — never join \
+sentences from different places into one quote. If the proof lives in a \
+different sentence than the number itself, quote only the decisive span \
+(e.g. just the expanded form or the fraction equation)."""
 
 
 def needs_check(text):
@@ -121,7 +141,7 @@ def restore(cfg, text, tag):
             notes.append(f"rejected {number}: period {period!r} doesn't match "
                          "the printed trailing digits")
             continue
-        if not evidence or _COSMETIC.sub("", evidence) not in _COSMETIC.sub("", text):
+        if not evidence or _canon(evidence) not in _canon(text):
             notes.append(f"rejected {number}: evidence {evidence!r} not found "
                          "on the page")
             continue

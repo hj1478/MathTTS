@@ -2,32 +2,60 @@
   {
     "id": "expanded-form-proof",
     "input": "**5.** 순환소수 $0.24$ 를 분수로 나타내는 과정이다. $x=0.242424\\cdots$ 라 하면 $100x=24.242424\\cdots$ 이므로 $99x=24$, 즉 $x=\\frac{24}{99}=\\frac{8}{33}$ 이다.",
-    "expect": [{"number": "0.24", "period": "24"}],
+    "expect": [
+      {
+        "number": "0.24",
+        "period": "24"
+      }
+    ],
     "why": "expanded form 0.242424... uniquely determines the period"
   },
   {
     "id": "stated-madi",
     "input": "$\\frac{1}{6}$ 을 소수로 나타내면 $0.16$ 이고 순환마디는 $6$ 이다.",
-    "expect": [{"number": "0.16", "period": "6"}],
+    "expect": [
+      {
+        "number": "0.16",
+        "period": "6"
+      }
+    ],
     "why": "the text states the 순환마디 outright"
   },
   {
     "id": "fraction-equation",
     "input": "다음은 순환소수를 분수로 나타낸 것이다. $0.45=\\frac{45}{99}=\\frac{5}{11}$",
-    "expect": [{"number": "0.45", "period": "45"}],
+    "expect": [
+      {
+        "number": "0.45",
+        "period": "45"
+      }
+    ],
     "why": "45/99 pins the period to 45"
   },
   {
     "id": "three-digit-madi",
     "input": "순환소수 $0.123$ 의 순환마디는 $123$ 이다.",
-    "expect": [{"number": "0.123", "period": "123"}],
+    "expect": [
+      {
+        "number": "0.123",
+        "period": "123"
+      }
+    ],
     "why": "3-digit period -> dots on first and last digit only (0.1̇23̇)"
   },
   {
     "id": "mixed-page",
     "input": "# 순환소수\n\n**5.** 순환소수 $0.24$ 를 분수로 나타내는 과정이다. $x=0.242424\\cdots$ 라 하면 $100x=24.242424\\cdots$ 이므로 $99x=24$, 즉 $x=\\frac{24}{99}=\\frac{8}{33}$ 이다.\n\n**6.** $\\frac{1}{6}$ 을 소수로 나타내면 $0.16$ 이고 순환마디는 $6$ 이다.\n\n**7.** 다음 중 유한소수는? ① $0.35$ ② $\\frac{7}{12}$\n\n**8.** 톱니바퀴가 $2.5$ 바퀴 회전할 때",
-    "expect": [{"number": "0.24", "period": "24"},
-               {"number": "0.16", "period": "6"}],
+    "expect": [
+      {
+        "number": "0.24",
+        "period": "24"
+      },
+      {
+        "number": "0.16",
+        "period": "6"
+      }
+    ],
     "why": "realistic page shape: two provable numbers among finite decimals that must stay untouched"
   },
   {
@@ -69,8 +97,48 @@
   {
     "id": "partial-dot-restore",
     "input": "순환소수 $0.2̇4$ 의 순환마디는 $24$ 이다.",
-    "expect": [{"number": "0.24", "period": "24"}],
+    "expect": [
+      {
+        "number": "0.24",
+        "period": "24"
+      }
+    ],
     "known": "the patch regex can only rewrite a fully undotted token, so a number that kept one of its dots through OCR can't be completed",
     "why": "OCR kept the first dot, text pins the period — completing to 0.2̇4̇ is the ideal outcome"
+  },
+  {
+    "id": "ask-the-madi",
+    "input": "# 순환마디 구하기\n\n**3.** 순환소수 0.63 의 순환마디를 구하시오.\n\n**4.** 순환소수 2.418 의 순환마디를 이루는 숫자의 개수를 구하시오.",
+    "expect": [],
+    "why": "the problems ASK for the 순환마디 — the wording proves 0.63 and 2.418 repeat, but the period is undetermined (0.6̇3̇ and 0.63̇ both fit); found by generated suite 2026-08-09"
+  },
+  {
+    "id": "stitched-evidence-quote",
+    "input": "# 2단원 유리수와 순환소수\n\n**1.** 순환소수 0.24 를 분수로 나타내는 과정이다. □ 안에 알맞은 수를 써넣으시오.\n\n$x = 0.24$ 로 놓으면 $x = 0.242424\\cdots$ 이다.\n양변에 100을 곱하면 $100x = 24.242424\\cdots$\n두 식을 변끼리 빼면 $99x = □$ 이므로 $x = \\dfrac{□}{99}$ 이다.\n\n**2.** 위에서 구한 분수를 기약분수로 나타내시오.",
+    "expect": [
+      {
+        "number": "0.24",
+        "period": "24"
+      }
+    ],
+    "why": "expanded form proves the period, but the decisive sentence sits two sentences after the compact number — tempts the model into stitching a non-contiguous quote, which the verbatim check rejects; found by generated suite 2026-08-09"
+  },
+  {
+    "id": "restate-then-ask",
+    "input": "# 서술형 문제\n\n**5.** 분수 $\\frac{7}{12}$ 을 소수로 나타내면 $0.583333\\cdots$ 이고, 이를 간단히 0.583 과 같이 나타낸다. 이 순환소수의 순환마디가 시작되는 자리를 말하시오.",
+    "expect": [
+      {
+        "number": "0.583",
+        "period": "3"
+      }
+    ],
+    "why": "expanded form proves the period even though the problem then asks where the 마디 starts — the ask must not cancel printed evidence; found by generated suite 2026-08-09"
+  },
+  {
+    "id": "unequated-fraction-nearby",
+    "input": "# 단원평가 A형 (유리수와 순환소수)\n\n**1.** 분수 $\\frac{1}{6}$ 을 소수로 나타내면 유한소수가 되는지, 무한소수가 되는지 판별하고 그 이유를 서술하시오.\n\n**2.** 소수 0.16 을 백분율(%)로 나타내시오.",
+    "expect": [],
+    "known": "flaky: the model sometimes pairs 1/6 (problem 1) with the finite 0.16 (problem 2) even though no equation ties them; the strict evidence check used to mask this borderline guess",
+    "why": "a fraction and a decimal in DIFFERENT problems are not evidence for each other; found by generated suite 2026-08-09"
   }
 ]
