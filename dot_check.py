@@ -2,9 +2,9 @@
 """Text-only LLM pass: restore repeating-decimal dots (순환소수) that OCR lost.
 
 PaddleOCR-VL routinely drops the small dots printed above 순환소수 digits, so
-0.2̇4̇ on paper arrives as the plain "0.24" — and once the dot is gone nothing
-downstream can recover it (normalize.py can only convert dots it sees into
-\\dot{..}). This pass runs BETWEEN OCR and normalize: it shows the page TEXT
+0.2̇4̇ on paper arrives as the plain "0.24" — and once the dot is gone no later
+stage can invent it back, so the number is spoken as if it terminated. This pass
+runs BETWEEN OCR and normalize: it shows the page TEXT
 (no image) to an LLM and asks which decimals the surrounding context PROVES are
 repeating, then re-inserts U+0307 combining dots — the exact representation OCR
 would have produced — so the rest of the pipeline is untouched.
@@ -22,6 +22,12 @@ Guardrails, in order:
 Dot placement follows the Korean convention: first and last digit of the
 순환마디 (one dot when it's a single digit): 0.24 period 24 -> 0.2̇4̇,
 0.245 period 45 -> 0.24̇5̇, 0.16 period 6 -> 0.16̇.
+
+Restoring the dots is NOT sufficient for the number to be heard correctly:
+normalize.py has no U+0307 rule, so the dots reach SRE untouched and $0.2̇4̇$
+speaks as "0 마침표 2 위의 점 4 위의 점" — the typography described, not the
+number — where a listener needs something like "영 점 이사 순환" (measured, SRE
+5.0.0-rc.4, clearspeak/default, 2026-08). See the README's "Limitations".
 
 Used by inbox_eval.py when the judge is enabled; also runs standalone:
   python dot_check.py FILE.md ...          # report what would change
