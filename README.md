@@ -196,11 +196,21 @@ in `run.py` calls it — today it runs inside `inbox_eval.py`, or by hand with
 `python dot_check.py --write FILE.md`.
 
 *The reading does not exist.* Even with the dots restored, nothing turns them
-into the Korean 순환소수 reading. `normalize.py` has no U+0307 rule, so the
-combining dots pass through untouched and SRE ends up describing the typography:
-`$0.2̇4̇$` speaks as `0 마침표 2 위의 점 4 위의 점` (measured against SRE
-5.0.0-rc.4, clearspeak/default, 2026-08), where a listener needs something like
-`영 점 이사 순환`.
+into the Korean 순환소수 reading. SRE names the decoration instead of
+interpreting it, and this is not a matter of picking a different notation —
+measured against SRE 5.0.0-rc.4 (clearspeak/default, 2026-08):
+
+| Span | Spoken |
+|---|---|
+| `$0.2̇4̇$` (combining U+0307, what OCR and `dot_check.py` produce) | `0 마침표 2 위의 점 4 위의 점` |
+| `$0.\dot{2}\dot{4}$` | identical to the row above |
+| `$0.\overline{24}$` | `0 마침표 24 윗줄` |
+| `$0.1\dot{6}$` | `0.1 6 위의 점` |
+
+A listener needs something like `영 점 이사 순환`. Since every notation that
+*means* "repeating" reads as a description of the mark, the missing piece is a
+reading rule, not an encoding: re-emitting the dots as LaTeX from
+`normalize.py` (which has no U+0307 rule today) would change nothing.
 
 Known failure: `page.png`'s pseudo-LaTeX integral does not parse; it stitches
 via the best-effort salvage path (visible in the `SUMMARY:` line).
