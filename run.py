@@ -50,6 +50,26 @@ def collect_images(a):
     return [src]
 
 
+def source_pages(out):
+    """Existing OCR pages in `out` that stage 2 should normalize.
+
+    Excludes this pipeline's own derived files. `.dots.md` is dot_check.py's
+    patched copy of a page, written by inbox_eval.py into this same folder;
+    treating it as a source page would normalize, stitch and synthesize that
+    page twice — once with the 순환소수 dots and once without — with no error
+    anywhere (#15).
+    """
+    return sorted(p for p in out.glob("*.md")
+                  if not p.name.endswith((".norm.md", ".dots.md")))
+
+
+def existing_norms(out):
+    """Existing normalized pages in `out`, minus any .dots.norm.md duplicates
+    a pre-#15 run may have left behind."""
+    return sorted(p for p in out.glob("*.norm.md")
+                  if not p.name.endswith(".dots.norm.md"))
+
+
 def run_stage(tag, cmd, cwd=None):
     print(f"[{tag}] {' '.join(str(c) for c in cmd)}")
     proc = subprocess.run([str(c) for c in cmd], cwd=cwd)
@@ -83,7 +103,7 @@ def main():
 
     # --- stage 1: OCR ------------------------------------------------------
     if a.skip_ocr:
-        mds = sorted(p for p in out.glob("*.md") if not p.name.endswith(".norm.md"))
+        mds = source_pages(out)
         print(f"[stage 1] skipped — reusing {len(mds)} .md file(s) in {out}")
     else:
         import ocr_vl
@@ -106,7 +126,7 @@ def main():
 
     # --- stage 2: normalize ------------------------------------------------
     if a.skip_normalize:
-        norms = sorted(out.glob("*.norm.md"))
+        norms = existing_norms(out)
         print(f"[stage 2] skipped — reusing {len(norms)} .norm.md file(s)")
     else:
         norms = []
