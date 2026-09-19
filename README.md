@@ -63,6 +63,7 @@ TODO
 |---|---|---|---|
 | 0 (optional) | `pdf_to_images.py` | `*.pdf` → `pages/*.png` | Renders PDF pages to PNGs the OCR can read (200 DPI default) |
 | 1. OCR | `ocr_vl.py` | `*.png` → `output/*.md` | PaddleOCR-VL, locally on CPU: Korean prose + inline `$...$` LaTeX |
+| 1.5 (optional) | `dot_check.py` | `*.md` → `*.dots.md` | Restores the 순환소수 dots the OCR drops, from page context via an LLM. A transform, not a measurement — but **`run.py` has no flag for it yet** (#15) |
 | 2. Normalize | `normalize.py` | `*.md` → `*.norm.md` | Canonicalizes the OCR's inconsistent math (unicode, bare runs, stray `$`) into `$...$` LaTeX |
 | 3. Math → speech | `sre-probe/speak.js` | `*.norm.md` → `stitched/*.stitched.txt` / `.ssml` | temml → MathML → SRE (locale ko); stitches Korean speech back into the prose |
 | 4. TTS | `tts_full.py` | `stitched/*` → `audio/*.wav` | Azure Neural TTS; plain and SSML versions per problem for A/B listening |
@@ -130,11 +131,17 @@ cd sre-probe && npm install && cd ..
 MB) to `~/.paddlex/official_models/`, and CPU inference takes tens of seconds
 per image. Both are printed at runtime; it is not hung.
 
-**Credentials** — stages 0–3 are fully local; stage 4 (Azure TTS) and the LLM
-eval scripts are the only network/paid parts. Copy `.env.example` to `.env`
-next to the scripts, or export the same variables: `AZURE_SPEECH_KEY` plus
-`AZURE_SPEECH_ENDPOINT` (or `AZURE_SPEECH_REGION`) for TTS; `OPENAI_API_KEY`
-for `inbox_eval.py` / `dot_check.py`.
+**Credentials and cost** — three groups, not two. Copy `.env.example` to
+`.env` next to the scripts, or export the same variables.
+
+| Group | Covers | Credential | Cost |
+|---|---|---|---|
+| Local | stages 0–3: `pdf_to_images.py`, `ocr_vl.py`, `normalize.py`, `speak.js` | none | free — CPU time and one model download |
+| Azure | stage 4 `tts_full.py`, plus `tts_probe.py` / `dot_reading_probe.py` | `AZURE_SPEECH_KEY` + `AZURE_SPEECH_ENDPOINT` (or `AZURE_SPEECH_REGION`) | per character synthesized |
+| OpenAI | `dot_check.py` (a transform), and the harnesses that drive it or an LLM judge: `inbox_eval.py`, `dot_eval.py` | `OPENAI_API_KEY` | one temperature-0 call per page that passes `needs_check()` |
+
+`run.py --skip-tts` touches nothing paid. A full `run.py` uses the Azure row
+only: it never reaches the OpenAI row, because it cannot invoke stage 1.5 (#15).
 
 `run.py` chains everything:
 
@@ -158,7 +165,7 @@ python tts_full.py --stitched ./stitched --out ./audio
 Checks:
 
 ```sh
-venv/bin/python -m pytest tests/       # normalize.py contract + span grammar
+venv/bin/python -m pytest tests/       # normalize.py contract, span grammar, run.py globs
 cd sre-probe && node --test            # JS span grammar (same fixtures) + SSML checker
 python ocr_vl.py --eval .              # OCR each image, score against *.expect sidecars
 ```
@@ -189,12 +196,21 @@ it.
 Known failure, half-addressed: 순환소수 (repeating decimals) had two
 independent problems; one remains, one has a provisional fix.
 
-*The notation is lost (still open).* PaddleOCR-VL drops the small dots printed
-above the repeating digits, so `0.2̇4̇` arrives as a plain `0.24` and is spoken
-as if it terminated. `dot_check.py` restores them from surrounding context,
-but nothing in `run.py` calls it — today it runs inside `inbox_eval.py`, or by
-hand with `python dot_check.py --write FILE.md` (this is part of open
-question #15).
+*The notation is lost (still open).* **A plain `python run.py` mis-reads every
+순환소수 on the page.** PaddleOCR-VL drops the small dots printed above the
+repeating digits, so `0.2̇4̇` arrives as a plain `0.24`, and the pipeline exits 0
+having spoken it as a number that terminates — a confident wrong answer, with
+nothing in the output flagging it. `dot_check.py` restores the dots from page
+context, and with them the reading below applies; but `run.py` has no way to
+invoke it. Today it runs inside `inbox_eval.py`, or by hand with
+`python dot_check.py --write FILE.md` (open question #15).
+
+Why it is not simply switched on by default: **its precision has never been
+measured.** `dot_eval.py` exists for exactly that — precision and recall per
+number, with false dots as the failures to watch, since a miss only reproduces
+the status quo while a false dot corrupts a number that was already right — but
+its numbers are recorded nowhere in this repository. That measurement is what
+the default should be decided on, and it has not been made.
 
 *The reading (provisional).* SRE itself cannot read the notation — it names
 the decoration instead of interpreting it, whatever the encoding; measured

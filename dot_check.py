@@ -32,6 +32,11 @@ the #17 experiment ("영 점 이사 이사 반복") — which reading is actuall
 unambiguous by ear is still open (#17, dot_reading_probe.py). See the
 README's "Limitations".
 
+This is a transform, not a measurement — dot_eval.py is what measures it
+(precision/recall per number). It is nonetheless NOT part of a plain run:
+run.py has no flag for it yet, and the default is blocked on dot_eval.py's
+numbers, which have not been recorded (#15).
+
 Used by inbox_eval.py when the judge is enabled; also runs standalone:
   python dot_check.py FILE.md ...          # report what would change
   python dot_check.py --write FILE.md ...  # and patch the files in place
