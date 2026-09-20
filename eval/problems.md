@@ -3,7 +3,7 @@
 Categorized record of every transcription problem found by the eval system
 (inbox_eval judge + lint + probes), with fix status. Golden cases in
 cases.json enforce every ✅; ⚠️ items carry a "known" flag and auto-flip to
-FIXED when resolved. Updated 2026-07-28: 47/55 cases green, 8 known.
+FIXED when resolved. Updated 2026-09-20: 60/66 cases green, 6 known.
 
 ## A. OCR markup leaking into speech — 6/6 FIXED
 - ✅ HTML div/img scaffolding spelled out (html-figure)
@@ -38,6 +38,27 @@ FIXED when resolved. Updated 2026-07-28: 47/55 cases green, 8 known.
 - ⚠️ 순환소수 dot/overline phrasing (repeating-decimal-dots, -overline)
 - ⚠️ f(3) -> "f 의 3" ambiguity (function-application)
 - Fix path for all ⚠️: fixMisreads() post-SRE rewrite layer in speak.js.
+
+## D2. Glyphs named instead of read (#20 coverage run) — 4 fixed, 2 OPEN
+Measured through the real chain; re-measure with `python3 eval/notation_coverage.py`.
+- ✅ △ -> "흰색 상향 삼각형" -> 삼각형 (same mechanism as □ -> 네모)
+- ✅ cm² -> "센티미터 제곱" -> 제곱센티미터 (Korean puts the power first)
+- ✅ sin/cos spelled 싸인/코싸인 -> 사인/코사인. Was hardcoded in FOUR places
+  (SRE output, normalize.py's two bare-trig maps, speak.js's salvage map), so
+  the spelling depended on which path a span took.
+- ✅ ⊥ -> "l 수직이다 m" -> "l 은 m 과 수직이다", by rendering \perp as
+  \parallel and swapping the verb, so SRE's own 은/는·과/와 agreement applies
+- ⚠️ ≅ (\cong) -> "거의 같다" not 합동. NOT fixable in fixMisreads: "거의 같다"
+  is the correct reading of ≈, so rewriting the Korean would corrupt a span
+  that was already right. Has to be fixed while the notation still exists —
+  \cong -> \equiv in normalize.py, since \equiv already reads 합동이다.
+- ⚠️ ∽ (\sim) -> "물결표" not 닮음 (same argument; \sim is also "은 ~와 같이
+  분포한다" elsewhere). See also D's `similarity`.
+- ⚠️ line segment `\overline{AB}` -> "A B 윗줄", never 선분. The digit case is
+  already intercepted (REPDEC); the letter case is not.
+- ⚠️ 3:4 (비) -> "삼 콜론 사" not 삼 대 사 — but `cases.json`'s `ratio` case
+  ASSERTS 콜론 for `x:y`. Both are probably right in context, so this needs a
+  context rule and a split golden case, not a rename.
 
 ## E. Inherent linearization ambiguity — OPEN by nature (policy, not bugs)
 - ⚠️ 번분수 collision: (1/2)/3 and 1/(2/3) speak identically (nested-fraction-collision)

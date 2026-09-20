@@ -205,7 +205,7 @@ _TEXT_CMD_UNMASKED = re.compile("\\\\text\\s*\\{([^{}\x00]*)\\}")
 _BARE_CMD = {"times": "×", "div": "÷", "cdot": "·", "leq": "≤", "geq": "≥",
              "neq": "≠", "pm": "±", "pi": "π", "sqrt": "√", "infty": "∞",
              # bare trig commands -> Korean words (in-span \tan is fine as-is)
-             "sin": "싸인 ", "cos": "코싸인 ", "tan": "탄젠트 "}
+             "sin": "사인 ", "cos": "코사인 ", "tan": "탄젠트 "}
 # (?![A-Za-z]) not \b: a digit may follow directly ("2\times13") and \b would
 # fail between two word chars, dropping the command instead of converting it
 _BARE_CMD_RE = re.compile(r"\\(" + "|".join(_BARE_CMD) + r")(?![A-Za-z]) ?")
@@ -238,7 +238,7 @@ _ENV_BLOCK = re.compile(r"\\begin\{[^}]+\}.*?\\end\{[^}]+\}", re.DOTALL)
 _HANGUL_RUN = re.compile(r"[가-힣](?:[가-힣 \t]*[가-힣])?")
 # bare trig words in prose ("sin 30°"): OCR often emits them without \ or $
 _TRIG = re.compile(r"\b(sin|cos|tan)(?![A-Za-z])\s*")
-_TRIG_KO = {"sin": "싸인 ", "cos": "코싸인 ", "tan": "탄젠트 "}
+_TRIG_KO = {"sin": "사인 ", "cos": "코사인 ", "tan": "탄젠트 "}
 # a run of ONLY connector dots (가운뎃점 · in headers, ··· ellipsis) is Korean
 # punctuation, not math — wrapping it makes SRE say "닷"
 _CONNECTOR_ONLY = re.compile(r"^[·⋅… ]+$")

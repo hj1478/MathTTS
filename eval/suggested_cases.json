@@ -320,11 +320,11 @@
     "id": "reversed-trig-fraction",
     "input": "\\tan A = \\frac{\\sin A}{\\cos A}",
     "must": [
-      "싸인 A 를 코싸인 A 로 나눈 값"
+      "사인 A 를 코사인 A 로 나눈 값"
     ],
     "mustnot": [
-      "코싸인",
-      "싸인"
+      "코사인",
+      "사인"
     ],
     "why": "The fraction reading is reversed; it should convey sin/cos rather than cos/sin.",
     "from": "korean_math_tts_stress_test/korean_math_tts_stress_test_2"

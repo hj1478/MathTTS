@@ -306,11 +306,53 @@ function checkWellFormed(xml) {
 
 /**
  * Post-SRE speech rewrites for SRE-ko misreads with a known better Korean form.
- * \Box (fill-in-the-blank □) is read "흰색 정사각형" (lit. "white square");
- * Korean math speech calls the blank "네모".
+ * Every entry is measured, not assumed — re-measure with
+ * `python3 eval/notation_coverage.py` (issue #20).
+ *
+ * SRE-ko names several glyphs by their Unicode description instead of reading
+ * them as mathematics: \Box (□) is "흰색 정사각형" (lit. "white square") where
+ * Korean math speech says "네모", and \triangle (△) is "흰색 상향 삼각형"
+ * where it says "삼각형". The remaining two are conventions rather than
+ * misreadings: Korean writes the power before the unit (제곱센티미터, not
+ * 센티미터 제곱), and school textbooks spell the trig functions 사인/코사인.
+ *
+ * What is deliberately NOT here: \cong ("거의 같다") and \sim ("물결표").
+ * Both need 합동/닮음 in a school worksheet, but "거의 같다" is also the
+ * correct reading of ≈, so rewriting the Korean would corrupt a span that was
+ * already right. Those two have to be fixed where the notation still exists —
+ * see normalize.py — not here (#20).
  */
+const MISREADS = [
+  [/흰색 정사각형/g, '네모'],
+  [/흰색 상향 삼각형/g, '삼각형'],
+  [/(센티미터|밀리미터|킬로미터|미터) (세제곱|제곱)/g, '$2$1'],
+  [/싸인/g, '사인'],  // also fixes 코싸인 -> 코사인
+];
+
 function fixMisreads(speech) {
-  return speech.replace(/흰색 정사각형/g, '네모');
+  return MISREADS.reduce((out, [re, to]) => out.replace(re, to), speech);
+}
+
+/**
+ * SRE-ko reads \parallel as a Korean sentence with the right particles
+ * ("l 은 m 과 평행하다", "a 는 b 와 평행하다" — 은/는 and 과/와 agree with the
+ * operand), but drops to a bare juxtaposition for \perp ("l 수직이다 m").
+ * Since the two relations take the same sentence frame, render \perp AS
+ * \parallel and swap the verb afterwards: SRE's own particle agreement then
+ * does the work, which a string rewrite here could not do correctly.
+ *
+ * Only when the span has no real \parallel of its own — otherwise the two
+ * would be indistinguishable after rendering, and the span is left alone.
+ */
+const PERP = /\\perp\b/;
+const PARALLEL = /\\parallel\b/;
+
+function perpAsParallel(latex) {
+  return PERP.test(latex) && !PARALLEL.test(latex);
+}
+
+function fixPerp(speech) {
+  return speech.replace(/평행하다/g, '수직이다');
 }
 
 /**
@@ -321,7 +363,7 @@ function fixMisreads(speech) {
 const SALVAGE_KO = {
   pm: '플러스 마이너스', sqrt: '루트', times: '곱하기', div: '나누기',
   cdot: '곱하기', frac: '분수', pi: '파이', infty: '무한대',
-  sin: '싸인', cos: '코싸인', tan: '탄젠트', leq: '작거나 같다', geq: '크거나 같다',
+  sin: '사인', cos: '코사인', tan: '탄젠트', leq: '작거나 같다', geq: '크거나 같다',
 };
 
 function salvage(latex) {
@@ -398,7 +440,9 @@ async function main() {
       // throwOnError so broken LaTeX lands in the catch; belt-and-suspenders
       // <merror> check in case temml still renders an inline error message
       // (SRE would read it aloud: "백슬래시 ParseError 콜론 ...").
-      const xml = temml.renderToString(latex, { xml: true, throwOnError: true });
+      const xml = temml.renderToString(
+        perpAsParallel(latex) ? latex.replace(/\\perp\b/g, '\\parallel') : latex,
+        { xml: true, throwOnError: true });
       if (xml.includes('<merror')) throw new Error('temml emitted <merror>');
       mathml.set(latex, { mathml: xml });
     } catch (err) {
@@ -420,7 +464,8 @@ async function main() {
         continue;
       }
       try {
-        speech.get(latex).set(key, fixMisreads(sre.toSpeech(conv.mathml)));
+        const out = fixMisreads(sre.toSpeech(conv.mathml));
+        speech.get(latex).set(key, perpAsParallel(latex) ? fixPerp(out) : out);
       } catch (err) {
         speech.get(latex).set(key, { error: String(err) });
       }
@@ -565,7 +610,8 @@ async function main() {
   }
 }
 
-module.exports = { SPAN, checkWellFormed, splitRadicals, splitRepeating };
+module.exports = { SPAN, checkWellFormed, splitRadicals, splitRepeating,
+  fixMisreads, fixPerp, perpAsParallel };
 
 if (require.main === module) {
   main().catch((err) => {

@@ -175,9 +175,17 @@ python ocr_vl.py --eval .              # OCR each image, score against *.expect 
 - `speak.js` prints a per-file `SUMMARY:` line and, with `--strict`, exits
   non-zero when a formula stitched as salvage or a placeholder (`run.py` uses
   this to stop before paying Azure to read a placeholder aloud).
+- `eval/notation_coverage.py` re-measures what the pipeline reads correctly
+  across the 초·중 curriculum (issue #20) through the real chain, and
+  `--diff OLD.json` shows what a change moved. Reference material, not
+  pass/fail.
 - Larger harnesses: `tts_eval.py` (golden cases + lint), `inbox_eval.py`
   (drop PDFs in `inbox/`, OCR → stitch → LLM judge), `dot_eval.py` (순환소수
   dot restoration).
+
+Everything above except `inbox_eval.py` and `dot_eval.py` runs without
+credentials, and `.github/workflows/checks.yml` runs exactly that set on every
+push.
 
 ## Limitations and what is unverified
 
@@ -192,6 +200,14 @@ The attribute is now rewritten to Azure's documented `"characters"` (see
 Whether SRE's Korean fraction/relation grouping is intelligible by ear is
 likewise an open listening question — `tts_probe.py`'s four cases exist for
 it.
+
+SRE-ko names several glyphs by their Unicode description instead of reading
+them as mathematics. `speak.js`'s `fixMisreads()` now corrects the four where
+the right Korean is unambiguous (△, cm², 사인/코사인, ⊥). Two are left alone
+on purpose: ≅ reads "거의 같다", which is *also* the correct reading of ≈, and
+∽ reads "물결표" — rewriting either in the speech would corrupt spans that were
+already right, so they have to be fixed while the notation still exists. 선분
+`AB` and the 비 `3:4` are likewise still open (`eval/problems.md`, section D2).
 
 Known failure, half-addressed: 순환소수 (repeating decimals) had two
 independent problems; one remains, one has a provisional fix.
