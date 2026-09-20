@@ -1,0 +1,45 @@
+# Everything here runs without credentials. The OCR (stage 1) and Azure TTS
+# (stage 4) are deliberately out of scope: one needs hundreds of MB of model
+# weights, the other costs money per run. What is left still covers the stage
+# this project is actually about — LaTeX -> Korean speech — because that stage
+# is deterministic text-to-text (see tts_eval.py).
+name: checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: sre-probe/package-lock.json
+
+      # normalize.py needs nothing outside the standard library (#7), so the
+      # Python side installs only the test runner.
+      - run: pip install pytest
+      - run: npm ci
+        working-directory: sre-probe
+
+      - name: Python unit tests
+        run: python -m pytest tests/ -q
+
+      - name: JS unit tests
+        run: node --test
+        working-directory: sre-probe
+
+      - name: Golden cases (normalize -> speak.js, no credentials)
+        run: python tts_eval.py --cases eval/cases.json
+
+      - name: Notation coverage still measurable (#20)
+        run: python eval/notation_coverage.py
