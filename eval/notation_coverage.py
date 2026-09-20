@@ -15,7 +15,6 @@ says today so a change can be compared against what it said before.
 """
 import argparse
 import json
-import re
 import subprocess
 import sys
 import tempfile
@@ -26,12 +25,32 @@ sys.path.insert(0, str(ROOT))
 import normalize  # noqa: E402
 
 FIXTURE = ROOT / "eval" / "fixtures" / "notation_coverage.md"
-SPAN = re.compile(r"^  \$(.+)\$$")
-READING = re.compile(r"^    \S+ (.*)$")
+
+
+def _notations(text):
+    """The fixture's notation lines: everything after the first '## ' heading
+    that is not blank and not itself a heading."""
+    lines, started = [], False
+    for line in text.splitlines():
+        if line.startswith("## "):
+            started = True
+            continue
+        if line.startswith("SUMMARY:"):  # speak.js's own trailer, not a reading
+            break
+        if started and line.strip() and not line.startswith("#"):
+            lines.append(line.strip())
+    return lines
 
 
 def measure():
-    """-> [(latex, speech)] in document order."""
+    """-> [(written, spoken)] in document order.
+
+    Reads speak.js's STITCHED block, not its per-span table. The two differ:
+    speak.js post-processes at stitch time — the repeating-decimal intercept in
+    particular — so the per-span table shows SRE's raw reading and would
+    under-report what a listener actually hears. Issue #20 measured stitched
+    output for the same reason.
+    """
     with tempfile.TemporaryDirectory() as tmp:
         norm = Path(tmp) / "notation_coverage.norm.md"
         norm.write_text(normalize.normalize_math(FIXTURE.read_text(encoding="utf-8")),
@@ -41,19 +60,15 @@ def measure():
     if proc.returncode != 0:
         sys.exit(f"speak.js failed (exit {proc.returncode}):\n{proc.stderr}")
 
-    rows, latex = [], None
-    for line in proc.stdout.splitlines():
-        if line.startswith("STITCHED"):
-            break
-        m = SPAN.match(line)
-        if m:
-            latex = m.group(1)
-            continue
-        m = READING.match(line)
-        if m and latex is not None:
-            rows.append((latex, m.group(1).strip()))
-            latex = None
-    return rows
+    out = proc.stdout.split("STITCHED", 1)
+    if len(out) < 2:
+        sys.exit("speak.js printed no STITCHED block")
+    spoken = _notations(out[1])
+    written = _notations(FIXTURE.read_text(encoding="utf-8"))
+    if len(written) != len(spoken):
+        sys.exit(f"fixture has {len(written)} notation(s) but the stitched output "
+                 f"has {len(spoken)} line(s) — they must correspond one to one")
+    return list(zip(written, spoken))
 
 
 def main():
@@ -65,13 +80,13 @@ def main():
     rows = measure()
     if a.diff:
         before = {k: v for k, v in json.loads(Path(a.diff).read_text(encoding="utf-8"))}
-        changed = [(l, before.get(l), s) for l, s in rows if before.get(l) != s]
-        for latex, was, now in changed:
-            print(f"{latex}\n  was: {was}\n  now: {now}")
+        changed = [(w, before.get(w), s) for w, s in rows if before.get(w) != s]
+        for written, was, now in changed:
+            print(f"{written}\n  was: {was}\n  now: {now}")
         print(f"\n{len(changed)} of {len(rows)} span(s) changed")
     else:
-        for latex, speech in rows:
-            print(f"{latex:<36} | {speech}")
+        for written, spoken in rows:
+            print(f"{written:<34} | {spoken}")
         print(f"\n{len(rows)} span(s)")
     if a.json:
         Path(a.json).write_text(json.dumps(rows, ensure_ascii=False, indent=1),
