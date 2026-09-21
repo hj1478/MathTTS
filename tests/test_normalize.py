@@ -105,3 +105,79 @@ def test_dollar_env_leaves_block_math_alone():
     # inner dollars of an already-canonical $$..$$ block (broke idempotency)
     src = r"$$\begin{aligned}x&=1\\y&=2\end{aligned}$$"
     assert normalize_math(src) == src
+
+
+# --- orphan brackets: their partner was split off by Hangul, so they are prose
+
+@pytest.mark.parametrize("src", [
+    "## 막대/꺾은선그래프(초3-4)",   # grade label, not "3 빼기 4 괄호 닫고"
+    "## 소수의 곱셈 (초5-6)",
+    "## 그래프 (초 3-4)",            # the guard must see past the space
+    "(초1-2)",
+    "중1-1 단원평가",
+])
+def test_grade_label_survives_a_wrapping_paren(src):
+    assert normalize_math(src) == src
+
+
+def test_orphan_closer_is_ejected_from_the_span():
+    # the "(" sits outside the run (Hangul split it off), so a ")" left inside
+    # the span would be spoken as a "괄호 닫고" that never opened
+    assert normalize_math("(가로 3+4)") == "(가로 $3+4$)"
+    # a genuinely balanced pair still belongs to the math
+    assert normalize_math("점 P(a+1)") == "점 $P(a+1)$"
+
+
+# --- units inside a math span (SRE spells a bare unit out letter by letter)
+
+@pytest.mark.parametrize("src,expected", [
+    ("$r = 3 cm$", r"$r = 3\mathrm{cm}$"),      # space-separated, was "3 c m"
+    ("$145cm$", r"$145\mathrm{cm}$"),
+    (r"$\Box cm$", r"$\Box \mathrm{cm}$"),
+    ("□ cm", r"$\Box \mathrm{cm}$"),            # □ -> "\Box " leaves 2 spaces
+])
+def test_units_become_mathrm(src, expected):
+    assert normalize_math(src) == expected
+
+
+# --- a leading "N." is only a problem number when the rest is still math
+
+def test_decimal_span_is_not_split_as_a_problem_number():
+    assert normalize_math("$3. 14$") == "$3. 14$"
+    assert normalize_math("접수 2026. 07. 21(화)") == "접수 2026. 07. 21(화)"
+
+
+def test_problem_number_ejection_still_works():
+    assert normalize_math("$5. (3x+4)$") == "5. $(3x+4)$"
+
+
+# --- table cells are problem data: never drop a row the OCR malformed
+
+def test_table_row_without_cell_tags_keeps_its_text():
+    src = "<table><tr><td>2, 4, 6</td></tr><tr>8, 10, 12</tr></table>"
+    out = normalize_math(src)
+    assert "2, 4, 6" in out and "8, 10, 12" in out
+
+
+def test_truncated_table_does_not_leak_markup():
+    out = normalize_math("<table><td>12</td>")
+    assert "<" not in out and "12" in out
+
+
+# --- a clock time is not a 비례식 (the ratio signal made it "14 콜론 00")
+
+@pytest.mark.parametrize("src", [
+    "1) 2026.06.24(수) 14:00 문제 공개",
+    "회의는 09:30 시작",
+    "2:00 에 만나자",
+])
+def test_clock_time_is_not_wrapped_as_a_ratio(src):
+    assert normalize_math(src) == src
+
+
+@pytest.mark.parametrize("src,expected", [
+    ("두 수의 비는 3:4 이다", "두 수의 비는 $3:4$ 이다"),
+    ("변의 비가 5:12 인 삼각형", "변의 비가 $5:12$ 인 삼각형"),
+])
+def test_real_ratios_still_wrap(src, expected):
+    assert normalize_math(src) == expected
