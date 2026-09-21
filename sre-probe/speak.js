@@ -351,8 +351,10 @@ function checkWellFormed(xml) {
  *    puts the exponent FIRST (제곱센티미터). normalize.py wraps every metric
  *    unit in \mathrm{}, so this reaches all of them (issue #20, ⚠ list).
  *  - "흰색 상향 삼각형" is the Unicode name of △ leaking through; the word is
- *    just 삼각형. "물결표" is the same for ∽ — in this pipeline \sim only ever
- *    comes from 닮음 notation, so it reads 닮음이다 (both #20, ❌ list).
+ *    just 삼각형. "물결표" is the same for ∽ — in this pipeline a BINARY \sim
+ *    only ever comes from 닮음 notation, so it reads 닮음이다 (both #20, ❌ list).
+ *    Spaces on both sides are required so the accent \tilde{x}, which SRE also
+ *    renders "x 물결표", is not turned into "x 닮음이다".
  *  - SRE spells the trig functions 싸인/코싸인; textbooks write 사인/코사인.
  *  - a ratio colon is read "콜론"; 비례식 is spoken "대" — 3:4 is "삼 대 사", not
  *    "삼 콜론 사" (issue #20, ❌ list). Chains fall out for free: the matches
@@ -366,7 +368,7 @@ function fixMisreads(speech) {
   return speech
     .replace(/흰색 정사각형/g, '네모')
     .replace(/흰색 상향 삼각형/g, '삼각형')   // Unicode character name leaking
-    .replace(/물결표/g, '닮음이다')            // ∽ -> \sim; only 닮음 reaches here
+    .replace(/ 물결표 /g, ' 닮음이다 ')        // ∽ only BETWEEN operands (see note)
     .replace(/코싸인/g, '코사인')              // textbook spelling (#20)
     .replace(/싸인/g, '사인')
     .replace(UNIT_POWER, '$2$1')

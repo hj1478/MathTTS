@@ -108,3 +108,9 @@ test('fixMisreads clears the remaining #20 geometry misreads', () => {
     '삼각형 A B C 닮음이다 삼각형 D E F');
   assert.strictEqual(fixMisreads('싸인 A 더하기 코싸인 B'), '사인 A 더하기 코사인 B');
 });
+
+test('fixMisreads rewrites only a BINARY 물결표, never the \\tilde accent', () => {
+  assert.strictEqual(fixMisreads('삼각형 A B C 물결표 삼각형 D E F'),
+    '삼각형 A B C 닮음이다 삼각형 D E F');
+  assert.strictEqual(fixMisreads('x 물결표'), 'x 물결표');   // \tilde{x}, not 닮음
+});
