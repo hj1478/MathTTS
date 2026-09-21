@@ -67,6 +67,13 @@ def safe_stem(path):
     return re.sub(r"[^\w\-]+", "_", Path(path).stem).strip("_") or "input"
 
 
+def page_key(p):
+    """Sort <name>_<n>.md|<name>_<n> by page NUMBER. ocr_pages writes the index
+    unpadded, so plain sorted() puts _10 before _2 from ten pages on."""
+    m = re.search(r"_(\d+)$", Path(p).stem)
+    return (int(m.group(1)) if m else -1, str(p))
+
+
 def ocr_pages(path, run_dir):
     """OCR one input (a PDF yields one result per page) -> ordered .md files."""
     import ocr_vl  # heavy import + lazy model load stay out of --stitched mode
@@ -312,7 +319,7 @@ def review_pages(cfg, page_texts, sources, run_dir, name):
             futures = {s: pool.submit(judge_page, cfg, sources.get(s, ""), t, s)
                        for s, t in to_judge.items()}
             judged = {s: f.result() for s, f in futures.items()}
-    for stem in sorted(page_texts):
+    for stem in sorted(page_texts, key=page_key):
         speech = page_texts[stem]
         entry = {"page": stem, "lint": lint_text(speech), "judge": []}
         if not speech.strip():
@@ -360,7 +367,7 @@ def process_inbox(cfg, force, force_ocr=False, no_dots=False):
         if (run_dir / "review.json").exists() and not force:
             print(f"  already reviewed ({run_dir/'review.json'}) — use --force to redo")
             continue
-        cached = [p for p in sorted(run_dir.glob(f"{name}_*.md"))
+        cached = [p for p in sorted(run_dir.glob(f"{name}_*.md"), key=page_key)
                   if not p.name.endswith((".norm.md", ".dots.md"))]
         if cached and (run_dir / "ocr.done").exists() and not force_ocr:
             print(f"  [ocr] reusing {len(cached)} cached page(s) in {run_dir}")

@@ -7,7 +7,7 @@ the cached raw OCR (output/*.md for the root images, runs/<name>/*_<p>.md for
 every previously processed PDF), splits each page at question markers, runs
 ONE speak.js --ssml pass over all chunks, then synthesizes every chunk with
 Azure. Also emits a few synthetic 순환소수 questions (source "repeating_
-decimals") so the provisional reading C is audible on full problems, not just
+decimals") so the chosen reading C is audible on full problems, not just
 the dot_reading_probe.py candidate snippets.
 
 Question boundaries (heuristic): a line starting with "N. " or "[N]" opens a
@@ -37,6 +37,13 @@ TAGS = re.compile(r"<[^>]+>")
 # of TTS reading 📊 seventy times) — never meaningful in a worksheet, drop them
 EMOJI = re.compile("[\U0001F000-\U0001FAFF☀-➿️‍]")
 _WORDCHAR = re.compile(r"[가-힣0-9A-Za-z]")
+
+
+def _page_key(p):
+    """Sort <name>_<n>.md by page NUMBER — the index is written unpadded, so
+    plain sorted() puts _10 before _2 from ten pages on."""
+    m = re.search(r"_(\d+)$", Path(p).stem)
+    return (int(m.group(1)) if m else -1, str(p))
 
 REPEATING_QUESTIONS = [
     ("q1_dots", "순환소수 0.2̇3̇을 분수로 나타내시오."),
@@ -75,7 +82,7 @@ def collect():
     for run in sorted((ROOT / "runs").iterdir()):
         if not run.is_dir():
             continue
-        for md in sorted(run.glob(f"{run.name}_*.md")):
+        for md in sorted(run.glob(f"{run.name}_*.md"), key=_page_key):
             if md.name.endswith((".norm.md", ".dots.md")):
                 continue
             dots = md.parent / (md.stem + ".dots.md")   # prefer dot-restored text
@@ -129,7 +136,8 @@ def main():
     from tts_probe import make_config, synth
     cfg = make_config(a.voice)
     out_root = Path(a.out)
-    manifest, failures = [], 0
+    out_root.mkdir(parents=True, exist_ok=True)   # manifest.tsv is written even
+    manifest, failures = [], 0                    # if every chunk was skipped
     for i, (src, label, f) in enumerate(files, 1):
         ssml_file = tmp / f"{src}__{label}.stitched.ssml"
         if not ssml_file.exists():
