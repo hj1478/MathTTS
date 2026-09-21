@@ -63,6 +63,7 @@ TODO
 |---|---|---|---|
 | 0 (optional) | `pdf_to_images.py` | `*.pdf` → `pages/*.png` | Renders PDF pages to PNGs the OCR can read (200 DPI default) |
 | 1. OCR | `ocr_vl.py` | `*.png` → `output/*.md` | PaddleOCR-VL, locally on CPU: Korean prose + inline `$...$` LaTeX |
+| 1.5 Dots (opt-in) | `dot_check.py` | `*.md` → `*.dots.md` | `run.py --dots` only. Text-only LLM pass restoring 순환소수 dots the OCR dropped; writes beside the raw page, which stage 2 then prefers |
 | 2. Normalize | `normalize.py` | `*.md` → `*.norm.md` | Canonicalizes the OCR's inconsistent math (unicode, bare runs, stray `$`) into `$...$` LaTeX |
 | 3. Math → speech | `sre-probe/speak.js` | `*.norm.md` → `stitched/*.stitched.txt` / `.ssml` | temml → MathML → SRE (locale ko); stitches Korean speech back into the prose |
 | 4. TTS | `tts_full.py` | `stitched/*` → `audio/*.wav` | Azure Neural TTS; plain and SSML versions per problem for A/B listening |
@@ -210,11 +211,18 @@ cd sre-probe && npm install && cd ..
 MB) to `~/.paddlex/official_models/`, and CPU inference takes tens of seconds
 per image. Both are printed at runtime; it is not hung.
 
-**Credentials** — stages 0–3 are fully local; stage 4 (Azure TTS) and the LLM
-eval scripts are the only network/paid parts. Copy `.env.example` to `.env`
-next to the scripts, or export the same variables: `AZURE_SPEECH_KEY` plus
-`AZURE_SPEECH_ENDPOINT` (or `AZURE_SPEECH_REGION`) for TTS; `OPENAI_API_KEY`
-for `inbox_eval.py` / `dot_check.py`.
+**Credentials** — a plain run is fully local except stage 4. Two things cost
+money, and both are opt-in:
+
+| What | Needs | When it is charged |
+|---|---|---|
+| Stage 4, Azure TTS | `AZURE_SPEECH_KEY` + `AZURE_SPEECH_ENDPOINT` (or `AZURE_SPEECH_REGION`) | Every run that reaches it; skip with `--skip-tts` |
+| Stage 1.5, dot restore | `OPENAI_API_KEY` | Only with `run.py --dots`, and only for a page carrying both a decimal and a repetition signal |
+| `inbox_eval.py`, `dot_eval.py` | `OPENAI_API_KEY` | Eval drivers, run on demand |
+
+Stages 0–3 are otherwise local: OCR runs on your CPU and the speech stage is a
+local Node process. Copy `.env.example` to `.env` next to the scripts, or
+export the same variables.
 
 `run.py` chains everything:
 
@@ -266,15 +274,20 @@ Whether SRE's Korean fraction/relation grouping is intelligible by ear is
 likewise an open listening question — `tts_probe.py`'s four cases exist for
 it.
 
-Known failure, half-addressed: 순환소수 (repeating decimals) had two
-independent problems; one remains, one is fixed.
+순환소수 (repeating decimals) had two independent problems. Both are now
+addressed — but the first repair is opt-in, so a *default* run still mis-reads
+a printed one. That is a deliberate choice, not a gap, and it is the honest
+caveat on this whole section.
 
-*The notation is lost (still open).* PaddleOCR-VL drops the small dots printed
-above the repeating digits, so `0.2̇4̇` arrives as a plain `0.24` and is spoken
-as if it terminated. `dot_check.py` restores them from surrounding context,
-but nothing in `run.py` calls it — today it runs inside `inbox_eval.py`, or by
-hand with `python dot_check.py --write FILE.md` (this is part of open
-question #15).
+*The notation is lost (repaired by `--dots`).* PaddleOCR-VL drops the small
+dots printed above the repeating digits, so `0.2̇4̇` arrives as a plain `0.24`
+and would be spoken as if it terminated. Stage 1.5 (`run.py --dots`, settled
+in #15) restores them from surrounding context with a text-only LLM pass. It
+is off by default for two reasons that outlive each other: it is the only
+stage besides Azure TTS that costs money, and a wrong dot **corrupts** a
+correct number where a missing one merely reproduces the status quo —
+`dot_eval.py` measures precision and recall per number for exactly that
+asymmetry. Without `--dots`, a printed 순환소수 is still read as terminating.
 
 *The reading (decided, #17).* SRE itself cannot read the notation — it names
 the decoration instead of interpreting it, whatever the encoding; measured
