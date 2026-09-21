@@ -38,8 +38,9 @@
  *
  * Repeating decimals (순환소수, both modes): \dot{}/​\overline{} decimals are
  * spoken as reading C from the #17 experiment ("영 점 일 이삼 이삼 반복" —
- * pattern twice, then 반복). PROVISIONAL: one candidate among several, adopted
- * as interim default before the dot_reading_probe.py listening verdict.
+ * pattern twice, then 반복). Chosen 2026-09-21; see
+ * docs/findings/17_repeating_decimals.md for the candidates it beat and for
+ * the one case the choice leaves untested.
  */
 
 'use strict';
@@ -136,13 +137,14 @@ const AZURE_SSML = (voice, body) =>
 
 /* --------------------- repeating decimals (순환소수) --------------------- */
 
-// PROVISIONAL (#17): repeating decimals speak as reading C from the
+// #17, decided 2026-09-21: repeating decimals speak as reading C from the
 // dot_reading_probe.py experiment — pattern twice, then 반복:
 //   0.\dot{2}\dot{4}   -> "영 점 이사 이사 반복"
 //   0.1\dot{2}\dot{3}  -> "영 점 일 이삼 이삼 반복"
-// This is ONE OPTION adopted as the interim default BEFORE the listening
-// verdict (the probe's case3-vs-case5 pair tests exactly this reading's
-// weakness on partial repetends). Swap readRepeating() when #17 is decided.
+// Known limit of this reading: on a PARTIAL repetend it separates 0.12̇3̇ from
+// 0.1̇23̇ by phrasing alone ("일 이삼 이삼" vs "일이삼 일이삼"), which a TTS
+// voice may flatten — the probe's case3-vs-case5 pair. Reading B marks the
+// boundary with a word instead; swapping readRepeating() is the whole change.
 
 const DIGIT_KO = { 0: '영', 1: '일', 2: '이', 3: '삼', 4: '사',
                    5: '오', 6: '육', 7: '칠', 8: '팔', 9: '구' };
@@ -306,11 +308,27 @@ function checkWellFormed(xml) {
 
 /**
  * Post-SRE speech rewrites for SRE-ko misreads with a known better Korean form.
- * \Box (fill-in-the-blank □) is read "흰색 정사각형" (lit. "white square");
- * Korean math speech calls the blank "네모".
+ * Each pattern stays inside ONE text node, so the SSML path's <say-as> tags
+ * around identifiers are never split by a rewrite.
+ *
+ *  - \Box (fill-in-the-blank □) is read "흰색 정사각형" (lit. "white square");
+ *    Korean math speech calls the blank "네모".
+ *  - a squared/cubed unit comes out in English order ("센티미터 제곱"); Korean
+ *    puts the exponent FIRST (제곱센티미터). normalize.py wraps every metric
+ *    unit in \mathrm{}, so this reaches all of them (issue #20, ⚠ list).
+ *  - a ratio colon is read "콜론"; 비례식 is spoken "대" — 3:4 is "삼 대 사", not
+ *    "삼 콜론 사" (issue #20, ❌ list). Chains fall out for free: the matches
+ *    do not overlap, so "3 콜론 4 콜론 5" becomes "3 대 4 대 5". A colon in
+ *    고등학교 set-builder notation would also be caught, but none reaches this
+ *    pipeline — every ':' in 초·중 print is a ratio.
  */
+const UNIT_POWER = /(센티미터|밀리미터|킬로미터|미터) (세제곱|제곱)/g;
+
 function fixMisreads(speech) {
-  return speech.replace(/흰색 정사각형/g, '네모');
+  return speech
+    .replace(/흰색 정사각형/g, '네모')
+    .replace(UNIT_POWER, '$2$1')
+    .replace(/ 콜론 /g, ' 대 ');
 }
 
 /**
@@ -464,7 +482,7 @@ async function main() {
     const renderSpan = (latex, escape) => {
       stats.spans++;
       // Segment path: repeating decimals speak as ready-made Korean text in
-      // BOTH modes (reading C, provisional — see #17 note above); a complex
+      // BOTH modes (reading C, decided — see the #17 note above); a complex
       // radicand switches to the alternate-gender voice (SSML only). Any
       // segment without clean speech falls back to the whole-span path.
       const segs = splitSpecials(latex, ssml);
@@ -565,7 +583,7 @@ async function main() {
   }
 }
 
-module.exports = { SPAN, checkWellFormed, splitRadicals, splitRepeating };
+module.exports = { SPAN, checkWellFormed, splitRadicals, splitRepeating, fixMisreads };
 
 if (require.main === module) {
   main().catch((err) => {
