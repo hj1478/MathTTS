@@ -31,3 +31,26 @@ Result after listening:
 
 Which reading (if any) survives the case3-vs-case5 pair:
 What surprised me:
+
+---
+
+## Decided 2026-09-21 — reading C
+
+Adopted as the project default by the maintainer. `speak.js` no longer marks
+it provisional, and the README's "half-addressed" framing is updated to match.
+
+Recorded as it happened: this was a choice among the three candidates as
+written, not the outcome of the listening test above — the Prediction and
+Result lines are still blank. So the weakness C was built to expose is
+untested, not cleared:
+
+| printed | reading C |
+|---|---|
+| `0.12̇3̇` (repetend 23) | 영 점 **일 이삼 이삼** 반복 |
+| `0.1̇23̇` (repetend 123) | 영 점 **일이삼 일이삼** 반복 |
+
+Same syllables, same order; only phrasing separates them, and a TTS voice
+flattens phrasing. If a listen later shows the pair is indistinguishable,
+reopen this: reading B marks the boundary with a word ("영 점 일 **다음**
+이삼이 반복") and is the ready fallback — swapping `readRepeating()` in
+`speak.js` is the whole change.

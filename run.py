@@ -83,7 +83,14 @@ def main():
 
     # --- stage 1: OCR ------------------------------------------------------
     if a.skip_ocr:
-        mds = sorted(p for p in out.glob("*.md") if not p.name.endswith(".norm.md"))
+        # ".dots.md" (dot_check.py --write) is a PATCHED COPY of a page, not
+        # another page: globbing it in normalizes and stitches it alongside its
+        # own original, silently doubling the output and the Azure bill. Whether
+        # a plain run should PREFER the patched copy is the open question in #15;
+        # processing both is wrong under either answer. inbox_eval.py already
+        # excludes it the same way.
+        mds = sorted(p for p in out.glob("*.md")
+                     if not p.name.endswith((".norm.md", ".dots.md")))
         print(f"[stage 1] skipped — reusing {len(mds)} .md file(s) in {out}")
     else:
         import ocr_vl
@@ -123,13 +130,25 @@ def main():
     if a.skip_speak:
         print("[stage 3] skipped — reusing stitched/*")
     else:
-        base = ["node", SPEAK_JS, "--voice", a.voice,
-                "--write", Path(a.stitched).resolve()]
+        stitch_dir = Path(a.stitched).resolve()
+        base = ["node", SPEAK_JS, "--voice", a.voice, "--write", stitch_dir]
         if not a.lenient:
             base.insert(2, "--strict")
         norm_abs = [p.resolve() for p in norms]
+        # speak.js deliberately does NOT write a file whose SSML came out
+        # malformed. Clear this run's targets first and check them after, or
+        # --lenient walks past the failure and stage 4 pays Azure to read the
+        # PREVIOUS run's file back as if it were this one.
+        targets = [stitch_dir / f"{p.name.removesuffix('.norm.md')}.stitched.{ext}"
+                   for p in norms for ext in ("txt", "ssml")]
+        for t in targets:
+            t.unlink(missing_ok=True)
         run_stage("stage 3", base + norm_abs)
         run_stage("stage 3", base + ["--ssml"] + norm_abs)
+        missing = [t.name for t in targets if not t.exists()]
+        if missing:
+            sys.exit(f"[stage 3] speak.js wrote no output for {', '.join(missing)} "
+                     "— malformed SSML; stopping before stage 4.")
 
     # --- stage 4: Azure TTS ------------------------------------------------
     if a.skip_tts:

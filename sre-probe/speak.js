@@ -38,8 +38,9 @@
  *
  * Repeating decimals (순환소수, both modes): \dot{}/​\overline{} decimals are
  * spoken as reading C from the #17 experiment ("영 점 일 이삼 이삼 반복" —
- * pattern twice, then 반복). PROVISIONAL: one candidate among several, adopted
- * as interim default before the dot_reading_probe.py listening verdict.
+ * pattern twice, then 반복). Chosen 2026-09-21; see
+ * docs/findings/17_repeating_decimals.md for the candidates it beat and for
+ * the one case the choice leaves untested.
  */
 
 'use strict';
@@ -136,13 +137,14 @@ const AZURE_SSML = (voice, body) =>
 
 /* --------------------- repeating decimals (순환소수) --------------------- */
 
-// PROVISIONAL (#17): repeating decimals speak as reading C from the
+// #17, decided 2026-09-21: repeating decimals speak as reading C from the
 // dot_reading_probe.py experiment — pattern twice, then 반복:
 //   0.\dot{2}\dot{4}   -> "영 점 이사 이사 반복"
 //   0.1\dot{2}\dot{3}  -> "영 점 일 이삼 이삼 반복"
-// This is ONE OPTION adopted as the interim default BEFORE the listening
-// verdict (the probe's case3-vs-case5 pair tests exactly this reading's
-// weakness on partial repetends). Swap readRepeating() when #17 is decided.
+// Known limit of this reading: on a PARTIAL repetend it separates 0.12̇3̇ from
+// 0.1̇23̇ by phrasing alone ("일 이삼 이삼" vs "일이삼 일이삼"), which a TTS
+// voice may flatten — the probe's case3-vs-case5 pair. Reading B marks the
+// boundary with a word instead; swapping readRepeating() is the whole change.
 
 const DIGIT_KO = { 0: '영', 1: '일', 2: '이', 3: '삼', 4: '사',
                    5: '오', 6: '육', 7: '칠', 8: '팔', 9: '구' };
@@ -193,12 +195,46 @@ function splitRepeating(latex) {
   return segs;
 }
 
-/** Repeating-decimal split (both modes) + radical split (SSML only). */
+/* ------------------------- 선분 (\overline over letters) ------------------ */
+
+// \overline over LETTERS is 선분 (line segment), not a decoration. SRE reads it
+// as "A B 윗줄" — it names the bar and never says the word, 21 times in the
+// current corpus (#20, ❌ list). Intercepted here rather than rewritten after
+// SRE because the fix is a REORDER — Korean puts 선분 FIRST — and in the SSML
+// path the letters sit inside <say-as> tags, so a regex moving the word would
+// have to cross markup.
+// \overrightarrow and \vec name the bar the same way and are deliberately left
+// alone: the same notation is 반직선 in 중1 and 벡터 in 고등, so it needs a
+// reading decision, not a rewrite.
+const SEGMENT = /\\overline\{([A-Z]{2,4})\}/g;
+
+function splitSegments(latex) {
+  const segs = [];
+  let last = 0;
+  for (const m of latex.matchAll(SEGMENT)) {
+    const before = latex.slice(last, m.index);
+    if (before.trim()) segs.push({ latex: before });
+    segs.push({ text: `선분 ${[...m[1]].join(' ')}` });
+    last = m.index + m[0].length;
+  }
+  if (!segs.length) return [{ latex }];
+  const after = latex.slice(last);
+  if (after.trim()) segs.push({ latex: after });
+  return segs;
+}
+
+/** Repeating-decimal + 선분 splits (both modes) + radical split (SSML only). */
 function splitSpecials(latex, withRadicals) {
   const out = [];
   for (const seg of splitRepeating(latex)) {
-    if (seg.latex !== undefined && withRadicals) out.push(...splitRadicals(seg.latex));
-    else out.push(seg);
+    if (seg.latex === undefined) {
+      out.push(seg);
+      continue;
+    }
+    for (const sub of splitSegments(seg.latex)) {
+      if (sub.latex !== undefined && withRadicals) out.push(...splitRadicals(sub.latex));
+      else out.push(sub);
+    }
   }
   return out;
 }
@@ -306,11 +342,37 @@ function checkWellFormed(xml) {
 
 /**
  * Post-SRE speech rewrites for SRE-ko misreads with a known better Korean form.
- * \Box (fill-in-the-blank □) is read "흰색 정사각형" (lit. "white square");
- * Korean math speech calls the blank "네모".
+ * Each pattern stays inside ONE text node, so the SSML path's <say-as> tags
+ * around identifiers are never split by a rewrite.
+ *
+ *  - \Box (fill-in-the-blank □) is read "흰색 정사각형" (lit. "white square");
+ *    Korean math speech calls the blank "네모".
+ *  - a squared/cubed unit comes out in English order ("센티미터 제곱"); Korean
+ *    puts the exponent FIRST (제곱센티미터). normalize.py wraps every metric
+ *    unit in \mathrm{}, so this reaches all of them (issue #20, ⚠ list).
+ *  - "흰색 상향 삼각형" is the Unicode name of △ leaking through; the word is
+ *    just 삼각형. "물결표" is the same for ∽ — in this pipeline a BINARY \sim
+ *    only ever comes from 닮음 notation, so it reads 닮음이다 (both #20, ❌ list).
+ *    Spaces on both sides are required so the accent \tilde{x}, which SRE also
+ *    renders "x 물결표", is not turned into "x 닮음이다".
+ *  - SRE spells the trig functions 싸인/코싸인; textbooks write 사인/코사인.
+ *  - a ratio colon is read "콜론"; 비례식 is spoken "대" — 3:4 is "삼 대 사", not
+ *    "삼 콜론 사" (issue #20, ❌ list). Chains fall out for free: the matches
+ *    do not overlap, so "3 콜론 4 콜론 5" becomes "3 대 4 대 5". A colon in
+ *    고등학교 set-builder notation would also be caught, but none reaches this
+ *    pipeline — every ':' in 초·중 print is a ratio.
  */
+const UNIT_POWER = /(센티미터|밀리미터|킬로미터|미터) (세제곱|제곱)/g;
+
 function fixMisreads(speech) {
-  return speech.replace(/흰색 정사각형/g, '네모');
+  return speech
+    .replace(/흰색 정사각형/g, '네모')
+    .replace(/흰색 상향 삼각형/g, '삼각형')   // Unicode character name leaking
+    .replace(/ 물결표 /g, ' 닮음이다 ')        // ∽ only BETWEEN operands (see note)
+    .replace(/코싸인/g, '코사인')              // textbook spelling (#20)
+    .replace(/싸인/g, '사인')
+    .replace(UNIT_POWER, '$2$1')
+    .replace(/ 콜론 /g, ' 대 ');
 }
 
 /**
@@ -321,7 +383,7 @@ function fixMisreads(speech) {
 const SALVAGE_KO = {
   pm: '플러스 마이너스', sqrt: '루트', times: '곱하기', div: '나누기',
   cdot: '곱하기', frac: '분수', pi: '파이', infty: '무한대',
-  sin: '싸인', cos: '코싸인', tan: '탄젠트', leq: '작거나 같다', geq: '크거나 같다',
+  sin: '사인', cos: '코사인', tan: '탄젠트', leq: '작거나 같다', geq: '크거나 같다',
 };
 
 function salvage(latex) {
@@ -464,7 +526,7 @@ async function main() {
     const renderSpan = (latex, escape) => {
       stats.spans++;
       // Segment path: repeating decimals speak as ready-made Korean text in
-      // BOTH modes (reading C, provisional — see #17 note above); a complex
+      // BOTH modes (reading C, decided — see the #17 note above); a complex
       // radicand switches to the alternate-gender voice (SSML only). Any
       // segment without clean speech falls back to the whole-span path.
       const segs = splitSpecials(latex, ssml);
@@ -565,7 +627,7 @@ async function main() {
   }
 }
 
-module.exports = { SPAN, checkWellFormed, splitRadicals, splitRepeating };
+module.exports = { SPAN, checkWellFormed, splitRadicals, splitRepeating, splitSegments, fixMisreads };
 
 if (require.main === module) {
   main().catch((err) => {

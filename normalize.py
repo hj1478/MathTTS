@@ -26,8 +26,9 @@ DOES:
   - convert unicode math -> LaTeX: x²->x^2, ≤->\\leq, ×->\\times, √n->\\sqrt{n},
     sub/superscripts, greek (π->\\pi ...), geometry (∠->\\angle, △, ≡, ∽, ⊥, ∥, →;
     ° kept as-is — SRE-ko reads the raw char as "도" but misreads ^\\circ), repeating-
-    decimal dots (2̇->\\dot{2}), digit-adjacent metric units (5cm->5\\mathrm{cm}),
-    both inside existing $...$ and in bare text
+    decimal dots (2̇->\\dot{2}), metric units inside math (5cm / "3 cm" / "36\\pi cm"
+    -> \\mathrm{cm}; SRE spells a bare unit out as "c m"), both inside existing
+    $...$ and in bare text
   - wrap a bare math RUN in $...$ only when it has a clear signal: a super/subscript,
     a unicode math symbol, letter-digit adjacency (3x), an operator between operands
     (x-y, 2+3), a leading negative (-2.4), parentheses containing alphanumerics,
@@ -39,12 +40,17 @@ DOES:
     leading cells (spoken as "빈 칸"), and unwrap an env left with one unaligned row
   - repair math spans that swallowed prose: a leading problem number ("$5. (3x+4)$")
     and everything from an unmatched '(' onward ("$p\\leq k<q(p, q$") are ejected
+    — the number only when what follows is still math, so "$3. 14$" stays whole
+  - eject orphan brackets whose partner Hangul split off ("그래프(초3-4)"): they
+    are prose, must not count as the "parentheses" math signal, and would
+    otherwise be spoken as a "괄호 닫고" that never opened
   - treat a $..$ containing Hangul as NOT math: a stray unpaired '$' in prose
     would otherwise pair with a later math '$' and swallow the prose between
 
 DOESN'T (documented misses, chosen to avoid false positives):
   - wrap a lone variable with no signal: "x의" stays "x의" (would risk "A형"->"$A$형")
-  - wrap bare numbers: "3.14", "7." (leading list numbers) stay as text
+  - wrap bare numbers: "3.14", "7." (leading list numbers) stay as text, nor a
+    bare clock time ("14:00" would be read as the ratio "14 콜론 00")
   - parse/validate LaTeX or resolve ambiguous digit ranges ("3-4" -> $3-4$ if it looks
     like subtraction; that's accepted as a known edge)
   - touch ℃/% or single-letter units (m, g, L): left as prose for the TTS voice,
@@ -81,7 +87,11 @@ SYM = {"×": r"\times ", "÷": r"\div ", "·": r"\cdot ", "⋅": r"\cdot ", "±"
        # ∽ and → read literally ("물결표", "오른쪽 화살표") but silence loses meaning.
        # ° stays as-is (identity): temml reads the raw char as "도", while ^\circ is
        # misread by SRE-ko as function composition — do NOT "canonicalize" it.
-       "∠": r"\angle ", "△": r"\triangle ", "≡": r"\equiv ", "∽": r"\sim ",
+       # ≅ means 합동 exactly as ≡ does, but SRE reads \cong as "거의 같다" —
+       # colliding with ≈. Normalize it to \equiv so both spellings reach the
+       # one command that speaks 합동이다 (#20, "One finding that is directly usable")
+       "∠": r"\angle ", "△": r"\triangle ", "≡": r"\equiv ", "≅": r"\equiv ",
+       "∽": r"\sim ",
        "⊥": r"\perp ", "∥": r"\parallel ", "≦": r"\leq ", "≧": r"\geq ",
        "→": r"\to ", "°": "°",
        # fill-in-the-blank box (□안에 알맞은 수): SRE-ko reads \Box as
@@ -123,6 +133,9 @@ SPAN = re.compile(
 # the <table> alternative below only catches malformed leftovers.
 HTML_BLOCK = re.compile(
     r"<table\b.*?</table>"
+    # unclosed/stray table markup (OCR truncates a table mid-way): drop the TAGS
+    # only, so the cell text survives instead of "<table><td>" reaching speech
+    r"|</?(?:table|thead|tbody|tfoot|tr|t[dh])\b[^>]*>"
     r"|<div\b[^>]*>|</div\s*>"
     r"|<img\b[^>]*/?>"
     r"|<br\s*/?>",
@@ -143,9 +156,20 @@ _RDOT_DIGIT = re.compile("([0-9])̇")   # 2̇ (combining dot above) -> \dot{2}
 # ^{\circ} / ^\circ -> raw ° INSIDE math: temml+SRE read the raw char as "도",
 # while the superscript form is misread as function composition ("합성 함수")
 _CIRC = re.compile(r"\^\s*\{?\s*\\circ\s*\}?")
-# digit-adjacent metric unit -> \mathrm{..} so SRE says "센티미터", not "c m".
+# \cong -> \equiv, for the same reason as the ≅ entry in SYM above
+_CONG = re.compile(r"\\cong(?![A-Za-z])")
+# A metric unit inside math is a standalone TOKEN and must become \mathrm{..}
+# wherever it sits: SRE spells a bare one out letter by letter ("3 c m"), which
+# no listener parses. The separating space is optional — "$r = 3 cm$" needs the
+# wrap as much as "3cm" does — and matching runs before _WS collapses runs of
+# spaces, so the \Box form must tolerate the double space "□ cm" translates into.
 # Multi-letter units only: a lone m/g/L after a digit is more likely a variable.
-_UNIT = re.compile(r"(?:(?<=[0-9])|(?<=\\Box ))(cm|mm|km|kg|mL|ml)(?![A-Za-z])")
+_UNITS = r"(cm|mm|km|kg|mL|ml)(?![A-Za-z])"
+_UNIT_DIGIT = re.compile(r"(?<=[0-9])\s*" + _UNITS)   # swallow the gap: "3 cm"
+# same unit after a brace or a LaTeX command ("x^{2} cm", "36\pi cm", "\Box cm"):
+# keep the gap, it terminates the command name. The lookbehind keeps this off
+# identifiers, command names and the \mathrm{cm} the rule above just produced.
+_UNIT_TOKEN = re.compile(r"(?<![A-Za-z\\{])" + _UNITS)
 # "\quad(a<0)" — a \quad-spaced parenthesized CONDITION after an expression;
 # juxtaposition would be read as multiplication ("네모 곱하기 괄호 열고 a...")
 _QUAD_COND = re.compile(r"\\q?quad\s*(?=\()")
@@ -205,7 +229,7 @@ _TEXT_CMD_UNMASKED = re.compile("\\\\text\\s*\\{([^{}\x00]*)\\}")
 _BARE_CMD = {"times": "×", "div": "÷", "cdot": "·", "leq": "≤", "geq": "≥",
              "neq": "≠", "pm": "±", "pi": "π", "sqrt": "√", "infty": "∞",
              # bare trig commands -> Korean words (in-span \tan is fine as-is)
-             "sin": "싸인 ", "cos": "코싸인 ", "tan": "탄젠트 "}
+             "sin": "사인 ", "cos": "코사인 ", "tan": "탄젠트 "}
 # (?![A-Za-z]) not \b: a digit may follow directly ("2\times13") and \b would
 # fail between two word chars, dropping the command instead of converting it
 _BARE_CMD_RE = re.compile(r"\\(" + "|".join(_BARE_CMD) + r")(?![A-Za-z]) ?")
@@ -238,7 +262,7 @@ _ENV_BLOCK = re.compile(r"\\begin\{[^}]+\}.*?\\end\{[^}]+\}", re.DOTALL)
 _HANGUL_RUN = re.compile(r"[가-힣](?:[가-힣 \t]*[가-힣])?")
 # bare trig words in prose ("sin 30°"): OCR often emits them without \ or $
 _TRIG = re.compile(r"\b(sin|cos|tan)(?![A-Za-z])\s*")
-_TRIG_KO = {"sin": "싸인 ", "cos": "코싸인 ", "tan": "탄젠트 "}
+_TRIG_KO = {"sin": "사인 ", "cos": "코사인 ", "tan": "탄젠트 "}
 # a run of ONLY connector dots (가운뎃점 · in headers, ··· ellipsis) is Korean
 # punctuation, not math — wrapping it makes SRE say "닷"
 _CONNECTOR_ONLY = re.compile(r"^[·⋅… ]+$")
@@ -250,6 +274,11 @@ _SIG_OP = re.compile(r"[0-9A-Za-z]\s*[-+*/=^<>]\s*[0-9A-Za-z]")    # x-y, 2+3, a
 _SIG_NEG = re.compile(r"^-\s*[0-9]")                               # -2.4
 _SIG_ABS = re.compile(r"\|[^|]+\|")                                # |a|, |x-2|
 _SIG_RATIO = re.compile(r"[0-9A-Za-z]:[0-9A-Za-z]")                # 3:4 (비례식)
+# ...but a run that is ONLY a clock time is not one: the ratio signal turns
+# "14:00" into "14 콜론 00". Told apart conservatively — a zero-padded hour or
+# minute ("09:30", "14:00") or an hour past 12 ("13:45"). An ambiguous "12:30"
+# stays a ratio; worksheets write 비례식 as "3:4" / "5:12", never zero-padded.
+_CLOCK = re.compile(r"0\d:\d{2}|\d{1,2}:0\d|1[3-9]:\d{2}|2[0-4]:\d{2}")
 _SIG_RDOT = re.compile("[0-9]̇")                              # 2̇ (순환소수)
 # a 4+-letter lowercase word means English PROSE, not math (variables are 1–2
 # letters; sin/cos/tan are converted earlier) — wrapping it makes SRE spell it
@@ -296,6 +325,7 @@ def _latexify(s, literal_braces=False):
         s = s.replace("{", r"\{").replace("}", r"\}")
     s = _clean_envs(s)
     s = _CIRC.sub("°", s)
+    s = _CONG.sub(r"\\equiv", s)
     s = _RDOT_DIGIT.sub(r"\\dot{\1}", s)
     s = _SUP_RUN.sub(lambda m: "^{" + "".join(SUP[c] for c in m.group()) + "}", s)
     s = _SUB_RUN.sub(lambda m: "_{" + "".join(SUB[c] for c in m.group()) + "}", s)
@@ -307,13 +337,14 @@ def _latexify(s, literal_braces=False):
     s = _SUP_UNBRACE.sub(r"^\1", s)   # x^{2} -> x^2 (single char only)
     s = _SUB_UNBRACE.sub(r"_\1", s)
     s = _QUAD_COND.sub(", ", s)
-    s = _UNIT.sub(r"\\mathrm{\1}", s)  # after unbracing so "b^2cm" sees the digit
+    s = _UNIT_DIGIT.sub(r"\\mathrm{\1}", s)  # after unbracing: "b^2cm" sees the digit
+    s = _UNIT_TOKEN.sub(r"\\mathrm{\1}", s)
     return _WS.sub(" ", s).strip()
 
 
 def _is_math(core):
     """True if a run (already stripped of edge punctuation) has a clear math signal."""
-    if _ENGLISH_WORD.search(core):
+    if _ENGLISH_WORD.search(core) or _CLOCK.fullmatch(core):
         return False
     return bool(
         _SIG_UNI.search(core)
@@ -329,12 +360,19 @@ def _is_math(core):
 
 def _table_text(m):
     """<table> -> its cell text, one line per row. The markup is scaffolding but
-    the cells are real problem data (e.g. the number list a question asks about)."""
+    the cells are real problem data (e.g. the number list a question asks about).
+
+    A row (or a whole table) the OCR emitted WITHOUT <td>/<th> keeps its text
+    too: silently dropping it loses exactly the problem data this function
+    exists to rescue."""
     rows = _TROW.findall(m.group()) or [m.group()]
     lines = []
     for row in rows:
         cells = [_TAG.sub(" ", c).strip() for c in _TCELL.findall(row)]
         cells = [c for c in cells if c]
+        if not cells:                            # malformed row: no cell tags
+            bare = _WS.sub(" ", _TAG.sub(" ", row)).strip()
+            cells = [bare] if bare else []
         if cells:
             lines.append(" ".join(cells))
     return ("\n\n" + "\n\n".join(lines) + "\n\n") if lines else " "
@@ -355,7 +393,11 @@ def _delatex_prose(s):
     kept = []  # valid bare \frac -> $..$ span, masked past the residue scrub
 
     def _keep_frac(m):
-        kept.append(f"${m.group(1)}\\frac{{{m.group(2)}}}{{{m.group(3)}}}$")
+        # canonicalize NOW: this span is restored after the SPAN loop has run,
+        # so it is the one span _latexify would otherwise never see (leaving
+        # "^{A}" braced and any unicode math inside it unconverted)
+        body = _latexify(f"{m.group(1)}\\frac{{{m.group(2)}}}{{{m.group(3)}}}")
+        kept.append(f"${body}$")
         return f"\x01{len(kept) - 1}\x01"
 
     s = _BARE_FRAC.sub(_keep_frac, s)
@@ -401,6 +443,29 @@ def _eject_problem_number(s):
     return "", s
 
 
+_CLOSERS = {")": "(", "]": "[", "}": "{"}
+
+
+def _ends_hangul(s):
+    """True if the last NON-SPACE character of s is Hangul. The grade-label
+    guard has to see past a space: "(초 3-4)" is as much a label as "(초3-4)"."""
+    s = s.rstrip()
+    return bool(s) and "가" <= s[-1] <= "힣"
+
+
+def _split_trailing_close(s):
+    """Split (body, orphan_closers) at trailing ')'/']'/'}' that have no opener
+    of their own inside s — the opener sits outside the run (Hangul split it
+    off), so keeping them speaks a "괄호 닫고" with nothing ever opened."""
+    cut = len(s)
+    while cut and s[cut - 1] in _CLOSERS:
+        body, ch = s[:cut], s[cut - 1]
+        if body.count(ch) <= body.count(_CLOSERS[ch]):
+            break                     # this closer has its own opener inside s
+        cut -= 1
+    return s[:cut], s[cut:]
+
+
 def _split_unmatched_paren(s):
     """Split (math, rest) at the first '(' that never closes — an unmatched '('
     inside a math run is always mis-captured prose (e.g. 'q(p, q는 상수)')."""
@@ -427,15 +492,24 @@ def _wrap_bare(text):
         run = m.group()
         core = run.strip(" .,:")                      # keep .,:/space adjacent to Korean outside
                                                       # (a ratio ':' is interior, a label ':' is edge)
+        if not core:
+            return run
+        i = run.find(core)
+        j = i + len(core)
+        # An orphan bracket belongs to PROSE: its partner sits outside the run
+        # (Hangul split it off, as in "그래프(초3-4)"). Eject both kinds BEFORE
+        # _is_math, or a dangling bracket passes as the "parentheses" signal and
+        # drags a label into the span — "초 3 빼기 4 괄호 닫고", an unopened
+        # bracket word on a grade range that is not subtraction at all.
+        core, tail = _split_trailing_close(core)
+        core, after = _split_unmatched_paren(core)
+        tail = after + tail
         if not core or _CONNECTOR_ONLY.match(core) or not _is_math(core):
             if _ENGLISH_WORD.search(core) and _SIG_UNI.search(core):
                 return run.translate(_SILENT_KO)
             return run
-        if (_GRADE_RANGE.fullmatch(core) and m.start() > 0
-                and "가" <= m.string[m.start() - 1] <= "힣"):
+        if _GRADE_RANGE.fullmatch(core) and _ends_hangul(m.string[:m.start()]):
             return run
-        i = run.find(core)
-        j = i + len(core)
         lead, rest = _eject_problem_number(core)
         if lead and _is_math(rest):                   # still math without the number
             core = rest
@@ -453,10 +527,11 @@ def _wrap_bare(text):
                 return run
             lead += mclose.group()
             core = core[mclose.end():]
-        math, after = _split_unmatched_paren(core)
-        if not math.strip():
+        core, more = _split_trailing_close(core)   # a lead ejection can orphan
+        tail = more + tail                         # a closer it used to match
+        if not core.strip():
             return run
-        return f"{run[:i]}{lead}${_latexify(math, literal_braces=True)}${after}{run[j:]}"
+        return f"{run[:i]}{lead}${_latexify(core, literal_braces=True)}${tail}{run[j:]}"
     return RUN.sub(repl, text)
 
 
@@ -464,7 +539,11 @@ def _emit_inline(inner):
     """Wrap an inline math span, repairing delimiters that swallowed prose: a
     leading problem number and everything from an unmatched '(' onward are
     ejected back to prose. Anything else is left intact — never drop content."""
-    lead, inner = _eject_problem_number(inner)
+    lead, rest = _eject_problem_number(inner)
+    if lead and _is_math(rest):      # guard as in _wrap_bare: "$3. 14$" is a
+        inner = rest                 # decimal, not a problem number plus math
+    else:
+        lead = ""
     mlead, mrest = _eject_list_markers(inner)
     if mlead:
         lead += mlead
@@ -516,9 +595,8 @@ def normalize_math(text):
         elif part.startswith(r"\begin"):
             out.append(f"$${_latexify(part)}$$")          # bare env -> $$..$$
         elif part.startswith("$") and part.endswith("$") and len(part) > 1:
-            prev = out[-1][-1:] if out and out[-1] else ""
             if (_GRADE_RANGE.fullmatch(part[1:-1].strip())
-                    and "가" <= prev <= "힣"):
+                    and _ends_hangul(out[-1] if out else "")):
                 out.append(part[1:-1].strip())    # "조$1-2$" label, not math
             else:
                 out.append(_emit_inline(part[1:-1]))

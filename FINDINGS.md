@@ -87,3 +87,47 @@ conclusions, this file carries the trail that led to them.
 >
 > Two of these — the OCR output convention and the `engine="transformers"` crash —
 > are the findings issue #3 is about recovering. Writing them here is the same work.
+
+---
+
+## 2026-09-21 — 순환소수 need a reading of their own; SRE cannot supply one
+
+**Question.** What should a listener hear for `0.2̇4̇`, and which candidate
+Korean reading stays unambiguous by ear?
+
+**What I did.** Measured what SRE-ko emits for every encoding of a repeating
+decimal (SRE 5.0.0-rc.4, `clearspeak/default`, via `sre-probe/speak.js`), then
+wrote three candidate readings as functions in `dot_reading_probe.py` and
+generated its five-case table with `python dot_reading_probe.py --dry-run`.
+
+**What happened.** SRE names the decoration instead of reading the number, and
+does so identically whatever the encoding:
+
+```
+$0.2̇4̇$             ->  0 마침표 2 위의 점 4 위의 점
+$0.\dot{2}\dot{4}$  ->  (identical to the row above)
+$0.\overline{24}$   ->  0 마침표 24 윗줄
+```
+
+**Result.** Verified, by running the chain and not by reading the code: no SRE
+domain or style produces a reading, so the reading has to be produced *before*
+SRE sees the span. Reading C — "영 점 이사 이사 반복", the repetend twice then
+반복 — was adopted as the project default on 2026-09-21. Recorded plainly: that
+was a choice among the three candidates as written, **not** the outcome of the
+listening test `dot_reading_probe.py` exists for. Its Prediction and Result
+lines in `docs/findings/17_repeating_decimals.md` are still blank.
+
+**Changed as a result.** `speak.js` intercepts `\dot{}`/`\overline{}` decimals
+before temml/SRE and emits reading C directly, in both the plain and SSML
+paths. Two regression cases in `eval/cases.json` — `repeating-decimal-dots` and
+`repeating-decimal-overline` — assert "이삼 이삼 반복" and forbid "위의 점" and
+"윗줄". They would have failed before the change: "위의 점" and "윗줄" are
+exactly what the measurement above produced.
+
+**Still open.** Whether reading C survives the case3-vs-case5 pair by ear. On a
+partial repetend it separates 0.12̇3̇ ("일 이삼 이삼") from 0.1̇23̇ ("일이삼 일이삼")
+by phrasing alone, and a TTS voice may flatten phrasing — that pair is the whole
+point of the probe. Reading B marks the boundary with a word ("영 점 일 **다음**
+이삼이 반복") and is the ready fallback; swapping `readRepeating()` is the change.
+Separately, the dots are still *lost* before any of this can help: OCR drops
+them and nothing in `run.py` calls `dot_check.py` (#15).

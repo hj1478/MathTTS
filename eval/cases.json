@@ -38,6 +38,9 @@
       "삼각형",
       "합동",
       "5 센티미터"
+    ],
+    "mustnot": [
+      "흰색"
     ]
   },
   {
@@ -51,8 +54,11 @@
     "id": "ratio",
     "input": "x:y=3:4일 때, (x+y):y를 구하시오.",
     "must": [
-      "x 콜론 y",
-      "3 콜론 4"
+      "x 대 y",
+      "3 대 4"
+    ],
+    "mustnot": [
+      "콜론"
     ]
   },
   {
@@ -66,10 +72,11 @@
     "id": "unit-power",
     "input": "직육면체의 부피가 24a³b²cm³일 때, 높이를 구하시오.",
     "must": [
-      "센티미터 세제곱"
+      "세제곱센티미터"
     ],
     "mustnot": [
-      "c m"
+      "c m",
+      "센티미터 세제곱"
     ]
   },
   {
@@ -189,9 +196,13 @@
     "id": "similarity",
     "input": "△ABC∽△DEF일 때, 닮음비를 구하시오.",
     "must": [
-      "닮음 삼각형"
+      "삼각형 A B C",
+      "닮음이다"
     ],
-    "known": "SRE-ko reads ∽ (\\sim) as '물결표', not 닮음"
+    "mustnot": [
+      "물결표",
+      "흰색"
+    ]
   },
   {
     "id": "degree-circ-latex",
@@ -432,9 +443,12 @@
     "id": "trig-bare-words",
     "input": "1. sin 30°, cos 30°, tan 30°의 값을 각각 구하시오.",
     "must": [
-      "싸인 30 도",
-      "코싸인 30 도",
+      "사인 30 도",
+      "코사인 30 도",
       "탄젠트 30 도"
+    ],
+    "mustnot": [
+      "싸인"
     ]
   },
   {
@@ -609,6 +623,39 @@
     "input": "점 C(-3, -2)는 제물 사분면 위의 점입니까?",
     "must": [
       "제몇 사분면"
+    ]
+  },
+  {
+    "id": "segment-overline",
+    "input": "$\\overline{AB}$의 길이가 5cm일 때, $\\overline{CD}$를 구하시오.",
+    "must": [
+      "선분 A B",
+      "선분 C D",
+      "5 센티미터"
+    ],
+    "mustnot": [
+      "윗줄"
+    ]
+  },
+  {
+    "id": "congruence-cong-spelling",
+    "input": "△ABC≅△DEF일 때, 대응변의 길이를 구하시오.",
+    "must": [
+      "합동이다"
+    ],
+    "mustnot": [
+      "거의 같다",
+      "흰색"
+    ]
+  },
+  {
+    "id": "approx-stays-approx",
+    "input": "원주율은 $3.14 ≈ \\pi$ 로 계산한다.",
+    "must": [
+      "거의 같다"
+    ],
+    "mustnot": [
+      "합동"
     ]
   }
 ]

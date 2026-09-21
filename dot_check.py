@@ -26,7 +26,7 @@ Dot placement follows the Korean convention: first and last digit of the
 Restoring the dots alone was NOT sufficient: SRE reads the notation as
 typography, not as a number — $0.2̇4̇$ / $\dot{2}$ / $\overline{24}$ all speak
 as descriptions of the mark ("위의 점", "윗줄"; measured, SRE 5.0.0-rc.4,
-2026-08). The missing reading rule now exists PROVISIONALLY: speak.js
+2026-08). The missing reading rule now exists (#17, decided): speak.js
 intercepts \dot{}/\overline{} decimals before SRE and speaks reading C from
 the #17 experiment ("영 점 이사 이사 반복") — which reading is actually
 unambiguous by ear is still open (#17, dot_reading_probe.py). See the

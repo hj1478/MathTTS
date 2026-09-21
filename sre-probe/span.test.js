@@ -15,7 +15,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 
-const { SPAN, checkWellFormed, splitRadicals, splitRepeating } = require('./speak.js');
+const { SPAN, checkWellFormed, splitRadicals, splitRepeating, splitSegments, fixMisreads } = require('./speak.js');
 
 const cases = JSON.parse(
   fs.readFileSync(path.join(__dirname, '..', 'eval', 'fixtures', 'span_cases.json'), 'utf8')
@@ -65,7 +65,7 @@ test('splitRadicals drops a paren pair wrapping the whole radicand', () => {
     [{ root: '(a+b)(c+d)' }]);
 });
 
-test('splitRepeating speaks reading C for repeating decimals (provisional, #17)', () => {
+test('splitRepeating speaks reading C for repeating decimals (#17, decided)', () => {
   assert.deepStrictEqual(splitRepeating('0.\\dot{2}\\dot{4}'),
     [{ text: '영 점 이사 이사 반복' }]);
   // partial repetend: the 1 does not repeat
@@ -82,4 +82,35 @@ test('splitRepeating keeps surrounding latex and plain decimals', () => {
   assert.deepStrictEqual(splitRepeating('0.\\dot{3}=\\frac{1}{3}'),
     [{ text: '영 점 삼 삼 반복' }, { latex: '=\\frac{1}{3}' }]);
   assert.deepStrictEqual(splitRepeating('0.24+x'), [{ latex: '0.24+x' }]);
+});
+
+test('fixMisreads puts the exponent first on units and reads a ratio as 대', () => {
+  assert.strictEqual(fixMisreads('36 파이 센티미터 제곱'), '36 파이 제곱센티미터');
+  assert.strictEqual(fixMisreads('8 센티미터 세제곱'), '8 세제곱센티미터');
+  assert.strictEqual(fixMisreads('5 킬로미터 제곱'), '5 제곱킬로미터');
+  assert.strictEqual(fixMisreads('3 콜론 4'), '3 대 4');
+  assert.strictEqual(fixMisreads('3 콜론 4 콜론 5'), '3 대 4 대 5');   // chains
+  assert.strictEqual(fixMisreads('흰색 정사각형 안에'), '네모 안에');  // still works
+});
+
+test('splitSegments reads \\overline over letters as 선분, decimals unaffected', () => {
+  assert.deepStrictEqual(splitSegments('\\overline{AB}'), [{ text: '선분 A B' }]);
+  assert.deepStrictEqual(splitSegments('\\overline{ABC}'), [{ text: '선분 A B C' }]);
+  assert.deepStrictEqual(splitSegments('\\overline{AB}=\\overline{CD}'),
+    [{ text: '선분 A B' }, { latex: '=' }, { text: '선분 C D' }]);
+  // digits are 순환소수, handled by splitRepeating before this runs
+  assert.deepStrictEqual(splitSegments('1.\\overline{23}'), [{ latex: '1.\\overline{23}' }]);
+});
+
+test('fixMisreads clears the remaining #20 geometry misreads', () => {
+  assert.strictEqual(fixMisreads('흰색 상향 삼각형 A B C'), '삼각형 A B C');
+  assert.strictEqual(fixMisreads('삼각형 A B C 물결표 삼각형 D E F'),
+    '삼각형 A B C 닮음이다 삼각형 D E F');
+  assert.strictEqual(fixMisreads('싸인 A 더하기 코싸인 B'), '사인 A 더하기 코사인 B');
+});
+
+test('fixMisreads rewrites only a BINARY 물결표, never the \\tilde accent', () => {
+  assert.strictEqual(fixMisreads('삼각형 A B C 물결표 삼각형 D E F'),
+    '삼각형 A B C 닮음이다 삼각형 D E F');
+  assert.strictEqual(fixMisreads('x 물결표'), 'x 물결표');   // \tilde{x}, not 닮음
 });

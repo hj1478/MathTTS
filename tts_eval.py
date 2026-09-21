@@ -158,9 +158,13 @@ def main():
     while i < len(args):
         if args[i] == "--cases":
             i += 1
+            if i >= len(args):
+                sys.exit("--cases needs a FILE path")
             cases_path = args[i]
         elif args[i] == "--lint":
             lint_dirs = args[i + 1:]
+            if not lint_dirs:
+                sys.exit("--lint needs at least one DIR")
             break
         else:
             sys.exit("usage: tts_eval.py [--cases FILE] [--lint DIR ...]")
