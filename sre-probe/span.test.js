@@ -147,3 +147,14 @@ test('BATCHIM follows the sound, not the spelling', () => {
   assert.deepStrictEqual(splitFences('x \\perp y'), [{ text: 'x 는 y 와 수직이다' }]);
   assert.deepStrictEqual(splitFences('l \\perp m'), [{ text: 'l 은 m 과 수직이다' }]);
 });
+
+test('splitChains consumes the WHOLE chain, however many links', () => {
+  // a 3-relation chain used to leave a dangling " \leq r" that spoke as a
+  // clause with no subject: "..., k 는 q 보다 작거나 같다 는 r 보다 작거나 같다"
+  assert.deepStrictEqual(splitChains('p \\leq k \\leq q \\leq r'),
+    [{ latex: 'p \\leq k' }, { text: ',' }, { latex: 'k \\leq q' },
+     { text: ',' }, { latex: 'q \\leq r' }]);
+  // and must not start matching INSIDE a term: "x^2" was sliced to "x^" + "2"
+  assert.deepStrictEqual(splitChains('x^2<y<z'),
+    [{ latex: 'x^2 < y' }, { text: ',' }, { latex: 'y < z' }]);
+});

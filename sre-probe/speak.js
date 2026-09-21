@@ -261,18 +261,28 @@ const hasJong = (ch) => (ch.charCodeAt(0) - 0xac00) % 28 !== 0;
 // back from SRE itself, so no 받침 table is involved — the pivot is simply
 // spoken twice, which is how the relation is read aloud anyway.
 const RELS = String.raw`\\leq|\\geq|\\lt|\\gt|<|>`;
-const TERM = String.raw`-?[A-Za-z0-9.]+`;
-const CHAIN = new RegExp(`(${TERM})\\s*(${RELS})\\s*(${TERM})\\s*(${RELS})\\s*(${TERM})`, 'g');
+// a term may carry a superscript ("x^2 < y < z"); the lookbehind stops the
+// match starting INSIDE one, which used to slice "x^2" into "x^" + "2"
+const TERM = String.raw`-?[A-Za-z0-9.]+(?:\^\{?[A-Za-z0-9]+\}?)?`;
+const CHAIN = new RegExp(
+  String.raw`(?<![A-Za-z0-9.^_{\\])` + `${TERM}(?:\\s*(?:${RELS})\\s*${TERM}){2,}`, 'g');
+const CHAIN_TOKEN = new RegExp(`${RELS}|${TERM}`, 'g');
 
 function splitChains(latex) {
   const segs = [];
   let last = 0;
   for (const m of latex.matchAll(CHAIN)) {
+    // the whole chain is consumed, however many links: a 3-relation chain used
+    // to leave a dangling " \leq r" that spoke as a clause with no subject
+    const tok = m[0].match(CHAIN_TOKEN);
+    if (!tok || tok.length < 5 || tok.length % 2 === 0) continue;
     const before = latex.slice(last, m.index);
     if (before.trim()) segs.push({ latex: before });
-    // spaces matter: "p\\leqk" is an unknown command to temml
-    segs.push({ latex: `${m[1]} ${m[2]} ${m[3]}` }, { text: ',' },
-              { latex: `${m[3]} ${m[4]} ${m[5]}` });
+    for (let i = 0; i + 2 < tok.length; i += 2) {
+      if (i) segs.push({ text: ',' });
+      // spaces matter: "p\\leqk" is an unknown command to temml
+      segs.push({ latex: `${tok[i]} ${tok[i + 1]} ${tok[i + 2]}` });
+    }
     last = m.index + m[0].length;
   }
   if (!segs.length) return [{ latex }];
