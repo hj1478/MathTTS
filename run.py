@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """End-to-end driver: image/PDF -> wav in one command (issue #2).
 
-Chains the four stages with the same default folders they use standalone,
-so any stage can still be re-run in isolation with its own CLI:
+Chains the stages with the same default folders they use standalone, so any
+stage can still be re-run in isolation with its own CLI:
 
   0. (PDF only)  pdf_to_images.py     *.pdf        -> pages/*.png
   1. OCR         ocr_vl.py            *.png        -> output/*.md
+  1.5 Dots       dot_check.py         *.md         -> *.dots.md   (--dots only)
   2. Normalize   normalize.py         *.md         -> *.norm.md
   3. Speech      sre-probe/speak.js   *.norm.md    -> stitched/*.stitched.txt + .ssml
   4. TTS         tts_full.py          stitched/*   -> audio/*.wav  (needs Azure creds)
@@ -19,6 +20,16 @@ Usage:
   python run.py kma_sheet_13_8_prob.pdf
   python run.py --dir somefolder
   python run.py "kr question 1.png" --skip-ocr --skip-tts   # redo middle stages
+  python run.py sheet.pdf --dots                            # + 순환소수 repair
+
+Stage 1.5 is OFF by default and is the only stage besides 4 that costs money
+(one OpenAI call per page that has BOTH a decimal and a repetition signal —
+`dot_check.needs_check` gates the rest away). It is opt-in for two reasons
+that outlive each other: a plain run is otherwise key-free, and a wrong dot
+CORRUPTS a correct number where a missing one merely reproduces the status
+quo. It writes `<stem>.dots.md` beside the raw OCR rather than over it, so the
+unpatched page stays inspectable; stage 2 then prefers the patched file and
+says so.
 
 Skip flags reuse whatever artifacts the skipped stage left behind, so e.g.
 --skip-ocr re-normalizes/re-stitches existing output/*.md without paying the
@@ -68,6 +79,10 @@ def main():
     ap.add_argument("--dpi", type=int, default=200, help="PDF render DPI (default 200)")
     ap.add_argument("--voice", default="ko-KR-SunHiNeural", help="Azure voice")
     ap.add_argument("--device", choices=["cpu", "gpu"], help="OCR device (default: auto)")
+    ap.add_argument("--dots", action="store_true",
+                    help="stage 1.5: restore 순환소수 dots the OCR dropped "
+                         "(needs OPENAI_API_KEY; one call per signalling page)")
+    ap.add_argument("--model", help="override OPENAI_MODEL for --dots")
     ap.add_argument("--lenient", action="store_true",
                     help="don't stop when a formula stitches as salvage/placeholder "
                          "(drops speak.js --strict)")
@@ -111,6 +126,30 @@ def main():
     if not mds:
         sys.exit(f"no OCR markdown in {out} — nothing to do")
 
+    # --- stage 1.5: 순환소수 dot restoration (opt-in; costs an LLM call) ----
+    if a.dots:
+        import dot_check
+        cfg = dot_check.openai_cfg(a.model)
+        print(f"[stage 1.5] dot restore ({cfg['model']}) — {len(mds)} page(s)")
+        patched_n = failed = 0
+        for p in mds:
+            dots = p.with_suffix(".dots.md")
+            dots.unlink(missing_ok=True)   # never reuse a stale patch
+            text = p.read_text(encoding="utf-8")
+            if not dot_check.needs_check(text):
+                continue                   # no repetition signal -> no API call
+            patched, notes, err = dot_check.restore(cfg, text, p.name)
+            for n in notes:
+                print(f"  [dots] {p.name}: {n}")
+            if err:                        # a page left unpatched is a
+                failed += 1                # degradation, not a corruption:
+                print(f"  [dots] FAILED {p.name}: {err}")   # warn, keep going
+            elif patched != text:
+                dots.write_text(patched, encoding="utf-8")
+                patched_n += 1
+        print(f"[stage 1.5] {patched_n} page(s) patched"
+              + (f", {failed} FAILED (those pages keep the OCR's own text)" if failed else ""))
+
     # --- stage 2: normalize ------------------------------------------------
     if a.skip_normalize:
         norms = sorted(out.glob("*.norm.md"))
@@ -118,8 +157,14 @@ def main():
     else:
         norms = []
         for p in mds:
+            # prefer the dot-restored page when one exists — raw OCR stays on
+            # disk and inspectable, which is why the patch is a separate file
+            dots = p.with_suffix(".dots.md")
+            src = dots if dots.exists() else p
+            if src is dots:
+                print(f"  [dots] normalizing the restored {dots.name}")
             dst = p.with_suffix(".norm.md")
-            dst.write_text(normalize.normalize_math(p.read_text(encoding="utf-8")),
+            dst.write_text(normalize.normalize_math(src.read_text(encoding="utf-8")),
                            encoding="utf-8")
             norms.append(dst)
         print(f"[stage 2] normalized {len(norms)} file(s)")

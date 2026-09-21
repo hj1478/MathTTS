@@ -32,9 +32,17 @@ the #17 experiment ("영 점 이사 이사 반복") — which reading is actuall
 unambiguous by ear is still open (#17, dot_reading_probe.py). See the
 README's "Limitations".
 
-Used by inbox_eval.py when the judge is enabled; also runs standalone:
-  python dot_check.py FILE.md ...          # report what would change
-  python dot_check.py --write FILE.md ...  # and patch the files in place
+STAGE 1.5 of the pipeline (settled in #15): it TRANSFORMS the page — its
+output is what normalize.py and the speech stages then consume — where
+dot_eval.py runs the same function to produce a MEASUREMENT. Off by default
+because it is the only stage besides Azure TTS that costs money, and because a
+wrong dot corrupts a correct number while a missing one merely reproduces the
+status quo.
+
+  python run.py sheet.pdf --dots           # as a pipeline stage
+  python inbox_eval.py                     # the eval driver runs it too
+  python dot_check.py FILE.md ...          # standalone: report what would change
+  python dot_check.py --write FILE.md ...  # standalone: patch the files in place
 """
 import argparse
 import re
