@@ -195,12 +195,46 @@ function splitRepeating(latex) {
   return segs;
 }
 
-/** Repeating-decimal split (both modes) + radical split (SSML only). */
+/* ------------------------- 선분 (\overline over letters) ------------------ */
+
+// \overline over LETTERS is 선분 (line segment), not a decoration. SRE reads it
+// as "A B 윗줄" — it names the bar and never says the word, 21 times in the
+// current corpus (#20, ❌ list). Intercepted here rather than rewritten after
+// SRE because the fix is a REORDER — Korean puts 선분 FIRST — and in the SSML
+// path the letters sit inside <say-as> tags, so a regex moving the word would
+// have to cross markup.
+// \overrightarrow and \vec name the bar the same way and are deliberately left
+// alone: the same notation is 반직선 in 중1 and 벡터 in 고등, so it needs a
+// reading decision, not a rewrite.
+const SEGMENT = /\\overline\{([A-Z]{2,4})\}/g;
+
+function splitSegments(latex) {
+  const segs = [];
+  let last = 0;
+  for (const m of latex.matchAll(SEGMENT)) {
+    const before = latex.slice(last, m.index);
+    if (before.trim()) segs.push({ latex: before });
+    segs.push({ text: `선분 ${[...m[1]].join(' ')}` });
+    last = m.index + m[0].length;
+  }
+  if (!segs.length) return [{ latex }];
+  const after = latex.slice(last);
+  if (after.trim()) segs.push({ latex: after });
+  return segs;
+}
+
+/** Repeating-decimal + 선분 splits (both modes) + radical split (SSML only). */
 function splitSpecials(latex, withRadicals) {
   const out = [];
   for (const seg of splitRepeating(latex)) {
-    if (seg.latex !== undefined && withRadicals) out.push(...splitRadicals(seg.latex));
-    else out.push(seg);
+    if (seg.latex === undefined) {
+      out.push(seg);
+      continue;
+    }
+    for (const sub of splitSegments(seg.latex)) {
+      if (sub.latex !== undefined && withRadicals) out.push(...splitRadicals(sub.latex));
+      else out.push(sub);
+    }
   }
   return out;
 }
@@ -316,6 +350,10 @@ function checkWellFormed(xml) {
  *  - a squared/cubed unit comes out in English order ("센티미터 제곱"); Korean
  *    puts the exponent FIRST (제곱센티미터). normalize.py wraps every metric
  *    unit in \mathrm{}, so this reaches all of them (issue #20, ⚠ list).
+ *  - "흰색 상향 삼각형" is the Unicode name of △ leaking through; the word is
+ *    just 삼각형. "물결표" is the same for ∽ — in this pipeline \sim only ever
+ *    comes from 닮음 notation, so it reads 닮음이다 (both #20, ❌ list).
+ *  - SRE spells the trig functions 싸인/코싸인; textbooks write 사인/코사인.
  *  - a ratio colon is read "콜론"; 비례식 is spoken "대" — 3:4 is "삼 대 사", not
  *    "삼 콜론 사" (issue #20, ❌ list). Chains fall out for free: the matches
  *    do not overlap, so "3 콜론 4 콜론 5" becomes "3 대 4 대 5". A colon in
@@ -327,6 +365,10 @@ const UNIT_POWER = /(센티미터|밀리미터|킬로미터|미터) (세제곱|�
 function fixMisreads(speech) {
   return speech
     .replace(/흰색 정사각형/g, '네모')
+    .replace(/흰색 상향 삼각형/g, '삼각형')   // Unicode character name leaking
+    .replace(/물결표/g, '닮음이다')            // ∽ -> \sim; only 닮음 reaches here
+    .replace(/코싸인/g, '코사인')              // textbook spelling (#20)
+    .replace(/싸인/g, '사인')
     .replace(UNIT_POWER, '$2$1')
     .replace(/ 콜론 /g, ' 대 ');
 }
@@ -339,7 +381,7 @@ function fixMisreads(speech) {
 const SALVAGE_KO = {
   pm: '플러스 마이너스', sqrt: '루트', times: '곱하기', div: '나누기',
   cdot: '곱하기', frac: '분수', pi: '파이', infty: '무한대',
-  sin: '싸인', cos: '코싸인', tan: '탄젠트', leq: '작거나 같다', geq: '크거나 같다',
+  sin: '사인', cos: '코사인', tan: '탄젠트', leq: '작거나 같다', geq: '크거나 같다',
 };
 
 function salvage(latex) {
@@ -583,7 +625,7 @@ async function main() {
   }
 }
 
-module.exports = { SPAN, checkWellFormed, splitRadicals, splitRepeating, fixMisreads };
+module.exports = { SPAN, checkWellFormed, splitRadicals, splitRepeating, splitSegments, fixMisreads };
 
 if (require.main === module) {
   main().catch((err) => {

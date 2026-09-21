@@ -87,7 +87,11 @@ SYM = {"×": r"\times ", "÷": r"\div ", "·": r"\cdot ", "⋅": r"\cdot ", "±"
        # ∽ and → read literally ("물결표", "오른쪽 화살표") but silence loses meaning.
        # ° stays as-is (identity): temml reads the raw char as "도", while ^\circ is
        # misread by SRE-ko as function composition — do NOT "canonicalize" it.
-       "∠": r"\angle ", "△": r"\triangle ", "≡": r"\equiv ", "∽": r"\sim ",
+       # ≅ means 합동 exactly as ≡ does, but SRE reads \cong as "거의 같다" —
+       # colliding with ≈. Normalize it to \equiv so both spellings reach the
+       # one command that speaks 합동이다 (#20, "One finding that is directly usable")
+       "∠": r"\angle ", "△": r"\triangle ", "≡": r"\equiv ", "≅": r"\equiv ",
+       "∽": r"\sim ",
        "⊥": r"\perp ", "∥": r"\parallel ", "≦": r"\leq ", "≧": r"\geq ",
        "→": r"\to ", "°": "°",
        # fill-in-the-blank box (□안에 알맞은 수): SRE-ko reads \Box as
@@ -152,6 +156,8 @@ _RDOT_DIGIT = re.compile("([0-9])̇")   # 2̇ (combining dot above) -> \dot{2}
 # ^{\circ} / ^\circ -> raw ° INSIDE math: temml+SRE read the raw char as "도",
 # while the superscript form is misread as function composition ("합성 함수")
 _CIRC = re.compile(r"\^\s*\{?\s*\\circ\s*\}?")
+# \cong -> \equiv, for the same reason as the ≅ entry in SYM above
+_CONG = re.compile(r"\\cong(?![A-Za-z])")
 # A metric unit inside math is a standalone TOKEN and must become \mathrm{..}
 # wherever it sits: SRE spells a bare one out letter by letter ("3 c m"), which
 # no listener parses. The separating space is optional — "$r = 3 cm$" needs the
@@ -223,7 +229,7 @@ _TEXT_CMD_UNMASKED = re.compile("\\\\text\\s*\\{([^{}\x00]*)\\}")
 _BARE_CMD = {"times": "×", "div": "÷", "cdot": "·", "leq": "≤", "geq": "≥",
              "neq": "≠", "pm": "±", "pi": "π", "sqrt": "√", "infty": "∞",
              # bare trig commands -> Korean words (in-span \tan is fine as-is)
-             "sin": "싸인 ", "cos": "코싸인 ", "tan": "탄젠트 "}
+             "sin": "사인 ", "cos": "코사인 ", "tan": "탄젠트 "}
 # (?![A-Za-z]) not \b: a digit may follow directly ("2\times13") and \b would
 # fail between two word chars, dropping the command instead of converting it
 _BARE_CMD_RE = re.compile(r"\\(" + "|".join(_BARE_CMD) + r")(?![A-Za-z]) ?")
@@ -256,7 +262,7 @@ _ENV_BLOCK = re.compile(r"\\begin\{[^}]+\}.*?\\end\{[^}]+\}", re.DOTALL)
 _HANGUL_RUN = re.compile(r"[가-힣](?:[가-힣 \t]*[가-힣])?")
 # bare trig words in prose ("sin 30°"): OCR often emits them without \ or $
 _TRIG = re.compile(r"\b(sin|cos|tan)(?![A-Za-z])\s*")
-_TRIG_KO = {"sin": "싸인 ", "cos": "코싸인 ", "tan": "탄젠트 "}
+_TRIG_KO = {"sin": "사인 ", "cos": "코사인 ", "tan": "탄젠트 "}
 # a run of ONLY connector dots (가운뎃점 · in headers, ··· ellipsis) is Korean
 # punctuation, not math — wrapping it makes SRE say "닷"
 _CONNECTOR_ONLY = re.compile(r"^[·⋅… ]+$")
@@ -319,6 +325,7 @@ def _latexify(s, literal_braces=False):
         s = s.replace("{", r"\{").replace("}", r"\}")
     s = _clean_envs(s)
     s = _CIRC.sub("°", s)
+    s = _CONG.sub(r"\\equiv", s)
     s = _RDOT_DIGIT.sub(r"\\dot{\1}", s)
     s = _SUP_RUN.sub(lambda m: "^{" + "".join(SUP[c] for c in m.group()) + "}", s)
     s = _SUB_RUN.sub(lambda m: "_{" + "".join(SUB[c] for c in m.group()) + "}", s)

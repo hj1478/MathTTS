@@ -15,7 +15,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 
-const { SPAN, checkWellFormed, splitRadicals, splitRepeating, fixMisreads } = require('./speak.js');
+const { SPAN, checkWellFormed, splitRadicals, splitRepeating, splitSegments, fixMisreads } = require('./speak.js');
 
 const cases = JSON.parse(
   fs.readFileSync(path.join(__dirname, '..', 'eval', 'fixtures', 'span_cases.json'), 'utf8')
@@ -91,4 +91,20 @@ test('fixMisreads puts the exponent first on units and reads a ratio as 대', ()
   assert.strictEqual(fixMisreads('3 콜론 4'), '3 대 4');
   assert.strictEqual(fixMisreads('3 콜론 4 콜론 5'), '3 대 4 대 5');   // chains
   assert.strictEqual(fixMisreads('흰색 정사각형 안에'), '네모 안에');  // still works
+});
+
+test('splitSegments reads \\overline over letters as 선분, decimals unaffected', () => {
+  assert.deepStrictEqual(splitSegments('\\overline{AB}'), [{ text: '선분 A B' }]);
+  assert.deepStrictEqual(splitSegments('\\overline{ABC}'), [{ text: '선분 A B C' }]);
+  assert.deepStrictEqual(splitSegments('\\overline{AB}=\\overline{CD}'),
+    [{ text: '선분 A B' }, { latex: '=' }, { text: '선분 C D' }]);
+  // digits are 순환소수, handled by splitRepeating before this runs
+  assert.deepStrictEqual(splitSegments('1.\\overline{23}'), [{ latex: '1.\\overline{23}' }]);
+});
+
+test('fixMisreads clears the remaining #20 geometry misreads', () => {
+  assert.strictEqual(fixMisreads('흰색 상향 삼각형 A B C'), '삼각형 A B C');
+  assert.strictEqual(fixMisreads('삼각형 A B C 물결표 삼각형 D E F'),
+    '삼각형 A B C 닮음이다 삼각형 D E F');
+  assert.strictEqual(fixMisreads('싸인 A 더하기 코싸인 B'), '사인 A 더하기 코사인 B');
 });
