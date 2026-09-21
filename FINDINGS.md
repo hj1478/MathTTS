@@ -323,25 +323,52 @@ written to produce, from a supported engine setting instead of a regex.
 `AbsoluteValue_AbsEnd` solves the same scope problem `splitAbs` solves, by
 bracketing the operand rather than moving the marker after it.
 
-`Paren_CoordPoint` and `Paren_Interval` are LISTED for `ko` but do nothing —
-the preference exists in the option table without a Korean rule behind it. So
-"listed" and "implemented" are not the same thing, which is the part that would
-have been worth knowing before trusting the table.
+`Paren_CoordPoint` and `Paren_Interval` appeared to do nothing. That reading
+was WRONG, and the correction is the more useful half of this entry: they do
+work, in both `ko` and `en`, and they produce good Korean —
 
-**Result.** Verified by running them. Two working alternatives to code already
-merged. Neither is a straight swap:
-  - `Paren_Speak` is GLOBAL — it would also affect parens SRE currently elides
-    sensibly, which is unmeasured;
-  - `AbsoluteValue_AbsEnd` applies to every absolute value including `|-4|`,
-    where the plain prefix reading is already complete, and "절댓값시작 /
-    절댓값끝" are compounds where the postfix form is ordinary Korean.
+```
+Paren_CoordPoint   (3, 4)   ->  좌표 3 콤마 4
+Paren_Interval     (3, 4)   ->  열린 구간 3 에서 4 까지
+```
+
+— but only when the comma survives into the MathML. temml lexes `(3,4)` with
+no space as a SINGLE token, `<mn>3,4</mn>`, reading the comma as a thousands
+separator; `(3, 4)` with a space becomes `<mn>3</mn><mo separator>,</mo>
+<mn>4</mn>`. No paren preference can fire on the first form because there is no
+list there to recognize.
+
+The consequence is bigger than the preferences. With the comma tokenized,
+`Paren_Auto` — the DEFAULT — already speaks the fence:
+`(-3, 4)` -> "괄호 열고 마이너스 3 콤마 4 괄호 닫고". The corpus writes 48 of
+its 50 coordinate pairs with the space. So the real defect was never the
+missing fence: it was `_INNER_MARKER` swallowing the pair before it reached
+SRE at all, and once that was fixed the default reading was already correct.
+
+**Result.** Verified by running them, in both locales. `AbsoluteValue_AbsEnd`
+is a real alternative to `splitAbs`, though not a straight swap: it applies to
+every absolute value including `|-4|`, where the prefix reading is already
+complete, and "절댓값시작 / 절댓값끝" are compounds where the postfix form is
+ordinary Korean.
+
+`splitFences`' tuple half is a different story: it is mostly redundant. It
+duplicates what `Paren_Auto` already does for the 48 spaced pairs, and the 2
+unspaced ones would be better served by normalizing the spacing at the source
+— which would also make `Paren_CoordPoint` and `Paren_Interval` available,
+since they need the same tokenization.
 
 **Changed as a result.** Nothing yet — recorded, not acted on. Swapping
 `splitFences`' tuple half for `Paren_Speak` is the strongest candidate and
 would delete code.
 
-**Still open.** The honest lesson: I reached for interception without checking
-whether the engine had a supported knob, and the entry two above had already
-flagged that the toggles were never tried. The other ~28 remain untried, and
-`ImpliedTimes_None`, `Fraction_Over` and `Ellipses_AndSoOn` all look relevant
-to open items (the 번분수 collision, `\cdots`).
+**Still open.** Two lessons, and the second only surfaced because the first
+was written down wrong. I reached for interception without checking whether the
+engine had a supported knob — and then, on finding two toggles that seemed
+inert, concluded "listed but not implemented" from a single unspaced test case
+instead of asking why. Testing `en` alongside `ko` would have shown the same
+behaviour in both and pointed at temml rather than at SRE.
+
+The other ~28 toggles remain untried. `ImpliedTimes_None`, `Fraction_Over` and
+`Ellipses_AndSoOn` all look relevant to open items (the 번분수 collision,
+`\cdots`), and the tokenization caveat above applies to all of them: a toggle
+that looks inert may just be missing the structure it matches on.
