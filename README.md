@@ -99,7 +99,43 @@ Their docstrings record what each one established.
 > Give the things that did not work the same weight as the things that did. In
 > research a negative result is a result, not an appendix.
 
-TODO
+**Verified.** The LaTeX → Korean stage reads most of the 초·중 curriculum
+correctly. 60 notations drawn from the curriculum were run through the real
+chain and judged on one criterion — can a listener reconstruct the expression
+from sound alone? 43 read correctly, 9 read awkwardly, 4 were not conveyed at
+all (issue #20 carries the full table). Arithmetic, equations, functions and
+fractions read well at every level; the failures cluster in geometry symbols
+and ratio notation. The strongest single result is the quadratic formula: SRE
+spells the fraction out as 분모가/분자가, so a compound expression keeps its
+structure in sound.
+
+A 66-case golden suite (`eval/cases.json`) runs the OCR → normalize → speech
+chain on labelled snippets and checks the Korean against `must`/`mustnot`
+substrings. 60 pass; 6 are marked `known`, which is how this project records a
+struggle it has chosen to document rather than fix.
+
+**Negative results, same weight.** Three things did not work, and one of them
+shapes the whole design:
+
+- *SRE cannot read 순환소수 at all.* It names the decoration — `$0.2̇4̇$` →
+  "0 마침표 2 위의 점 4 위의 점" — identically for the combining-dot, `\dot{}`
+  and `\overline{}` encodings. No domain or style helps. A reading exists only
+  because `speak.js` intercepts the span before SRE sees it (#17).
+- *OCR loses the notation before any of that matters.* PaddleOCR-VL drops the
+  printed dots, so the number arrives as a plain `0.24`. `dot_check.py` can
+  restore them from context, but a plain `run.py` never calls it (#15).
+- *Single-span measurement overstated coverage.* The 60-notation sweep used one
+  labelled span each and reported `5cm` as correct. It is — but the form real
+  worksheets produce, `$r = 3 cm$` with a space, was spelled "3 c m" until it
+  was caught by running the whole `runs/` corpus through the chain instead. The
+  method, not the engine, was the failure.
+
+**Not checked.** Everything above is the LaTeX → Korean stage. Whether the
+result is *intelligible by ear* is a separate question and largely open: the
+`<say-as>` markup shipped without an ear check, the four grouping cases in
+`tts_probe.py` have no recorded verdict, and the chosen 순환소수 reading was
+picked on paper rather than by listening (#17). Where a number passes through
+as digits, how the Azure voice pronounces it is unmeasured.
 
 ## Worked example
 
@@ -115,7 +151,51 @@ TODO
 > real broken-parenthesis case, so the example itself shows what the normalize
 > stage is for. That is more useful than an example where everything already works.
 
-TODO
+`kr question 1.png`, a 중3 inequality problem, at every stage. It is the useful
+example precisely because the OCR gets something wrong.
+
+**1. OCR** — `python ocr_vl.py "kr question 1.png"` → `output/kr question 1.md`
+
+```
+24. $x$에 대한 일차부등식 $3(x-k)\leq2x+5$가 모든 음의 정수 $x$에 대하여
+성립하고, 자연수 $x$에 대하여 성립하지 않는다고 할 때, 상수 $k$의 값의 범위는
+$p\leq k<q(p, q$는 상수)이다. 이때 $p^{2}+9q^{2}$의 값을 구하시오.
+```
+
+Note `$p\leq k<q(p, q$` — the model put the closing `$` too late, so the math
+span swallowed "(p, q" and the Korean that follows it.
+
+**2. Normalize** — `python normalize.py "output/kr question 1.md"`
+
+```
+24. $x$에 대한 일차부등식 $3(x-k)\leq2x+5$가 모든 음의 정수 $x$에 대하여
+성립하고, 자연수 $x$에 대하여 성립하지 않는다고 할 때, 상수 $k$의 값의 범위는
+$p\leq k<q$(p, q는 상수)이다. 이때 $p^2+9q^2$의 값을 구하시오.
+```
+
+Two changes: the span is cut at the unmatched `(` so the prose is ejected back
+out of the math, and `^{2}` is canonicalized to `^2`. This is the one place
+`normalize.py` deliberately cuts up content it was handed.
+
+**3. Speech** — `node sre-probe/speak.js --write ./stitched "…norm.md"`
+
+```
+24. x 에 대한 일차부등식 3 곱하기 괄호 열고 x 빼기 k 괄호 닫고 는 2 x 더하기 5
+보다 작거나 같다 가 모든 음의 정수 x 에 대하여 성립하고, 자연수 x 에 대하여
+성립하지 않는다고 할 때, 상수 k 의 값의 범위는 p 작거나 같다 k 작다 q
+(p, q는 상수)이다. 이때 p 제곱 더하기 9 q 제곱 의 값을 구하시오.
+```
+
+Had the span not been repaired at stage 2, "(p, q" would have been read as
+arithmetic and the Korean inside it spelled out letter by letter.
+
+**4. Audio** — `python tts_full.py` → `audio/kr question 1-full-plain.wav` and
+`-full-ssml.wav`, for A/B listening.
+
+One weakness is visible in the text above, and it is a known gap rather than a
+bug in this example: "p 작거나 같다 k 작다 q" carries no particles, and whether
+a chained relation is parseable by ear is exactly what `tts_probe.py` case 3
+exists to test.
 
 ## Running it
 
