@@ -181,3 +181,25 @@ def test_clock_time_is_not_wrapped_as_a_ratio(src):
 ])
 def test_real_ratios_still_wrap(src, expected):
     assert normalize_math(src) == expected
+
+
+# --- coordinate pairs: "(3, 4)" was split by the answer-key marker rule
+
+@pytest.mark.parametrize("src,expected", [
+    ("점 (3, 4)", "점 $(3, 4)$"),          # " 4)" is the pair's 2nd element…
+    ("점 (-3, 4)", "점 $(-3, 4)$"),
+    ("순서쌍 (2, -3)", "순서쌍 $(2, -3)$"),
+    ("구간 [3, 4]", "구간 $[3, 4]$"),       # '[' is a math signal now
+])
+def test_coordinate_pairs_are_math(src, expected):
+    assert normalize_math(src) == expected
+
+
+@pytest.mark.parametrize("src,expected", [
+    ("-5 (2) -5", "$-5$ (2) $-5$"),        # …but a real marker still ejects
+    ("1) 다음을 구하시오", "1) 다음을 구하시오"),
+    ("[3] 답", "[3] 답"),
+    ("[1단계] 다음을", "[1단계] 다음을"),     # orphan '[' — its ']' Hangul split off
+])
+def test_list_markers_and_orphan_brackets_still_prose(src, expected):
+    assert normalize_math(src) == expected

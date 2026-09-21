@@ -203,7 +203,11 @@ _PROBLEM_NO = re.compile(r"\s*(\d+)\.\s+(?=\S)")
 _LIST_MARKER = re.compile(r"([(\[]\d{1,2}[)\]]|\d{1,2}\))(?:\s+|(?=[(\[])|$)")
 # space-delimited marker anywhere in prose (answer keys: "-5 (2) -5"): isolated
 # with \x02 so it can never join a math run as implicit multiplication
-_INNER_MARKER = re.compile(r"(^|\s)([(\[]\d{1,2}[)\]]|\d{1,2}\))(?=\s|$)", re.MULTILINE)
+# (?<![,(]) on the preceding space: in a coordinate pair "(3, 4)" the "4)" is
+# the second element, not a marker — treating it as one split the pair and left
+# it unwrapped entirely, so no 순서쌍 in the corpus ever reached the speech stage
+_INNER_MARKER = re.compile(r"(^|(?<![,(])\s)([(\[]\d{1,2}[)\]]|\d{1,2}\))(?=\s|$)",
+                           re.MULTILINE)
 # fill-in-the-blank rendered as \boxed{..} -> box char + content ("네모 파이 m")
 _BOXED = re.compile(r"\\boxed\s*\{([^{}]*)\}")
 # □ + vertex letters is QUADRILATERAL notation (□ABCD = 사각형 ABCD), not a
@@ -354,7 +358,9 @@ def _is_math(core):
         or _SIG_ABS.search(core)
         or _SIG_RATIO.search(core)
         or _SIG_RDOT.search(core)
-        or ("(" in core and re.search(r"[0-9A-Za-z]", core))
+        # '[' as well as '(': "[3,4]" was not math at all, so its brackets were
+        # silent where "(3,4)" at least reached the speech stage (#20, ⚠ list)
+        or (("(" in core or "[" in core) and re.search(r"[0-9A-Za-z]", core))
     )
 
 
@@ -467,15 +473,16 @@ def _split_trailing_close(s):
 
 
 def _split_unmatched_paren(s):
-    """Split (math, rest) at the first '(' that never closes — an unmatched '('
-    inside a math run is always mis-captured prose (e.g. 'q(p, q는 상수)')."""
+    """Split (math, rest) at the first '(' or '[' that never closes — an
+    unmatched opener inside a math run is always mis-captured prose ('q(p, q는
+    상수)', or the '[1' of a '[1단계]' header whose ']' Hangul split away)."""
     depth, cut = 0, None
     for i, ch in enumerate(s):
-        if ch == "(":
+        if ch in "([":
             if depth == 0:
                 cut = i               # start of a group not yet closed
             depth += 1
-        elif ch == ")":
+        elif ch in ")]":
             depth = max(depth - 1, 0)
             if depth == 0:
                 cut = None            # that group closed -> balanced so far

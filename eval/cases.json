@@ -657,5 +657,38 @@
     "mustnot": [
       "합동"
     ]
+  },
+  {
+    "id": "coordinate-pair-fence",
+    "input": "$y=\\frac{a}{x}$의 그래프가 점 $(-3, 4)$를 지날 때, 상수 $a$의 값을 구하시오.",
+    "must": [
+      "괄호 열고 마이너스 3 콤마 4 괄호 닫고"
+    ]
+  },
+  {
+    "id": "interval-bracket-fence",
+    "input": "구간 [3, 4]에서 정의된 함수이다.",
+    "must": [
+      "대괄호 열고 3 콤마 4 대괄호 닫고"
+    ]
+  },
+  {
+    "id": "perpendicular-particles",
+    "input": "두 직선 $l \\perp m$일 때, 각의 크기를 구하시오.",
+    "must": [
+      "l 은 m 과 수직이다"
+    ],
+    "mustnot": [
+      "l 수직이다 m"
+    ]
+  },
+  {
+    "id": "equals-reads-as-particle",
+    "input": "$7=7$이고 $2+3=5$이며 $2x+3=7$이다.",
+    "must": [
+      "7 은 7",
+      "2 더하기 3 은 5",
+      "2 x 더하기 3 은 7"
+    ]
   }
 ]

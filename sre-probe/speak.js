@@ -223,7 +223,58 @@ function splitSegments(latex) {
   return segs;
 }
 
-/** Repeating-decimal + 선분 splits (both modes) + radical split (SSML only). */
+/* ------------- 순서쌍/구간 fences, and ⊥ word order (#20, ⚠ list) --------- */
+
+// SRE-ko drops the fence around a NUMERIC tuple — "(3,4)" and "(-2,5)" both
+// speak as bare "3 콤마 4" — while keeping it for a symbolic one, "(a,b)" ->
+// "괄호 열고 a 콤마 b 괄호 닫고". So (3,4), [3,4] and a bare 3,4 are all the
+// same sound, and the corpus has 50 real coordinate pairs plus one problem
+// whose whole point is telling a 자릿점 comma from a 순서쌍 comma. Speaking
+// the fence makes the numeric case consistent with the symbolic one.
+const TUPLE = /([([])\s*(-?\d+(?:\.\d+)?(?:\s*,\s*-?\d+(?:\.\d+)?)+)\s*([)\]])/g;
+const FENCE = { '(': ['괄호 열고', '괄호 닫고'], '[': ['대괄호 열고', '대괄호 닫고'] };
+const MATCHING = { '(': ')', '[': ']' };
+
+// SRE-ko renders a binary \perp with no particles at all — "l 수직이다 m" —
+// though it gets \parallel right ("l 은 m 과 평행하다"). The words have to
+// MOVE, so this is interception rather than a post-SRE rewrite. The particle
+// follows the 받침 of the letter's KOREAN pronunciation, not its spelling:
+// l is 엘 (받침 -> 은/과), a is 에이 (none -> 는/와).
+const BATCHIM = new Set(['f', 'l', 'm', 'n', 'r', 's', 'x']);
+const PERP = /([A-Za-z])\s*\\perp\s*([A-Za-z])(?![A-Za-z])/g;
+const hasBatchim = (w) => BATCHIM.has(w[w.length - 1].toLowerCase());
+
+function splitFences(latex) {
+  const segs = [];
+  let last = 0;
+  const push = (end, text) => {
+    const before = latex.slice(last, end);
+    if (before.trim()) segs.push({ latex: before });
+    segs.push({ text });
+  };
+  for (const m of [...latex.matchAll(TUPLE), ...latex.matchAll(PERP)]
+                  .sort((a, b) => a.index - b.index)) {
+    if (m.index < last) continue;                 // overlapping match already used
+    if (m[3] !== undefined) {                     // TUPLE
+      if (m[3] !== MATCHING[m[1]]) continue;      // mismatched pair: leave it
+      const [open, close] = FENCE[m[1]];
+      const nums = m[2].split(',')
+        .map((n) => n.trim().replace(/^-/, '마이너스 '))
+        .join(' 콤마 ');
+      push(m.index, `${open} ${nums} ${close}`);
+    } else {                                      // PERP
+      push(m.index, `${m[1]} ${hasBatchim(m[1]) ? '은' : '는'} `
+                  + `${m[2]} ${hasBatchim(m[2]) ? '과' : '와'} 수직이다`);
+    }
+    last = m.index + m[0].length;
+  }
+  if (!segs.length) return [{ latex }];
+  const after = latex.slice(last);
+  if (after.trim()) segs.push({ latex: after });
+  return segs;
+}
+
+/** Repeating-decimal + 선분 + fence/⊥ splits (both modes); radicals SSML only. */
 function splitSpecials(latex, withRadicals) {
   const out = [];
   for (const seg of splitRepeating(latex)) {
@@ -231,9 +282,15 @@ function splitSpecials(latex, withRadicals) {
       out.push(seg);
       continue;
     }
-    for (const sub of splitSegments(seg.latex)) {
-      if (sub.latex !== undefined && withRadicals) out.push(...splitRadicals(sub.latex));
-      else out.push(sub);
+    for (const seg2 of splitSegments(seg.latex)) {
+      if (seg2.latex === undefined) {
+        out.push(seg2);
+        continue;
+      }
+      for (const sub of splitFences(seg2.latex)) {
+        if (sub.latex !== undefined && withRadicals) out.push(...splitRadicals(sub.latex));
+        else out.push(sub);
+      }
     }
   }
   return out;
@@ -627,7 +684,7 @@ async function main() {
   }
 }
 
-module.exports = { SPAN, checkWellFormed, splitRadicals, splitRepeating, splitSegments, fixMisreads };
+module.exports = { SPAN, checkWellFormed, splitRadicals, splitRepeating, splitSegments, splitFences, fixMisreads };
 
 if (require.main === module) {
   main().catch((err) => {

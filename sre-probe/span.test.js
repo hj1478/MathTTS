@@ -15,7 +15,8 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 
-const { SPAN, checkWellFormed, splitRadicals, splitRepeating, splitSegments, fixMisreads } = require('./speak.js');
+const { SPAN, checkWellFormed, splitRadicals, splitRepeating, splitSegments,
+        splitFences, fixMisreads } = require('./speak.js');
 
 const cases = JSON.parse(
   fs.readFileSync(path.join(__dirname, '..', 'eval', 'fixtures', 'span_cases.json'), 'utf8')
@@ -113,4 +114,17 @@ test('fixMisreads rewrites only a BINARY 물결표, never the \\tilde accent', (
   assert.strictEqual(fixMisreads('삼각형 A B C 물결표 삼각형 D E F'),
     '삼각형 A B C 닮음이다 삼각형 D E F');
   assert.strictEqual(fixMisreads('x 물결표'), 'x 물결표');   // \tilde{x}, not 닮음
+});
+
+test('splitFences speaks a numeric tuple/interval and orders ⊥ with particles', () => {
+  assert.deepStrictEqual(splitFences('(3,4)'), [{ text: '괄호 열고 3 콤마 4 괄호 닫고' }]);
+  assert.deepStrictEqual(splitFences('(-2, 5)'),
+    [{ text: '괄호 열고 마이너스 2 콤마 5 괄호 닫고' }]);
+  assert.deepStrictEqual(splitFences('[3,4]'), [{ text: '대괄호 열고 3 콤마 4 대괄호 닫고' }]);
+  // 받침 of the KOREAN reading picks the particle: l is 엘, a is 에이
+  assert.deepStrictEqual(splitFences('l \\perp m'), [{ text: 'l 은 m 과 수직이다' }]);
+  assert.deepStrictEqual(splitFences('a \\perp b'), [{ text: 'a 는 b 와 수직이다' }]);
+  // symbolic tuples already keep their fence in SRE — left alone
+  assert.deepStrictEqual(splitFences('(a,b)'), [{ latex: '(a,b)' }]);
+  assert.deepStrictEqual(splitFences('(3]'), [{ latex: '(3]' }]);   // mismatched
 });
