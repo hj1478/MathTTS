@@ -16,7 +16,7 @@ const fs = require('fs');
 const path = require('path');
 
 const { SPAN, checkWellFormed, splitRadicals, splitRepeating, splitSegments,
-        splitFences, fixMisreads } = require('./speak.js');
+        splitFences, splitChains, splitAbs, fixMisreads } = require('./speak.js');
 
 const cases = JSON.parse(
   fs.readFileSync(path.join(__dirname, '..', 'eval', 'fixtures', 'span_cases.json'), 'utf8')
@@ -127,4 +127,23 @@ test('splitFences speaks a numeric tuple/interval and orders ⊥ with particles'
   // symbolic tuples already keep their fence in SRE — left alone
   assert.deepStrictEqual(splitFences('(a,b)'), [{ latex: '(a,b)' }]);
   assert.deepStrictEqual(splitFences('(3]'), [{ latex: '(3]' }]);   // mismatched
+});
+
+test('splitChains restores particles by splitting into binary relations', () => {
+  assert.deepStrictEqual(splitChains('p \\leq k<q'),
+    [{ latex: 'p \\leq k' }, { text: ',' }, { latex: 'k < q' }]);
+  assert.deepStrictEqual(splitChains('x \\leq 3'), [{ latex: 'x \\leq 3' }]);  // binary is fine
+});
+
+test('splitAbs moves 절댓값 after a COMPLEX operand only', () => {
+  assert.deepStrictEqual(splitAbs('|x-2|+3'),
+    [{ latex: 'x-2' }, { text: '의 절댓값' }, { latex: '+3' }]);
+  assert.deepStrictEqual(splitAbs('|-4|'), [{ latex: '|-4|' }]);      // already unambiguous
+  assert.deepStrictEqual(splitAbs('|a|+|b|'), [{ latex: '|a|+|b|' }]);
+});
+
+test('BATCHIM follows the sound, not the spelling', () => {
+  // SRE itself says "x 는 3 보다", "s 는", "f 는" — 엑스/에스/에프 end without 받침
+  assert.deepStrictEqual(splitFences('x \\perp y'), [{ text: 'x 는 y 와 수직이다' }]);
+  assert.deepStrictEqual(splitFences('l \\perp m'), [{ text: 'l 은 m 과 수직이다' }]);
 });

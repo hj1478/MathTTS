@@ -690,5 +690,44 @@
       "2 더하기 3 은 5",
       "2 x 더하기 3 은 7"
     ]
+  },
+  {
+    "id": "chained-relation-particles",
+    "input": "$p \\leq k < q$를 만족시키는 정수 $k$의 개수를 구하시오.",
+    "must": [
+      "p 는 k 보다 작거나 같다",
+      "k 는 q 보다 작다"
+    ],
+    "mustnot": [
+      "p 작거나 같다 k"
+    ]
+  },
+  {
+    "id": "absolute-value-scope",
+    "input": "$|x-2|+3$의 최솟값을 구하시오.",
+    "must": [
+      "x 빼기 2 의 절댓값 더하기 3"
+    ],
+    "mustnot": [
+      "절댓값 x 빼기 2 더하기 3"
+    ]
+  },
+  {
+    "id": "absolute-value-simple-unchanged",
+    "input": "$|-4|$와 $|a|+|b|$를 계산하시오.",
+    "must": [
+      "절댓값 마이너스 4",
+      "절댓값 a 더하기 절댓값 b"
+    ]
+  },
+  {
+    "id": "radical-tail-is-binary",
+    "input": "$\\sqrt{a+b}+1$을 계산하시오.",
+    "must": [
+      "더하기 1"
+    ],
+    "mustnot": [
+      "플러스 1"
+    ]
   }
 ]

@@ -238,11 +238,72 @@ const MATCHING = { '(': ')', '[': ']' };
 // SRE-ko renders a binary \perp with no particles at all — "l 수직이다 m" —
 // though it gets \parallel right ("l 은 m 과 평행하다"). The words have to
 // MOVE, so this is interception rather than a post-SRE rewrite. The particle
-// follows the 받침 of the letter's KOREAN pronunciation, not its spelling:
-// l is 엘 (받침 -> 은/과), a is 에이 (none -> 는/와).
-const BATCHIM = new Set(['f', 'l', 'm', 'n', 'r', 's', 'x']);
+// follows the 받침 of the letter's KOREAN pronunciation, not its spelling, and
+// only the LAST syllable counts: l is 엘 (받침 -> 은/과) but x is 엑스, ending
+// in 스 with none -> 는/와. SRE's own binary readings corroborate the set
+// ("x 는 3 보다", "s 는 3 보다", "f 는 3 보다"); an earlier version of this list
+// wrongly included f/s/x by reading their spelling rather than their sound.
+const BATCHIM = new Set(['l', 'm', 'n']);
 const PERP = /([A-Za-z])\s*\\perp\s*([A-Za-z])(?![A-Za-z])/g;
 const hasBatchim = (w) => BATCHIM.has(w[w.length - 1].toLowerCase());
+
+// 받침 of an actual Hangul syllable (for particles chosen across a split):
+// (code - 0xAC00) % 28 is the final-consonant index, 0 meaning none.
+const lastHangul = (s) => {
+  const m = s.replace(/<[^>]*>/g, '').match(/[가-힣](?=[^가-힣]*$)/);
+  return m ? m[0] : '';
+};
+const hasJong = (ch) => (ch.charCodeAt(0) - 0xac00) % 28 !== 0;
+
+// A CHAIN of relations loses every particle: SRE reads "x \\leq 3" correctly as
+// "x 는 3 보다 작거나 같다" but "p \\leq k < q" as a bare "p 작거나 같다 k 작다
+// q". Splitting the chain into its overlapping binary pairs gets the particles
+// back from SRE itself, so no 받침 table is involved — the pivot is simply
+// spoken twice, which is how the relation is read aloud anyway.
+const RELS = String.raw`\\leq|\\geq|\\lt|\\gt|<|>`;
+const TERM = String.raw`-?[A-Za-z0-9.]+`;
+const CHAIN = new RegExp(`(${TERM})\\s*(${RELS})\\s*(${TERM})\\s*(${RELS})\\s*(${TERM})`, 'g');
+
+function splitChains(latex) {
+  const segs = [];
+  let last = 0;
+  for (const m of latex.matchAll(CHAIN)) {
+    const before = latex.slice(last, m.index);
+    if (before.trim()) segs.push({ latex: before });
+    // spaces matter: "p\\leqk" is an unknown command to temml
+    segs.push({ latex: `${m[1]} ${m[2]} ${m[3]}` }, { text: ',' },
+              { latex: `${m[3]} ${m[4]} ${m[5]}` });
+    last = m.index + m[0].length;
+  }
+  if (!segs.length) return [{ latex }];
+  const after = latex.slice(last);
+  if (after.trim()) segs.push({ latex: after });
+  return segs;
+}
+
+// |x-2| reads "절댓값 x 빼기 2", so "|x-2|+3" becomes "절댓값 x 빼기 2 더하기 3"
+// — indistinguishable from |x-2+3| (#20, ⚠ list). Korean prints the marker
+// AFTER the operand, which scopes on its own: "x 빼기 2 의 절댓값 더하기 3".
+// Only a COMPLEX operand moves; "절댓값 마이너스 4" for |-4| is already complete
+// and unambiguous, and inbox_eval.py's judge prompt asserts exactly that.
+const ABS = /\|([^|]+)\|/g;
+const SIMPLE_OPERAND = /^\s*-?[A-Za-z0-9.]+\s*$/;
+
+function splitAbs(latex) {
+  const segs = [];
+  let last = 0;
+  for (const m of latex.matchAll(ABS)) {
+    if (SIMPLE_OPERAND.test(m[1])) continue;   // prefix reading is already fine
+    const before = latex.slice(last, m.index);
+    if (before.trim()) segs.push({ latex: before });
+    segs.push({ latex: m[1] }, { text: '의 절댓값' });
+    last = m.index + m[0].length;
+  }
+  if (!segs.length) return [{ latex }];
+  const after = latex.slice(last);
+  if (after.trim()) segs.push({ latex: after });
+  return segs;
+}
 
 function splitFences(latex) {
   const segs = [];
@@ -287,9 +348,15 @@ function splitSpecials(latex, withRadicals) {
         out.push(seg2);
         continue;
       }
-      for (const sub of splitFences(seg2.latex)) {
-        if (sub.latex !== undefined && withRadicals) out.push(...splitRadicals(sub.latex));
-        else out.push(sub);
+      for (const seg3 of splitFences(seg2.latex)) {
+        if (seg3.latex === undefined) { out.push(seg3); continue; }
+        for (const seg4 of splitChains(seg3.latex)) {
+          if (seg4.latex === undefined) { out.push(seg4); continue; }
+          for (const sub of splitAbs(seg4.latex)) {
+            if (sub.latex !== undefined && withRadicals) out.push(...splitRadicals(sub.latex));
+            else out.push(sub);
+          }
+        }
       }
     }
   }
@@ -594,10 +661,27 @@ async function main() {
             rendered.push(` ${escape(seg.text)} `);
             continue;
           }
-          const segOut = speech.get(seg.root ?? seg.latex)?.get(stitchKey);
+          let segOut = speech.get(seg.root ?? seg.latex)?.get(stitchKey);
           if (typeof segOut !== 'string' || !segOut.trim()) {
             rendered.length = 0;
             break;
+          }
+          // A trailing fragment like "+1" is rendered on its own, so SRE reads
+          // its leading sign as UNARY — "루트 a 더하기 b 플러스 1" for
+          // \sqrt{a+b}+1. Continuing an expression, it is always binary.
+          if (seg.latex !== undefined && /^\s*[+-]/.test(seg.latex)) {
+            segOut = segOut.replace(/^((?:\s|<[^>]*>)*)플러스/, '$1더하기')
+                           .replace(/^((?:\s|<[^>]*>)*)마이너스/, '$1빼기');
+          }
+          // SRE picks the copula 는/은 for '=' from the fragment alone, so a
+          // reordering split can leave it disagreeing with what now precedes
+          // it ("...의 절댓값 는 5"). Re-pick it from the real 받침.
+          if (rendered.length) {
+            const prev = lastHangul(rendered.join(''));
+            if (prev) {
+              segOut = segOut.replace(/^((?:\s|<[^>]*>)*)(?:는|은)(?=\s)/,
+                                      (_m, pre) => pre + (hasJong(prev) ? '은' : '는'));
+            }
           }
           // \x01/\x02 mark the alt-voice region; Azure forbids a <voice>
           // inside a <voice>, so the envelope assembly turns the markers
@@ -684,7 +768,8 @@ async function main() {
   }
 }
 
-module.exports = { SPAN, checkWellFormed, splitRadicals, splitRepeating, splitSegments, splitFences, fixMisreads };
+module.exports = { SPAN, checkWellFormed, splitRadicals, splitRepeating, splitSegments,
+                   splitFences, splitChains, splitAbs, fixMisreads };
 
 if (require.main === module) {
   main().catch((err) => {
