@@ -3,7 +3,7 @@
 Categorized record of every transcription problem found by the eval system
 (inbox_eval judge + lint + probes), with fix status. Golden cases in
 cases.json enforce every ✅; ⚠️ items carry a "known" flag and auto-flip to
-FIXED when resolved. Updated 2026-07-28: 47/55 cases green, 8 known.
+FIXED when resolved. Updated 2026-09-22: 80/81 cases green, 1 known.
 
 ## A. OCR markup leaking into speech — 6/6 FIXED
 - ✅ HTML div/img scaffolding spelled out (html-figure)
@@ -29,24 +29,30 @@ FIXED when resolved. Updated 2026-07-28: 47/55 cases green, 8 known.
 - ✅ schedule dates + orphan close-parens (paren-only-marker-schedule)
 - ✅ unmatched-paren prose capture (unmatched-paren-ejected)
 
-## D. Symbol verbalization (SRE-ko conventions) — 5 fixed, 4 OPEN
+## D. Symbol verbalization (SRE-ko conventions) — 7/7 FIXED
 - ✅ □ blank -> 네모 (box-blank-*, boxed-blank); □ABCD -> 사각형 (quadrilateral-not-blank)
 - ✅ remainder 3⋯1 -> 몫/나머지 (division-remainder-dots)
 - ✅ geometry/degree battery (angle, ⊥, ∥, ≡, 합동, ratio, 절댓값 …)
 - ✅ 절댓값 OCR-typo family via _OCR_TYPOS map (ocr-typo-jeoldaetgab)
-- ⚠️ ∽ -> "물결표" not 닮음 (similarity)
-- ⚠️ 순환소수 dot/overline phrasing (repeating-decimal-dots, -overline)
-- ⚠️ f(3) -> "f 의 3" ambiguity (function-application)
-- Fix path for all ⚠️: fixMisreads() post-SRE rewrite layer in speak.js.
+- ✅ ∽ -> 닮음이다 (similarity); △ -> 삼각형, 선분 overline, 사인/코사인, 제곱센티미터
+- ✅ 순환소수 dot/overline -> reading C (#17, decided)
+- ✅ f(3) -> "함수 f 의 3" (function-application) — f/g/h only
+- Fix path used: fixMisreads() post-SRE rewrites + pre-SRE interception where
+  the words must MOVE (선분, 순환소수, ⊥, 절댓값, x_{n+1}).
 
-## E. Inherent linearization ambiguity — OPEN by nature (policy, not bugs)
-- ⚠️ 번분수 collision: (1/2)/3 and 1/(2/3) speak identically (nested-fraction-collision)
-- ⚠️ x_{n+1} vs x_n+1 indistinguishable (subscript-expression-ambiguity)
-- ⚠️ nested radical grouping √(3+2√2) (nested-radical-grouping)
+## E. Linearization ambiguity — POLICY DECIDED 2026-09-22, 4/5 resolved
+Policy: nesting is spoken with SRE's own 시작/끝 forms, enabled PER SPAN and only
+for the structure actually nested, so simple readings stay terse. Where no
+toggle exists, say it as a teacher does. See FINDINGS.md 2026-09-22.
+- ✅ 번분수 collision -> 분수시작/분수끝 (Fraction_GeneralEndFrac, per span)
+- ✅ x_{n+1} vs x_n+1 -> "n 더하기 1 번째 x" (no Subscript_* toggle exists)
+- ✅ nested radical grouping -> 루트끝 (Roots_RootEnd); works in the PLAIN path,
+  so it replaces the SSML voice-change trick as the primary grouping cue
+- ✅ exponent towers -> 지수시작/지수끝 (Exponent_AfterPower)
+- ✅ root-of-fraction: was never ambiguous — √(9/16) and √9/16 already differ
 - ⚠️ problem-defined notation <m,n>=k — unfixable in principle (custom-angle-notation)
-- (unfiled, fragile): exponent towers 2^(3²) vs (2³)²; root-of-fraction √(9/16)
-- Needs a phrasing-policy decision (explicit 괄호 / verbose forms vs listenability);
-  validate with listening tests, not text checks.
+- STILL to validate BY EAR: the text checks prove each pair is distinguishable,
+  not that either reading is comfortable. 분수시작/분수끝 on a deep nest is long.
 
 ## F. Upstream OCR quality — partially addressable
 - ✅ recurring typo map pattern (절댓값 family) — extend _OCR_TYPOS as new ones appear

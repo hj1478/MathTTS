@@ -372,3 +372,63 @@ The other ~28 toggles remain untried. `ImpliedTimes_None`, `Fraction_Over` and
 `Ellipses_AndSoOn` all look relevant to open items (the 번분수 collision,
 `\cdots`), and the tokenization caveat above applies to all of them: a toggle
 that looks inert may just be missing the structure it matches on.
+
+## 2026-09-22 — the nesting policy: SRE already had one convention for every ambiguous case
+
+**Question.** `eval/problems.md` section E listed four readings as "inherent
+linearization ambiguity — OPEN by nature" and said they "need a phrasing-policy
+decision (explicit 괄호 / verbose forms vs listenability)". What should the
+pipeline actually SAY for them?
+
+**What I did.** Before designing a phrasing, tried the clearspeak preference
+toggles against each ambiguous PAIR — the test being whether the two members
+come out different, not whether one sounds nice.
+
+**What happened.** SRE has a consistent convention for every case it can fix,
+and it is the same one each time: an explicit 시작/끝 pair.
+
+```
+Fraction_GeneralEndFrac  (1/2)/3   ->  분수시작 분모가 3 … 분수끝 인 분수끝
+                         1/(2/3)   ->  분수시작 분모가 분수시작 … 분수끝 이고 … 분수끝
+Roots_RootEnd            √(3+2√2)  ->  루트 3 더하기 2 루트 2 루트끝 루트끝
+                         √3+2√2    ->  루트 3 더하기 2 루트 2
+Exponent_AfterPower      2^(3²)    ->  2 지수시작 3 의 2 제곱 지수끝
+                         (2³)²     ->  2 의 3 제곱 지수시작 2 지수끝
+```
+
+Two cases have no toggle: `x_{n+1}` (there is no `Subscript_*` family) and
+`f(3)` (`Functions_None` is inert, likely the same MathML-structure cause as the
+`Paren_*` toggles). One "unfiled, fragile" worry was unfounded: `√(9/16)` and
+`√9/16` were already distinct ("루트 16 분의 9" vs "분모가 16 이고 분자가 루트 9
+인 분수").
+
+Also verified: preferences COMBINE with ':' —
+`Fraction_GeneralEndFrac:Roots_RootEnd:Exponent_AfterPower` applies all three.
+
+**Result.** Verified by running every pair. The policy adopted:
+
+> **Nesting is spoken with SRE's own 시작/끝 forms, enabled per span and only
+> for the structure that is actually nested.** Where no toggle exists, say it
+> the way a teacher does: index before base ("n 더하기 1 번째 x"), and name the
+> function ("함수 f 의 3").
+
+Per-span is what makes it affordable. Across the 58-page corpus the markers
+fire 60 times — 루트끝 21, 번째 14, 함수 25 — while `분수시작` and `지수시작`
+fire **zero** times, because no corpus page nests a fraction or an exponent.
+Terse readings are untouched: `분의` still appears 239 times.
+
+**Changed as a result.** `styleFor()` in `speak.js` picks a clearspeak style per
+span; `splitSubscripts` handles `x_{n+1}`; `fixMisreads` names f/g/h. Four of
+the five `known` struggles are gone — 80/81 golden cases pass and the one
+remaining, `custom-angle-notation`, is unfixable in principle.
+
+This also **replaces the radical voice-change trick** as the primary grouping
+cue: "루트끝" is one word where "괄호 닫고" was two, it works in the PLAIN path
+where a voice change cannot, and it does not ping-pong on nested radicals. The
+voice marking is now redundant rather than load-bearing.
+
+**Still open.** By ear, not on paper. 분수시작/분수끝 on a deeply nested
+fraction is a lot of syllables, and `problems.md` was right that this needed
+"listening tests, not text checks" — the text checks only prove the pair is
+DISTINGUISHABLE, not that either is comfortable. Three cases in `eval/cases.json`
+now pin readings nobody has heard.

@@ -268,6 +268,64 @@ const CHAIN = new RegExp(
   String.raw`(?<![A-Za-z0-9.^_{\\])` + `${TERM}(?:\\s*(?:${RELS})\\s*${TERM}){2,}`, 'g');
 const CHAIN_TOKEN = new RegExp(`${RELS}|${TERM}`, 'g');
 
+/* ------------------ nesting policy: SRE's own 시작/끝 forms ---------------- */
+
+// Nesting is what makes a structure ambiguous BY EAR, and SRE has one
+// convention for every such case — an explicit 시작/끝 pair:
+//   \frac in a \frac  ->  분수시작 … 분수끝      (Fraction_GeneralEndFrac)
+//   a complex radicand ->  루트 … 루트끝          (Roots_RootEnd)
+//   ^ inside a ^       ->  지수시작 … 지수끝      (Exponent_AfterPower)
+// Enabled PER SPAN, and only for the structure that is actually nested, so a
+// span with none keeps the terse reading ("5 분의 3", "루트 2"). Clearspeak
+// preferences combine with ':' — verified against SRE 5.0.0-rc.4.
+// This replaces the radical voice-change trick as the primary grouping cue:
+// "루트끝" is one word where "괄호 닫고" was two, and unlike a voice change it
+// works in the PLAIN path and does not ping-pong on nested radicals.
+
+/** true if a \cmd's braced argument contains another \cmd (brace-matched, so
+ *  two SIBLING fractions — "\frac{1}{2}+\frac{3}{4}" — do not count). */
+// how many braced arguments each command takes — BOTH of \frac's must be
+// scanned, or "\frac{1}{\frac{2}{3}}" reads as un-nested
+const NARGS = { '\\frac': 2, '\\sqrt': 1 };
+
+function nestedArg(latex, cmd) {
+  const nargs = NARGS[cmd] ?? 1;
+  for (let i = latex.indexOf(cmd); i >= 0; i = latex.indexOf(cmd, i + 1)) {
+    let k = i + cmd.length;
+    let region = '';
+    for (let a = 0; a < nargs; a++) {
+      while (latex[k] === ' ') k++;
+      if (latex[k] !== '{') break;
+      let depth = 1;
+      let j = k + 1;
+      while (j < latex.length && depth) {
+        if (latex[j] === '{') depth++;
+        else if (latex[j] === '}') depth--;
+        j++;
+      }
+      region += latex.slice(k + 1, j - 1);
+      k = j;
+    }
+    if (region.includes(cmd)) return true;
+  }
+  return false;
+}
+
+const NESTING = [
+  ['Fraction_GeneralEndFrac', (l) => nestedArg(l, '\\frac')],
+  // reuse splitRadicals' own judgement of "where does the root end?" — testing
+  // COMPLEX_RADICAND against the whole span matched the \sqrt itself, so
+  // "루트끝" fired even on a bare \sqrt{2}
+  ['Roots_RootEnd', (l) => splitRadicals(l).some((s) => s.root !== undefined)],
+  ['Exponent_AfterPower', (l) => /\^\s*\{[^{}]*\^/.test(l)],
+];
+
+/** latex -> the clearspeak style string it should be spoken with. */
+function styleFor(latex, baseStyle) {
+  const prefs = NESTING.filter(([, test]) => test(latex)).map(([pref]) => pref);
+  return prefs.length ? prefs.join(':') : baseStyle;
+}
+
 function splitChains(latex) {
   const segs = [];
   let last = 0;
@@ -315,6 +373,27 @@ function splitAbs(latex) {
   return segs;
 }
 
+// "x_{n+1}" and "x_n+1" both read "x 아래첨자 n 더하기 1", and SRE has no
+// Subscript_* toggle to separate them. Said the way a teacher says it — index
+// first, then the base — it scopes on its own: "n 더하기 1 번째 x".
+// Only a COMPLEX index moves; "x_n" -> "x 아래첨자 n" is already unambiguous.
+const SUBSCRIPT = /([A-Za-z])_\{([^{}]*[+\-][^{}]*)\}/g;
+
+function splitSubscripts(latex) {
+  const segs = [];
+  let last = 0;
+  for (const m of latex.matchAll(SUBSCRIPT)) {
+    const before = latex.slice(last, m.index);
+    if (before.trim()) segs.push({ latex: before });
+    segs.push({ latex: m[2] }, { text: `번째 ${m[1]}` });
+    last = m.index + m[0].length;
+  }
+  if (!segs.length) return [{ latex }];
+  const after = latex.slice(last);
+  if (after.trim()) segs.push({ latex: after });
+  return segs;
+}
+
 function splitFences(latex) {
   const segs = [];
   let last = 0;
@@ -345,32 +424,19 @@ function splitFences(latex) {
   return segs;
 }
 
-/** Repeating-decimal + 선분 + fence/⊥ splits (both modes); radicals SSML only. */
+// ORDER IS LOAD-BEARING: splitRepeating must claim \overline{23} as a
+// repeating decimal before splitSegments would claim it as 선분.
+const SPLITTERS = [splitRepeating, splitSegments, splitFences, splitChains,
+                   splitAbs, splitSubscripts];
+
+/** All pre-SRE splits (both modes); radical voice-marking is SSML only. */
 function splitSpecials(latex, withRadicals) {
-  const out = [];
-  for (const seg of splitRepeating(latex)) {
-    if (seg.latex === undefined) {
-      out.push(seg);
-      continue;
-    }
-    for (const seg2 of splitSegments(seg.latex)) {
-      if (seg2.latex === undefined) {
-        out.push(seg2);
-        continue;
-      }
-      for (const seg3 of splitFences(seg2.latex)) {
-        if (seg3.latex === undefined) { out.push(seg3); continue; }
-        for (const seg4 of splitChains(seg3.latex)) {
-          if (seg4.latex === undefined) { out.push(seg4); continue; }
-          for (const sub of splitAbs(seg4.latex)) {
-            if (sub.latex !== undefined && withRadicals) out.push(...splitRadicals(sub.latex));
-            else out.push(sub);
-          }
-        }
-      }
-    }
+  let segs = [{ latex }];
+  for (const split of SPLITTERS) {
+    segs = segs.flatMap((s) => (s.latex === undefined ? [s] : split(s.latex)));
   }
-  return out;
+  if (!withRadicals) return segs;
+  return segs.flatMap((s) => (s.latex === undefined ? [s] : splitRadicals(s.latex)));
 }
 
 /* --------------------- radical grouping by voice change ------------------ */
@@ -506,7 +572,12 @@ function fixMisreads(speech) {
     .replace(/코싸인/g, '코사인')              // textbook spelling (#20)
     .replace(/싸인/g, '사인')
     .replace(UNIT_POWER, '$2$1')
-    .replace(/ 콜론 /g, ' 대 ');
+    .replace(/ 콜론 /g, ' 대 ')
+    // "f 의 3" for f(3) is ambiguous with multiplication and with the
+    // possessive; naming the function costs one word. f/g/h only — those are
+    // the function names in 초·중 print, where a lone letter is a variable.
+    .replace(/(^|[\s>])([fgh]) 의 /g, '$1함수 $2 의 ')
+    .replace(/(<say-as[^>]*>)([fgh])(<\/say-as>) 의 /g, '함수 $1$2$3 의 ');
 }
 
 /**
@@ -604,6 +675,18 @@ async function main() {
 
   // speech.get(latex).get('domain/style') -> string | {error}
   const speech = new Map([...mathml.keys()].map((l) => [l, new Map()]));
+  // Per-span nesting styles, computed only for the spans that need them rather
+  // than for every span in every style.
+  const base = combos[0];
+  const keyOf = (latex) => `clearspeak/${styleFor(latex, base.style)}`;
+  const perSpan = new Map(); // style -> [latex...]
+  for (const latex of mathml.keys()) {
+    const style = styleFor(latex, base.style);
+    if (style !== base.style) {
+      if (!perSpan.has(style)) perSpan.set(style, []);
+      perSpan.get(style).push(latex);
+    }
+  }
   for (const { domain, style } of combos) {
     await sre.setupEngine({
       locale: 'ko', domain, style, modality: 'speech', markup: ssml ? 'ssml' : 'none',
@@ -623,8 +706,28 @@ async function main() {
     }
   }
 
-  // The stitched view uses the FIRST combo's speech.
-  const stitchKey = `${combos[0].domain}/${combos[0].style}`;
+  for (const [style, latexes] of perSpan) {
+    await sre.setupEngine({
+      locale: 'ko', domain: 'clearspeak', style, modality: 'speech',
+      markup: ssml ? 'ssml' : 'none',
+    });
+    await sre.engineReady();
+    for (const latex of latexes) {
+      const conv = mathml.get(latex);
+      if (conv.error) continue;                  // the base key already holds it
+      try {
+        speech.get(latex).set(`clearspeak/${style}`, fixMisreads(sre.toSpeech(conv.mathml)));
+      } catch {
+        /* leave it: the stitcher falls back to the base key */
+      }
+    }
+  }
+
+  // The stitched view uses the FIRST combo, except where a span's nesting asks
+  // for one of the 시작/끝 forms above.
+  const baseKey = `${base.domain}/${base.style}`;
+  const stitchKeyFor = (latex) =>
+    (speech.get(latex)?.has(keyOf(latex)) ? keyOf(latex) : baseKey);
 
   // Failure accounting (issue #11): a span that stitched as salvage or a
   // placeholder used to be one console line scrolling past while the run
@@ -671,7 +774,8 @@ async function main() {
             rendered.push(` ${escape(seg.text)} `);
             continue;
           }
-          let segOut = speech.get(seg.root ?? seg.latex)?.get(stitchKey);
+          const segTex = seg.root ?? seg.latex;
+          let segOut = speech.get(segTex)?.get(stitchKeyFor(segTex));
           if (typeof segOut !== 'string' || !segOut.trim()) {
             rendered.length = 0;
             break;
@@ -705,7 +809,7 @@ async function main() {
           return rendered.join('');
         }
       }
-      const out = speech.get(latex).get(stitchKey);
+      const out = speech.get(latex).get(stitchKeyFor(latex));
       if (typeof out === 'string' && out.trim()) {
         stats.ok++;
         return ssml ? ` ${ssmlInner(out)} ` : ` ${out.trim()} `;
@@ -721,7 +825,8 @@ async function main() {
 
     console.log(hr);
     if (ssml) {
-      console.log(`STITCHED SSML (${stitchKey}, Azure envelope, voice=${voice}):`);
+      console.log(`STITCHED SSML (${baseKey} + per-span nesting styles, `
+        + `Azure envelope, voice=${voice}):`);
       console.log(hr);
       const body = doc.parts
         .map((part) =>
@@ -745,7 +850,8 @@ async function main() {
         writeStitched(doc.file, doc_ssml);
       }
     } else {
-      console.log(`STITCHED (${stitchKey}) — what a TTS voice would read:`);
+      console.log(`STITCHED (${baseKey} + per-span nesting styles) `
+        + `— what a TTS voice would read:`);
       console.log(hr);
       const stitched = doc.parts
         .map((part) =>
@@ -779,7 +885,8 @@ async function main() {
 }
 
 module.exports = { SPAN, checkWellFormed, splitRadicals, splitRepeating, splitSegments,
-                   splitFences, splitChains, splitAbs, fixMisreads };
+                   splitFences, splitChains, splitAbs, splitSubscripts,
+                   styleFor, fixMisreads };
 
 if (require.main === module) {
   main().catch((err) => {
