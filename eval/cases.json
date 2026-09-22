@@ -215,9 +215,8 @@
     "id": "function-application",
     "input": "f(x)=2x+1에서 f(3)의 값을 구하시오.",
     "must": [
-      "f 3"
-    ],
-    "known": "SRE-ko clearspeak says 'f 의 3', ambiguous with multiplication/possessive"
+      "함수 f 의 3"
+    ]
   },
   {
     "id": "garbled-ocr-latex",
@@ -503,25 +502,29 @@
     "id": "nested-radical-grouping",
     "input": "$ \\sqrt{3+2\\sqrt{2}} $ 를 간단히 하시오.",
     "must": [
-      "괄호 열고 3 더하기 2 루트 2 괄호 닫고"
+      "루트 3 더하기 2 루트 2 루트끝 루트끝"
     ],
-    "known": "plain path: SRE-ko reads nested radicals without grouping — '루트 3 더하기 2 루트 2' is ambiguous (√3+2√2 vs √(3+2√2)). The SSML path now marks the radicand by switching to the opposite-gender voice (speak.js splitRadicals) instead of speaking parens; this plain-text suite still exercises the unchanged ambiguous path"
+    "mustnot": [
+      "괄호 열고 3 더하기"
+    ]
   },
   {
     "id": "nested-fraction-collision",
     "input": "$\\frac{1}{\\frac{2}{3}}$ 을 계산하시오.",
     "must": [
-      "분모가"
-    ],
-    "known": "번분수: (1/2)/3 and 1/(2/3) both speak as '3 분의 2 분의 1' — SRE-ko has the verbose 분모가/분자가 form but doesn't use it for nested fractions"
+      "분수시작",
+      "분수끝"
+    ]
   },
   {
     "id": "subscript-expression-ambiguity",
     "input": "$x_{n+1}=x_n+3$ 인 수열이 있다.",
     "must": [
-      "괄호"
+      "n 더하기 1 번째 x"
     ],
-    "known": "x_{n+1} speaks as 'x 아래첨자 n 더하기 1' — indistinguishable from x_n + 1; recurrence relations (수열) need grouping cues"
+    "mustnot": [
+      "x 아래첨자 n 더하기 1"
+    ]
   },
   {
     "id": "piecewise-basic",
@@ -728,6 +731,47 @@
     ],
     "mustnot": [
       "플러스 1"
+    ]
+  },
+  {
+    "id": "nesting-policy-keeps-simple-readings-terse",
+    "input": "$\\frac{3}{5}$와 $\\sqrt{2}$와 $x^2$와 $\\frac{1}{2}+\\frac{3}{4}$를 읽으시오.",
+    "must": [
+      "5 분의 3",
+      "루트 2",
+      "x 제곱",
+      "2 분의 1 더하기 4 분의 3"
+    ],
+    "mustnot": [
+      "분수시작",
+      "루트끝",
+      "지수시작"
+    ]
+  },
+  {
+    "id": "non-nested-radical-has-no-end-marker",
+    "input": "$\\sqrt{3}+2\\sqrt{2}$ 를 계산하시오.",
+    "must": [
+      "루트 3 더하기 2 루트 2"
+    ],
+    "mustnot": [
+      "루트끝"
+    ]
+  },
+  {
+    "id": "exponent-tower-marked",
+    "input": "$2^{3^2}$ 을 계산하시오.",
+    "must": [
+      "지수시작",
+      "지수끝"
+    ]
+  },
+  {
+    "id": "recurrence-reads-index-first",
+    "input": "$a_{n+1}=a_n+2$ 인 수열의 제5항을 구하시오.",
+    "must": [
+      "n 더하기 1 번째 a",
+      "a 아래첨자 n 더하기 2"
     ]
   }
 ]

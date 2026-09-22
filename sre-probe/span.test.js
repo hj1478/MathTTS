@@ -16,7 +16,8 @@ const fs = require('fs');
 const path = require('path');
 
 const { SPAN, checkWellFormed, splitRadicals, splitRepeating, splitSegments,
-        splitFences, splitChains, splitAbs, fixMisreads } = require('./speak.js');
+        splitFences, splitChains, splitAbs, splitSubscripts,
+        styleFor, fixMisreads } = require('./speak.js');
 
 const cases = JSON.parse(
   fs.readFileSync(path.join(__dirname, '..', 'eval', 'fixtures', 'span_cases.json'), 'utf8')
@@ -157,4 +158,23 @@ test('splitChains consumes the WHOLE chain, however many links', () => {
   // and must not start matching INSIDE a term: "x^2" was sliced to "x^" + "2"
   assert.deepStrictEqual(splitChains('x^2<y<z'),
     [{ latex: 'x^2 < y' }, { text: ',' }, { latex: 'y < z' }]);
+});
+
+test('styleFor enables a 시작/끝 form only for the structure actually nested', () => {
+  assert.strictEqual(styleFor('\\frac{\\frac{1}{2}}{3}', 'default'), 'Fraction_GeneralEndFrac');
+  // BOTH \frac arguments must be scanned, or this reads as un-nested
+  assert.strictEqual(styleFor('\\frac{1}{\\frac{2}{3}}', 'default'), 'Fraction_GeneralEndFrac');
+  assert.strictEqual(styleFor('\\sqrt{3+2\\sqrt{2}}', 'default'), 'Roots_RootEnd');
+  assert.strictEqual(styleFor('2^{3^2}', 'default'), 'Exponent_AfterPower');
+  // terse cases stay terse — siblings are not nesting, a bare root is not complex
+  assert.strictEqual(styleFor('\\frac{3}{5}', 'default'), 'default');
+  assert.strictEqual(styleFor('\\frac{1}{2}+\\frac{3}{4}', 'default'), 'default');
+  assert.strictEqual(styleFor('\\sqrt{2}', 'default'), 'default');
+  assert.strictEqual(styleFor('x^2', 'default'), 'default');
+});
+
+test('splitSubscripts says the index before the base, complex only', () => {
+  assert.deepStrictEqual(splitSubscripts('x_{n+1}'),
+    [{ latex: 'n+1' }, { text: '번째 x' }]);
+  assert.deepStrictEqual(splitSubscripts('a_n'), [{ latex: 'a_n' }]);
 });
