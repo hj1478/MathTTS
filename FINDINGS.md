@@ -113,6 +113,11 @@ wrote to `output/`.
 The second line also shows the model closing a span too late, swallowing
 "(p, q" and the Korean after it.
 
+> **Correction (2026-10-16).** The first line is not verbatim model output.
+> The model wrote it without the braces; see the 2026-10-16 entry "OCR drops the
+> braces in `kr question 2.png`". The `$...$` convention itself stands: the
+> unedited output uses it too.
+
 **Result.** Verified from real output, not assumed. The model cannot be made to
 emit any other delimiter, so `normalize.py` canonicalizes whatever arrives.
 
@@ -462,4 +467,133 @@ Next test: the same 10-fresh-container check on an L4. If the L4 also hangs,
 the plan is to switch OCR to the PaddleOCR-VL hosted API.
 
 **Still open.** Whether the hang is specific to the T4 (L4 test pending), and
-why `_C_ops.embedding` never returns.
+why `_C_ops.embedding` never returns. *Answered in the next entry: not
+T4-specific, and the cause is Paddle's `auto_growth` allocator.*
+
+## 2026-10-16 — The first-call hang is Paddle's `auto_growth` allocator; `FLAGS_allocator_strategy=naive_best_fit` fixes it (10/10)
+
+**Question.** Is the first-call hang in the previous entry specific to the T4,
+and is there a fix short of switching to the hosted API?
+
+**What I did.** First, the same check on an L4: 10 fresh containers, one OCR call
+each, `kr question 1.png`, 60 s cutoff, default allocator. Then I searched the
+PaddleOCR issue tracker before debugging further, and found two matching reports:
+
+- [PaddleOCR #17693](https://github.com/PaddlePaddle/PaddleOCR/issues/17693):
+  PaddleOCR-VL hangs on the first inference in an endless `ioctl` loop inside
+  Paddle's default `auto_growth` GPU allocator. The workaround is
+  `FLAGS_allocator_strategy=naive_best_fit`. A py-spy native stack in that
+  thread matches ours (`embed_tokens` → `_C_ops.embedding`). The same comment
+  reports v1.6 hanging 6/8 on Paddle 3.2.1 while `pipeline_version="v1"` was
+  stable, so pinning an older Paddle is unlikely to help.
+- [PaddleOCR #17640](https://github.com/PaddlePaddle/PaddleOCR/issues/17640):
+  the same symptom. Its reporter got 10/10 with `naive_best_fit`.
+
+Then the flag test: the 10-fresh-container check on a T4 with
+`FLAGS_allocator_strategy=naive_best_fit` set in the OCR child process's
+environment before paddle is imported (`OcrProcess(env=...)`). Each child
+reported the strategy paddle actually uses, from `paddle.get_flags`. Run with
+`modal run backend/modal_app.py::fresh_test --gpu T4 --allocator naive_best_fit`.
+
+**What happened.**
+
+```
+L4,  default allocator (auto_growth)    1 ok, 9 hangs     the 1 ok: first call 8.6 s
+T4,  naive_best_fit                    10 ok, 0 hangs     first call 6.0–7.2 s (median 6.8)
+                                                          model load 9.1–17.1 s
+```
+
+Every T4 child reported `allocator_strategy: naive_best_fit`, paddle 3.3.1, and
+was gone at the end (hard kill not needed). GPU memory with the flag, after the
+first call: nvidia-smi 7,941–8,026 MiB used; paddle peak 8,121 MiB allocated,
+8,431–8,509 MiB reserved. Earlier default-allocator runs on the T4 showed about
+10,095 MiB used, so the flag uses less memory, not more.
+
+The same day, the default allocator hung again on a T4. In the golden-output
+check below, its first process was killed at 60 s, and a fresh process then
+succeeded.
+
+**Result.** Verified on T4: with `naive_best_fit`, 10 of 10 fresh first calls
+succeed, against 3/5 and at least 13/20 hangs with the default allocator in
+the previous entry. The hang is not specific to the T4 (the L4 hung 9/10). The
+mechanism (the `ioctl` loop inside `auto_growth`) is taken from #17693, and only
+partly observed here.
+
+The native-stack check (`modal run backend/modal_app.py::stack_check`): a fresh
+default-allocator process, with the threads inspected once the first call is
+still running at 25 s. The call hung in both of the two runs (GPU 0 %, the same
+Python stack ending in `_C_ops.embedding`, killed at 60 s). But no native stack
+can be had on Modal: ptrace is not permitted in the container (gdb:
+`ptrace: Operation not permitted`; py-spy: `Permission denied (os error 13)`),
+and gVisor's `/proc` has no `wchan` or `syscall` files. What `/proc/<pid>/task/*/stat`
+does show: of the hung child's 25 threads, exactly one is running (state `R`)
+in all three samples 2 s apart, and the rest are sleeping. So the hung call is
+a busy loop on the CPU with the GPU idle, which is consistent with #17693's
+endless `ioctl` loop. That it is `ioctl` is not shown.
+
+The allocator does not change OCR output. The six golden images (kr question
+1–5, page) gave byte-identical markdown with `naive_best_fit` and with the
+default allocator on the same T4
+(`modal run backend/modal_app.py::output_check`).
+
+Predictions that were wrong, for the record:
+- "The CPU allocation": `cpu=4` hung on its first call (previous entry).
+- "Concurrency between paddlex's threads": it still hung with `use_queues=False`
+  (previous entry).
+- "It is a T4 problem, so an L4 will fix it": the L4 hung 9/10.
+- "The 3.3.1 build is at fault, so pin Paddle 3.2.1": not run. #17693 reports
+  the hang on 3.2.1.
+
+**Changed as a result.** The production worker sets
+`FLAGS_allocator_strategy=naive_best_fit` in the OCR child's environment. The
+child-process hard kill stays as a backstop. No switch to the hosted API.
+
+**Still open.** Whether the busy loop is the `ioctl` loop of #17693. Checking
+would need a host where ptrace is allowed. `pipeline_version="v1"` was not tried.
+
+## 2026-10-16 — OCR drops the braces in `kr question 2.png`; the saved `output/` markdown was hand-edited
+
+**Question.** In the golden-output check, `kr question 2.png` differed from the
+saved `output/kr question 2.md`. Which one is right, and where does the
+difference come from?
+
+**What I did.** Looked at the image, then ran the same pipeline and settings
+(`ocr_vl.pipeline`, paddle 3.3.1, paddleocr 3.7.0, paddlex 3.7.2) with
+`device="cpu"`: `modal run backend/modal_app.py::cpu_check`. It runs on a T4
+container with the GPU unused, because paddlepaddle-gpu cannot even import in
+a CPU-only container (`ImportError: libcuda.so.1: file too short`). I also
+compared the file dates in `output/`.
+
+**What happened.** The image reads −2⁵ ÷ {(−2)⁴ × (−2)}, with braces. Every
+run of the model drops them:
+
+```
+image (by eye)        -2^5 ÷ {(-2)^4 × (-2)}
+GPU, T4, both allocators  4.  $ -2^5 \div (-2)^4 \times (-2) $를 계산하시오.
+CPU (x86, Modal)          4.  $ -2^5 \div (-2)^4 \times (-2) $를 계산하시오.     26.6 s
+output/kr question 2_res.json   (Jul 1, the original run)   the same, no braces
+output/kr question 2.md         (Jul 18)  4.  $ -2^5 \div \{(-2)^4 \times (-2)\} $를 계산하시오.
+```
+
+The `.md` is the only file with the braces. It is dated Jul 18, while the
+`_res.json` written by the same `run_image` call is dated Jul 1, and its
+`block_content` has no braces. No commit records the edit (`output/` is not in
+git).
+
+**Result.** A known OCR error, verified on GPU and CPU: PaddleOCR-VL drops the
+braces in this image. That changes the meaning: −2⁵ ÷ {16 × (−2)} = 1, but the
+OCR text reads (−2⁵ ÷ 16) × (−2) = 4, and the problem is read aloud wrong. GPU
+and CPU agree here, so this is not a GPU-vs-CPU difference.
+
+`output/kr question 2.md` was edited by hand on Jul 18. That is inferred from
+the file dates and the `_res.json`, not recorded anywhere. It should not be
+used as a golden reference for OCR output until that is confirmed. The other
+five golden images match their saved markdown exactly. The `$...$` entry above
+quoted the edited line as verbatim output; it now carries a correction.
+
+**Changed as a result.** Nothing in the pipeline. The correction note on the
+2026-07 entry.
+
+**Still open.** Who edited the file and why (perhaps to check the downstream
+stages on the correct formula). How often the OCR drops grouping braces across
+the 58-page corpus.

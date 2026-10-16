@@ -316,9 +316,17 @@ Limits, all set at the top of `backend/modal_app.py` and `backend/limits.py`:
 5 MB uploads, image types only, 10 jobs per IP per hour, 2 concurrent GPU
 workers, a 90 s idle scale-down, and 24 h retention for uploads, audio and job
 records. Rejected uploads never start a GPU job. OCR runs in a child process
-(`backend/ocr_proc.py`) that is killed if a call takes over 300 s, so a hung
-OCR call cannot keep a GPU running (see FINDINGS.md, 2026-10-16). `tests/test_backend.py`
+(`backend/ocr_proc.py`) with `FLAGS_allocator_strategy=naive_best_fit`: Paddle's
+default GPU allocator hangs the first OCR call in a fresh process most of the
+time. The child is also killed if a call takes over 300 s, so a hung OCR call
+cannot keep a GPU running (see FINDINGS.md, 2026-10-16). `tests/test_backend.py`
 covers the upload, quota and rate-limit helpers without Modal.
+
+Known OCR error: in `kr question 2.png` the model drops the braces in
+−2⁵ ÷ {(−2)⁴ × (−2)}, on GPU and CPU alike, which changes the math that is read
+aloud. `output/kr question 2.md` has the braces but is not raw model output
+(it appears to have been edited by hand), so don't use it as an OCR reference
+(FINDINGS.md, 2026-10-16).
 
 ## Limitations and what is unverified
 

@@ -37,9 +37,11 @@ class OcrFailed(Exception):
 
 
 class OcrProcess:
-    def __init__(self, device="gpu", child_module="backend.ocr_proc"):
+    def __init__(self, device="gpu", child_module="backend.ocr_proc", env=None):
         self.device = device
         self.child_module = child_module  # tests swap in a fake child
+        self.env = env or {}              # set in the child before paddle is imported
+        self.info = None                  # what the child reported once loaded
         self._proc = None
         self._conn = None
 
@@ -56,12 +58,12 @@ class OcrProcess:
         fd = child_sock.fileno()
         self._proc = subprocess.Popen(
             [sys.executable, "-m", self.child_module, str(fd), self.device],
-            cwd=str(ROOT), pass_fds=[fd],
+            cwd=str(ROOT), pass_fds=[fd], env={**os.environ, **self.env},
             start_new_session=True,  # its own process group: the kill takes grandchildren too
         )
         child_sock.close()
         self._conn = Connection(parent_sock.detach())
-        self._wait(timeout, "model load")
+        _, self.info = self._wait(timeout, "model load")
 
     def run(self, image, out_dir, timeout):
         """One OCR call -> (text, md_path). Raises OcrTimeout or OcrFailed."""
@@ -73,6 +75,11 @@ class OcrProcess:
         if status == "error":
             raise OcrFailed(value)
         return value
+
+    def stats(self, timeout=10):
+        """Paddle's peak GPU memory in the child so far (MiB)."""
+        self._conn.send("stats")
+        return self._wait(timeout, "stats")[1]
 
     def _wait(self, timeout, what):
         try:
@@ -121,11 +128,22 @@ def _serve(conn, device):
 
     import ocr_vl
     ocr_vl.pipeline(device)
-    conn.send(("ready", None))
+    import paddle
+    flag = "FLAGS_allocator_strategy"
+    info = {"allocator_strategy": paddle.get_flags([flag])[flag], "paddle": paddle.__version__}
+    print(f"[ocr child] loaded; {info}", flush=True)
+    conn.send(("ready", info))
     while True:
         req = conn.recv()
         if req is None:
             return
+        if req == "stats":
+            mib = 1024 * 1024
+            conn.send(("stats", {
+                "max_allocated_mib": round(paddle.device.cuda.max_memory_allocated() / mib),
+                "max_reserved_mib": round(paddle.device.cuda.max_memory_reserved() / mib),
+            }))
+            continue
         image, out_dir, dump_after = req
         faulthandler.dump_traceback_later(dump_after, exit=False, file=sys.stderr)
         try:
