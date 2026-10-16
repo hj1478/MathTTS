@@ -372,3 +372,94 @@ The other ~28 toggles remain untried. `ImpliedTimes_None`, `Fraction_Over` and
 `Ellipses_AndSoOn` all look relevant to open items (the 번분수 collision,
 `\cdots`), and the tokenization caveat above applies to all of them: a toggle
 that looks inert may just be missing the structure it matches on.
+
+## 2026-10-16 — PaddleOCR-VL hangs on a T4 container's first OCR call; neither more CPUs nor turning off queue mode fixes it
+
+**Question.** The first deployed job on Modal (T4) never finished: it sat in
+the OCR stage until the 600 s function timeout. Why, and what fixes it?
+
+**What I did.** Diagnostic Modal functions on the worker image (in
+`backend/modal_app.py`) that print the device, dtype and weight locations, time
+OCR calls on `kr question 1.png`, and dump every thread's stack
+(`faulthandler`) if a call is still running after 60 s. paddle 3.3.1 (CUDA
+12.6 build), paddleocr 3.7.0, paddlex 3.7.2, Tesla T4.
+
+Ruled out first: the model is on the GPU (`DocVLMLocalPredictor:
+device=gpu`), the weights are baked into the image (no runtime download), and
+the dtype is float32. paddlex only picks bfloat16 when
+`paddle.amp.is_bfloat16_supported()`, which is False on a T4.
+
+Then two hypotheses, each tested and each wrong:
+
+1. **My prediction: the CPU allocation.** The default container has `nproc` = 1
+   (so `OMP_NUM_THREADS` = 1); `cpu=4` would fix it. 10 calls in one container
+   per configuration.
+2. **The concurrency explanation.** paddlex's queue mode (`use_queues=True`, its
+   default) runs layout (CV) and VLM in separate threads, which would touch the
+   GPU for the first time concurrently. Test: `use_queues=False` (paddlex runs
+   the stages one after the other in the calling thread), 20 fresh containers,
+   one OCR call each.
+
+**What happened.** Both were wrong.
+
+```
+cpu=default                     10 ok, 0 hangs   9.8 s first call, then 4.5–4.7 s
+cpu=4                            0 ok, 1 hang    hung on call 1 (GPU 0 %, after 60 s)
+use_queues=False, 20 fresh      13 hangs         run stopped early: success count never printed
+```
+
+With `use_queues=False` the hang is single-threaded. Each of the 13 stack dumps
+has exactly three threads: the OCR call, Modal's event loop and the main
+thread, with no paddlex worker threads. Every one is stuck at the same place,
+with the GPU idle:
+
+```
+ocr-call (the only thread doing OCR; use_queues=False)
+  ocr_vl.py:102  run_image -> pipeline(device).predict(...)
+  paddleocr/_pipelines/paddleocr_vl.py:186  predict
+  paddlex/inference/pipelines/_parallel.py:161  predict
+  .../paddleocr_vl/pipeline.py:1189  predict -> _process_vlm        (non-queue path)
+  .../paddleocr_vl/pipeline.py:959   _process_vlm
+  .../paddleocr_vl/pipeline.py:743   get_layout_parsing_results
+  .../paddleocr_vl/pipeline.py:517   _paddleocr_vl_run_vl_recognition_batches
+  .../models/doc_vlm/predictor.py:248  process -> self.infer.generate(
+  .../doc_vlm/modeling/paddleocr_vl/_paddleocr_vl.py:817  generate
+  .../common/transformers/generation/utils.py:1116  generate -> greedy_search
+  .../common/transformers/generation/utils.py:1284  greedy_search -> self(**model_inputs)
+  .../doc_vlm/modeling/paddleocr_vl/_paddleocr_vl.py:668  forward -> self.model.embed_tokens(input_ids)
+  paddle/nn/functional/input.py:335  embedding -> _C_ops.embedding(...)   <- never returns
+```
+
+With queue mode on (the cpu=4 hang), the stack below `_process_vlm` is
+identical; it just runs in paddlex's `_worker_vlm` thread while the caller
+polls `queue_vlm.get(timeout=0.5)` at `pipeline.py:1170`.
+
+Totals on T4, all the same image: **3 of 5 first calls in a fresh container
+hung** before the queue test, and **at least 13 of the (at most) 20** in it;
+**0 of 9 later calls** in a container whose first call succeeded.
+
+**Result.** A first-call hang in the native `_C_ops.embedding` op on the first
+decoding step, GPU idle, on a T4 with this Paddle build. Verified: it is not
+the CPU allocation, not paddlex's threading, not a CPU fallback, not a runtime
+weight download, and not the dtype. The underlying cause inside Paddle is NOT
+known; I am not debugging Paddle internals.
+
+Hosting lessons, all verified on Modal:
+- Modal's function timeout raises `InputCancellation` in the main thread only.
+  A hung paddlex thread keeps running, and keeps the GPU, after the job is
+  cancelled.
+- A container that crashes has its input rescheduled by Modal: until a
+  failure rate is exceeded for an ephemeral app, and indefinitely for a
+  deployed one, regardless of `retries=0`.
+- Retiring the container (`stop_fetching_inputs`) does not reliably free the
+  GPU either. Several hung containers in the 20-container test ran until
+  Modal's 900 s runner heartbeat timeout, and two were still listed after
+  `modal app stop` and `modal container stop`.
+
+**Changed as a result.** The OCR call moves into a child process that the
+worker kills outright at the cutoff, so a hang cannot hold a GPU past it.
+Next test: the same 10-fresh-container check on an L4. If the L4 also hangs,
+the plan is to switch OCR to the PaddleOCR-VL hosted API.
+
+**Still open.** Whether the hang is specific to the T4 (L4 test pending), and
+why `_C_ops.embedding` never returns.

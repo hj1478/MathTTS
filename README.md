@@ -260,6 +260,66 @@ python ocr_vl.py --eval .              # OCR each image, score against *.expect 
   (drop PDFs in `inbox/`, OCR → stitch → LLM judge), `dot_eval.py` (순환소수
   dot restoration).
 
+## Web backend (Modal)
+
+`backend/modal_app.py` runs the same pipeline as a web API on
+[Modal](https://modal.com): `POST /jobs` with an image, poll `GET /jobs/{id}`
+for every stage's output, then fetch the wav from `GET /audio/{id}`. The
+endpoints, JSON and error codes are in [docs/API.md](docs/API.md).
+`backend/job.py` calls the existing stage code unchanged. It differs from
+`run.py` only where a service needs it to: the OCR model stays loaded, stage 4
+synthesizes only the SSML version, and an exhausted Azure quota still returns
+the text stages, reported as `audio.status: "quota_reached"`.
+
+Everything heavy runs on Modal: the image builds remotely and OCR runs on a T4.
+Your machine only needs the Modal client (`pip install modal`, then
+`modal setup`). Azure credentials come from a Modal Secret, never from `.env`:
+
+```sh
+modal secret create azure-speech SPEECH_KEY=<key> SPEECH_REGION=<region>   # once
+```
+
+**Deploy.** The first deploy builds the image: the CUDA Paddle install, Node,
+the sre-probe packages, and the OCR weights baked in so cold starts don't
+download them. This takes a while. Later deploys reuse those layers unless
+dependencies change.
+
+```sh
+modal deploy backend/modal_app.py
+# -> https://<workspace>--mathtts.<region>.modal.run  (the exact URL is printed)
+```
+
+**Dev server.** Hot-reloads on file changes and stops on Ctrl-C:
+
+```sh
+modal serve backend/modal_app.py
+# -> https://<workspace>--mathtts-dev.<region>.modal.run
+```
+
+**CORS origins.** Browser origins come from one value, read at deploy/serve
+time. Separate several with commas. Localhost dev ports (3000, 5173, 8081) are
+always allowed, and non-browser clients are not affected:
+
+```sh
+MATHTTS_CORS_ORIGINS="https://app.example.com,https://www.example.com" modal deploy backend/modal_app.py
+```
+
+**Smoke test** against the deployed URL. It only sends HTTP requests and
+checks every stage:
+
+```sh
+python scripts/smoke_test.py https://<workspace>--mathtts.<region>.modal.run
+python scripts/smoke_test.py https://<workspace>--mathtts.<region>.modal.run --repeat 2   # cold, then warm
+```
+
+Limits, all set at the top of `backend/modal_app.py` and `backend/limits.py`:
+5 MB uploads, image types only, 10 jobs per IP per hour, 2 concurrent GPU
+workers, a 90 s idle scale-down, and 24 h retention for uploads, audio and job
+records. Rejected uploads never start a GPU job. OCR runs in a child process
+(`backend/ocr_proc.py`) that is killed if a call takes over 300 s, so a hung
+OCR call cannot keep a GPU running (see FINDINGS.md, 2026-10-16). `tests/test_backend.py`
+covers the upload, quota and rate-limit helpers without Modal.
+
 ## Limitations and what is unverified
 
 Deliberately not handled (see `normalize.py`'s docstring for the reasoning):
