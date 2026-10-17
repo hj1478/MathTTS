@@ -470,6 +470,13 @@ the plan is to switch OCR to the PaddleOCR-VL hosted API.
 why `_C_ops.embedding` never returns. *Answered in the next entry: not
 T4-specific, and the cause is Paddle's `auto_growth` allocator.*
 
+> **Note (2026-10-17).** The diagnostic commands in this and the next two
+> entries were run as `modal run backend/modal_app.py::<name>`. They have since
+> moved to their own app: `modal run backend/diagnostics.py::<name>`
+> ("mathtts-diag"), so the production app holds only Worker, web and cleanup.
+> `cpu_check` now runs in a CPU-only container with the CPU paddlepaddle build
+> of the same version, not on a T4 with the GPU unused as described below.
+
 ## 2026-10-16 — The first-call hang is Paddle's `auto_growth` allocator; `FLAGS_allocator_strategy=naive_best_fit` fixes it (10/10)
 
 **Question.** Is the first-call hang in the previous entry specific to the T4,

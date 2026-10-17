@@ -322,6 +322,11 @@ time. The child is also killed if a call takes over 300 s, so a hung OCR call
 cannot keep a GPU running (see FINDINGS.md, 2026-10-16). `tests/test_backend.py`
 covers the upload, quota and rate-limit helpers without Modal.
 
+The OCR checks behind those findings are a separate Modal app, `mathtts-diag`
+in `backend/diagnostics.py`, run with `modal run` and never deployed (its
+docstring lists the commands). The deployed `mathtts` app has only the worker,
+the web API and the hourly cleanup.
+
 Known OCR error: in `kr question 2.png` the model drops the braces in
 −2⁵ ÷ {(−2)⁴ × (−2)}, on GPU and CPU alike, which changes the math that is read
 aloud. `output/kr question 2.md` has the braces but is not raw model output
