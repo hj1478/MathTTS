@@ -264,8 +264,11 @@ python ocr_vl.py --eval .              # OCR each image, score against *.expect 
 
 `backend/modal_app.py` runs the same pipeline as a web API on
 [Modal](https://modal.com): `POST /jobs` with an image, poll `GET /jobs/{id}`
-for every stage's output, then fetch the wav from `GET /audio/{id}`. The
-endpoints, JSON and error codes are in [docs/API.md](docs/API.md).
+for every stage's output, then fetch the wav from `GET /audio/{id}`. Each
+stage's text is returned as soon as it is ready, so a client can show the OCR
+and spoken text before the audio is done, and `POST /warmup` lets the app start
+a GPU worker when it opens, before the user uploads. The endpoints, JSON and
+error codes are in [docs/API.md](docs/API.md).
 `backend/job.py` calls the existing stage code unchanged. It differs from
 `run.py` only where a service needs it to: the OCR model stays loaded, stage 4
 synthesizes only the SSML version, and an exhausted Azure quota still returns
@@ -310,6 +313,7 @@ checks every stage:
 ```sh
 python scripts/smoke_test.py https://<workspace>--mathtts.<region>.modal.run
 python scripts/smoke_test.py https://<workspace>--mathtts.<region>.modal.run --repeat 2   # cold, then warm
+python scripts/smoke_test.py https://<workspace>--mathtts.<region>.modal.run --warmup-lead 20   # /warmup 20 s before the upload
 ```
 
 Limits, all set at the top of `backend/modal_app.py` and `backend/limits.py`:
@@ -320,7 +324,8 @@ records. Rejected uploads never start a GPU job. OCR runs in a child process
 default GPU allocator hangs the first OCR call in a fresh process most of the
 time. The child is also killed if a call takes over 300 s, so a hung OCR call
 cannot keep a GPU running (see FINDINGS.md, 2026-10-16). `tests/test_backend.py`
-covers the upload, quota and rate-limit helpers without Modal.
+covers the upload, quota and rate-limit helpers and the per-stage status
+(`backend/progress.py`) without Modal.
 
 The OCR checks behind those findings are a separate Modal app, `mathtts-diag`
 in `backend/diagnostics.py`, run with `modal run` and never deployed (its

@@ -4,6 +4,14 @@ The backend in `backend/modal_app.py`, deployed on Modal. One image in; every
 pipeline stage's output plus a wav out. Jobs are asynchronous: submit, poll,
 then fetch the audio.
 
+A typical client:
+
+1. `POST /warmup` when the app opens (or the camera screen appears), so a GPU
+   worker is starting while the user picks a photo.
+2. `POST /jobs` with the photo.
+3. Poll `GET /jobs/{id}`. Show `stages.ocr.text` as soon as it appears, then
+   `stages.speech.text`; play the audio when `status` is `done`.
+
 Base URL: the `web` endpoint that `modal deploy` prints. It may include a region
 segment:
 
@@ -29,6 +37,42 @@ Every error response, on every endpoint, has the same body:
 the user as is.
 
 ---
+
+## `POST /warmup` — start a worker ahead of the upload
+
+No body. Starts a GPU worker container in the background (it loads the OCR
+model; no OCR runs) and returns at once, without waiting for it.
+
+```sh
+curl -X POST https://<workspace>--mathtts.<region>.modal.run/warmup
+```
+
+**`202 Accepted`**
+
+```json
+{ "status": "warming" }
+```
+
+Call it when the app opens. It is fire-and-forget: there is nothing to poll,
+and a job submitted while the worker is still loading simply waits for it,
+rather than starting a second cold worker.
+
+- A cold start (no worker running) takes about 30 s before a job can start
+  OCR. Calling `/warmup` early moves that time off the user's wait: with
+  `/warmup` sent 20 s before the upload, a cold job finished in 35 s instead
+  of 50 s (FINDINGS.md, 2026-10-17). About 30 s of lead hides it fully.
+- If a worker is already idle, the call does nothing except restart its idle
+  timer.
+- A worker stays up for 90 s after its last call (`/warmup` or a job), then
+  scales to zero. If the user is likely to take longer than that before
+  uploading, call `/warmup` again, e.g. when they open the camera or pick a
+  photo.
+- It has its own per-IP budget, separate from jobs: warming never uses up one
+  of the 10 jobs/hour.
+
+| Status | `code` | When |
+|---|---|---|
+| 429 | `rate_limited` | Over 30 warmups this clock hour from this IP. `Retry-After` gives the seconds until the next hour starts. Safe to ignore: the job still runs, only colder |
 
 ## `POST /jobs` — submit one image
 
@@ -64,24 +108,58 @@ a `429`.
 
 Poll every 1–2 s. A job record lives for 24 hours after creation.
 
-**`200 OK`**, while the job is in progress:
+Each stage's output is in `stages` **as soon as that stage finishes**, while
+later stages are still running. The OCR text arrives first, then the spoken
+text, and the audio last. Show text as it arrives; don't wait for `done`.
+`stage_status` gives the state of each of the four stages.
+
+**`200 OK`**, while the job is in progress. Here OCR and normalization are
+finished and stage 3 is running:
 
 ```json
 {
   "id": "3f9c0a1b2c3d4e5f60718293",
   "status": "running",
   "stage": "speech",
+  "stage_status": { "ocr": "done", "normalize": "done", "speech": "running", "tts": "pending" },
   "created_at": 1792112400,
-  "expires_at": 1792198800
+  "expires_at": 1792198800,
+  "stages": {
+    "ocr":        { "text": "…" },
+    "normalized": { "text": "…" },
+    "math_spans": [ … ]
+  }
 }
 ```
+
+`stages` is absent until OCR has finished. Each entry, once present, is final
+and does not change. While the job runs, `stages` holds only the finished
+entries:
+
+| Stage finished | Entries added to `stages` |
+|---|---|
+| `ocr` | `ocr` |
+| `normalize` | `normalized`, `math_spans` |
+| `speech` | `speech` (the spoken text, which can be shown while the audio is made) |
+| `tts` | none; `audio` appears with `status: "done"` |
+
+`stage_status` always has all four keys, in pipeline order (`ocr`, `normalize`,
+`speech`, `tts`), each one of:
+
+| State | Meaning |
+|---|---|
+| `pending` | Not started yet |
+| `running` | In progress now |
+| `done` | Finished; its output is in `stages` (or, for `tts`, the wav is ready) |
+| `skipped` | Will not run. For `tts`: the speech has a placeholder (`strict_ok` is `false`), which is known as soon as `speech` is done; or the job failed at an earlier stage |
+| `failed` | The job failed in this stage (`status: "failed"`), or for `tts`, `audio.status` is `quota_reached` or `failed` |
 
 | `status` | Meaning |
 |---|---|
 | `queued` | Waiting for a worker. At most 2 GPU workers run at once; extra jobs wait in line. A cold start (no idle worker) adds model-load time. |
-| `running` | `stage` is one of `ocr`, `normalize`, `speech`, `tts` |
-| `done` | Final. Includes `stages`, `audio` and `timings_s` (below) |
-| `failed` | Final. Includes `error` (below) |
+| `running` | `stage` is one of `ocr`, `normalize`, `speech`, `tts`, the one now running |
+| `done` | Final. Includes all of `stages`, plus `audio` and `timings_s` (below) |
+| `failed` | Final. Includes `error` (below), and `stages` for every stage that finished before the failure |
 
 **`200 OK`**, `done`:
 
@@ -90,6 +168,7 @@ Poll every 1–2 s. A job record lives for 24 hours after creation.
   "id": "3f9c0a1b2c3d4e5f60718293",
   "status": "done",
   "stage": null,
+  "stage_status": { "ocr": "done", "normalize": "done", "speech": "done", "tts": "done" },
   "created_at": 1792112400,
   "expires_at": 1792198800,
   "stages": {
@@ -144,10 +223,15 @@ did not run.
 
 ```json
 {
-  "id": "…", "status": "failed", "stage": null, "created_at": 1792112400, "expires_at": 1792198800,
+  "id": "…", "status": "failed", "stage": null,
+  "stage_status": { "ocr": "failed", "normalize": "skipped", "speech": "skipped", "tts": "skipped" },
+  "created_at": 1792112400, "expires_at": 1792198800,
   "error": { "code": "no_text_found", "message": "이미지에서 문제를 찾지 못했습니다. …" }
 }
 ```
+
+A job that fails after OCR (e.g. `speech_stage_failed`) still has
+`stages.ocr`, `stages.normalized` and `stages.math_spans`.
 
 | `error.code` | Meaning |
 |---|---|
@@ -177,8 +261,9 @@ did not run.
 | Upload size | 5 MB | `limits.MAX_UPLOAD_BYTES` |
 | Image types | PNG, JPEG, WebP, BMP, TIFF | `limits.sniff_image` |
 | Jobs per client IP | 10 per clock hour, shared across web containers (`modal.Dict`) | `modal_app.RATE_LIMIT_PER_HOUR` |
+| Warmups per client IP | 30 per clock hour, separate from the job budget | `modal_app.WARMUP_LIMIT_PER_HOUR` |
 | Concurrent GPU workers | 2 (T4); more jobs queue | `modal_app.MAX_WORKERS` |
-| Worker idle timeout | 90 s, then it scales to zero | `modal_app.SCALEDOWN_S` |
+| Worker idle timeout | 90 s after the last job or warmup, then it scales to zero | `modal_app.SCALEDOWN_S` |
 | OCR call | 300 s, then the OCR process is killed (`timeout`) | `modal_app.OCR_CUTOFF_S` |
 | Job timeout | 420 s (Modal function timeout, a backstop) | `modal_app.JOB_TIMEOUT_S` |
 | Retention | 24 h for uploads, stage files, audio and job records (cleanup runs hourly) | `modal_app.RETENTION_S` |

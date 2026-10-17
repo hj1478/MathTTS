@@ -10,7 +10,7 @@ unchanged. This file is only the hosting around it:
                 container (@modal.enter). Scales to zero after SCALEDOWN_S idle;
                 at most MAX_WORKERS containers, so extra jobs queue instead of
                 renting more GPUs.
-  web (CPU)     FastAPI: POST /jobs, GET /jobs/{id}, GET /audio/{id}.
+  web (CPU)     FastAPI: POST /warmup, POST /jobs, GET /jobs/{id}, GET /audio/{id}.
                 Validates the upload and applies the per-IP limit BEFORE a GPU
                 job is spawned. Never sees the Azure secret.
   cleanup       hourly: deletes job folders (upload, audio, stage files) and
@@ -56,6 +56,7 @@ DEV_ORIGINS = ["http://localhost:3000", "http://localhost:5173", "http://localho
 CORS_ORIGINS = os.environ.get("MATHTTS_CORS_ORIGINS", "")
 
 RATE_LIMIT_PER_HOUR = 10       # jobs per client IP per clock hour
+WARMUP_LIMIT_PER_HOUR = 30     # POST /warmup per client IP per clock hour (own budget)
 MAX_WORKERS = 2                # concurrent GPU containers
 SCALEDOWN_S = 90               # idle seconds before a worker container stops
 # The OCR model runs in a child process (backend/ocr_proc.py). An OCR call
@@ -168,6 +169,7 @@ web_image = (
     modal.Image.debian_slim(python_version="3.11")
     .uv_pip_install("fastapi[standard]==0.115.12", "pillow==11.2.1")
     .add_local_file(REPO / "backend" / "limits.py", "/root/backend/limits.py")
+    .add_local_file(REPO / "backend" / "progress.py", "/root/backend/progress.py")
 )
 
 
@@ -226,6 +228,12 @@ class Worker:
         self.ocr.close()
 
     @modal.method()
+    def warm(self):
+        """POST /warmup: no work. Calling it starts a container (load() above)
+        if none is idle; the container then stays up for SCALEDOWN_S."""
+        return self.ocr.info
+
+    @modal.method()
     def run(self, job_id, image_bytes, ext):
         from modal.exception import InputCancellation
 
@@ -255,9 +263,15 @@ class Worker:
         def ocr(img, out_dir, device):  # ocr_vl.run_image, in the killable child
             return self.ocr.run(img, out_dir, timeout=OCR_CUTOFF_S)
 
+        stages = {}
+
+        def output(key, value):  # GET /jobs shows each stage's text as soon as it exists
+            stages[key] = value
+            update(stages=stages)
+
         try:
             result = job.run_job(image, workdir, "gpu", ocr=ocr,
-                                 on_stage=lambda s: update(stage=s))
+                                 on_stage=lambda s: update(stage=s), on_output=output)
         except InputCancellation:  # Modal's backstop timeout, or a cancel
             print(f"[job {job_id}] cancelled; killing OCR and retiring this container")
             self.ocr.kill()
@@ -302,7 +316,7 @@ def web():
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import FileResponse, JSONResponse
 
-    from backend import limits
+    from backend import limits, progress
 
     api = FastAPI(title="MathTTS", docs_url=None, redoc_url=None, openapi_url=None)
     api.add_middleware(CORSMiddleware, allow_origins=_origins(),
@@ -313,12 +327,28 @@ def web():
         return JSONResponse({"error": {"code": code, "message": message}},
                             status_code=status, headers=headers)
 
-    async def take_slot(ip):
+    async def take_slot(ip, limit=RATE_LIMIT_PER_HOUR):
         now = time.time()
-        for key in limits.slot_keys(ip, now, RATE_LIMIT_PER_HOUR):
+        for key in limits.slot_keys(ip, now, limit):
             if await store.put.aio(f"rl:{key}", now, skip_if_exists=True):
                 return True, 0
         return False, limits.retry_after(now)
+
+    def client_ip(request):
+        return request.client.host if request.client else "unknown"
+
+    @api.post("/warmup", status_code=202)
+    async def warmup(request: Request):
+        # its own slots ("warm:<ip>"), so warming never uses up a job slot
+        allowed, wait = await take_slot(f"warm:{client_ip(request)}", WARMUP_LIMIT_PER_HOUR)
+        if not allowed:
+            return error(429, "rate_limited",
+                         f"요청이 너무 많습니다. 한 시간에 {WARMUP_LIMIT_PER_HOUR}번까지 요청할 수 있습니다.",
+                         headers={"Retry-After": str(wait)})
+        # fire and forget: the container start (and model load) happens in the
+        # background; this returns before it
+        await Worker().warm.spawn.aio()
+        return {"status": "warming"}
 
     @api.post("/jobs", status_code=202)
     async def create_job(request: Request):
@@ -356,8 +386,7 @@ def web():
             return error(422, "invalid_image", "이미지를 열 수 없습니다. 다른 파일로 다시 시도해 주세요.")
 
         # 3. per-IP limit, shared across web containers via the Dict
-        ip = request.client.host if request.client else "unknown"
-        allowed, wait = await take_slot(ip)
+        allowed, wait = await take_slot(client_ip(request))
         if not allowed:
             return error(429, "rate_limited",
                          f"요청이 너무 많습니다. 한 시간에 {RATE_LIMIT_PER_HOUR}개까지 처리할 수 있습니다.",
@@ -402,18 +431,27 @@ def web():
                     "code": "worker_lost", "message": "처리가 중단되었습니다. 다시 시도해 주세요."})
                 await store.put.aio(_key(job_id), rec)
                 status = "failed"
-        body = {"id": job_id, "status": status, "stage": rec.get("stage"),
+        result = rec.get("result") if status == "done" else None
+        stages = result["stages"] if result else rec.get("stages") or {}
+        audio_status = result["audio"]["status"] if result else None
+        stage_status = progress.stage_status(status, stages, audio_status)
+        # the worker writes a stage's output just before it names the next stage;
+        # take "stage" from stage_status so the two never disagree
+        stage = next((k for k, v in stage_status.items() if v == "running"), rec.get("stage"))
+        body = {"id": job_id, "status": status, "stage": stage,
+                "stage_status": stage_status,
                 "created_at": int(rec["created"]),
                 "expires_at": int(rec["created"] + RETENTION_S)}
-        if status == "done":
-            result = rec["result"]
+        if stages:  # each stage's output as soon as it exists, before the audio
+            body["stages"] = stages
+        if result:
             audio = dict(result["audio"])
             url = request.url_for("get_audio", job_id=job_id)
             proto = request.headers.get("x-forwarded-proto")
             if proto:
                 url = url.replace(scheme=proto)
             audio["url"] = str(url) if audio["status"] == "ready" else None
-            body.update(stages=result["stages"], audio=audio, timings_s=result["timings_s"])
+            body.update(audio=audio, timings_s=result["timings_s"])
         elif status == "failed":
             body["error"] = rec.get("error")
         return body

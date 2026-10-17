@@ -112,7 +112,8 @@ def _synthesize(ssml_text, wav_path):
     return ("quota_reached" if limits.is_quota_error(detail) else "failed"), detail
 
 
-def run_job(image, workdir, device, tts=True, on_stage=lambda stage: None, ocr=None):
+def run_job(image, workdir, device, tts=True, on_stage=lambda stage: None, ocr=None,
+            on_output=lambda key, value: None):
     """image -> dict of every stage's output. Raises JobError if a text stage fails.
 
     Writes into workdir: OCR markdown (+ the OCR's JSON), <stem>.norm.md,
@@ -121,6 +122,10 @@ def run_job(image, workdir, device, tts=True, on_stage=lambda stage: None, ocr=N
     `ocr` replaces the call to ocr_vl.run_image (same arguments and return);
     the Modal worker passes one that runs it in a killable child process
     (backend/ocr_proc.py). The original exception is the JobError's __cause__.
+
+    `on_output(key, value)` is called as soon as each entry of the result's
+    "stages" is ready ("ocr", "normalized", "math_spans", "speech"), so a
+    caller can show the text before the audio is made.
     """
     import ocr_vl
 
@@ -148,6 +153,8 @@ def run_job(image, workdir, device, tts=True, on_stage=lambda stage: None, ocr=N
         ocr_text = text
     if not ocr_text.strip():
         raise JobError("no_text_found", "OCR returned no text")
+    stages = {"ocr": {"text": ocr_text}}
+    on_output("ocr", stages["ocr"])
 
     # --- stage 2: normalize ------------------------------------------------
     on_stage("normalize")
@@ -155,6 +162,13 @@ def run_job(image, workdir, device, tts=True, on_stage=lambda stage: None, ocr=N
     norm_path = md.with_suffix(".norm.md")
     norm_path.write_text(norm_text, encoding="utf-8")
     spans, korean = ocr_vl.analyze(norm_text)
+    stages["normalized"] = {"text": norm_text}
+    stages["math_spans"] = [
+        {"source": s, "latex": s.strip("$").strip(), "display": s.startswith("$$")}
+        for s in spans
+    ]
+    on_output("normalized", stages["normalized"])
+    on_output("math_spans", stages["math_spans"])
 
     # --- stage 3: Korean math speech (plain, then SSML — run.py's order) ---
     on_stage("speech")
@@ -175,6 +189,14 @@ def run_job(image, workdir, device, tts=True, on_stage=lambda stage: None, ocr=N
         raise JobError("speech_stage_failed", "speak.js wrote no text output")
     spoken = txt_path.read_text(encoding="utf-8").strip()
     ssml = ssml_path.read_text(encoding="utf-8").strip() if ssml_path.exists() else None
+    stages["speech"] = {
+        "text": spoken,          # what the listener hears, as plain text
+        "ssml": ssml,            # what was sent to Azure (None if not produced)
+        "strict_ok": strict_ok,
+        "summary": summary,
+        "korean_present": korean,
+    }
+    on_output("speech", stages["speech"])
 
     # --- stage 4: Azure TTS ------------------------------------------------
     wav_path = workdir / "audio.wav"
@@ -189,21 +211,7 @@ def run_job(image, workdir, device, tts=True, on_stage=lambda stage: None, ocr=N
         timings["tts"] = round(time.monotonic() - t, 2)
 
     return {
-        "stages": {
-            "ocr": {"text": ocr_text},
-            "normalized": {"text": norm_text},
-            "math_spans": [
-                {"source": s, "latex": s.strip("$").strip(), "display": s.startswith("$$")}
-                for s in spans
-            ],
-            "speech": {
-                "text": spoken,          # what the listener hears, as plain text
-                "ssml": ssml,            # what was sent to Azure (None if not produced)
-                "strict_ok": strict_ok,
-                "summary": summary,
-                "korean_present": korean,
-            },
-        },
+        "stages": stages,
         "audio": {
             "status": audio_status,
             "message": AUDIO_MESSAGES[audio_status],

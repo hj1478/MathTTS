@@ -1,4 +1,5 @@
 """backend/limits.py: upload checks, quota detection, rate-limit slots.
+backend/progress.py: per-stage status for GET /jobs/{id}.
 
 No Modal or network needed; the web API in backend/modal_app.py is the caller.
 """
@@ -9,7 +10,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from backend import limits  # noqa: E402
+from backend import limits, progress  # noqa: E402
 
 PIL = pytest.importorskip("PIL.Image")
 
@@ -75,3 +76,37 @@ def test_slot_bucket_roundtrip():
     assert limits.slot_bucket(key) == 2
     assert limits.slot_bucket("rl:" + key) == 2
     assert limits.slot_bucket("job:abc") is None
+
+
+def test_warmup_slots_are_separate_from_job_slots():
+    # POST /warmup claims slots for "warm:<ip>", so it never uses up a job slot
+    key = limits.slot_keys("warm:2001:db8::1", 7300, 2)[0]
+    assert limits.slot_bucket("rl:" + key) == 2
+    assert key not in limits.slot_keys("2001:db8::1", 7300, 2)
+
+
+OCR = {"ocr": {"text": "x"}}
+TEXT = {**OCR, "normalized": {"text": "x"}, "math_spans": []}
+SPOKEN = {**TEXT, "speech": {"text": "엑스", "ssml": "<speak/>", "strict_ok": True}}
+
+
+@pytest.mark.parametrize("status,stages,audio,expected", [
+    ("queued", {}, None, "pending pending pending pending"),
+    ("running", {}, None, "running pending pending pending"),
+    ("running", OCR, None, "done running pending pending"),
+    ("running", TEXT, None, "done done running pending"),
+    ("running", SPOKEN, None, "done done done running"),
+    # strict failure: Azure is not called, so tts is skipped as soon as speech is known
+    ("running", {**TEXT, "speech": {"text": "?", "ssml": None, "strict_ok": False}}, None,
+     "done done done skipped"),
+    ("done", SPOKEN, "ready", "done done done done"),
+    ("done", SPOKEN, "skipped", "done done done skipped"),
+    ("done", SPOKEN, "quota_reached", "done done done failed"),
+    ("failed", {}, None, "failed skipped skipped skipped"),
+    ("failed", TEXT, None, "done done failed skipped"),
+    ("failed", SPOKEN, None, "done done done failed"),     # worker lost during tts
+])
+def test_stage_status(status, stages, audio, expected):
+    got = progress.stage_status(status, stages, audio)
+    assert list(got) == list(progress.STAGES)
+    assert " ".join(got.values()) == expected

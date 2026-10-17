@@ -604,3 +604,45 @@ quoted the edited line as verbatim output; it now carries a correction.
 **Still open.** Who edited the file and why (perhaps to check the downstream
 stages on the correct formula). How often the OCR drops grouping braces across
 the 58-page corpus.
+
+## 2026-10-17 — `POST /warmup` 20 s ahead cuts a cold job from 50 s to 35 s; early text shows OCR at 24–40 s
+
+**Question.** How much of the user's wait do the two new latency features
+remove: `POST /warmup` (start a worker while the user picks a photo) and
+`GET /jobs/{id}` returning each stage's text as soon as it is ready?
+
+**What I did.** Deployed `mathtts`, confirmed with `modal container list` that
+no worker container was up before each run, and ran one cold job per case on
+`kr question 1.png` with `scripts/smoke_test.py` (T4, polling every 1.5 s;
+times are from the upload, as the client sees them):
+
+    A  python scripts/smoke_test.py <url>                     # no warmup
+    B  python scripts/smoke_test.py <url> --warmup-lead 20    # /warmup, 20 s, upload
+
+**What happened.**
+
+| | queued (cold start) until | OCR text visible | spoken text visible | done (wav ready) |
+|---|---|---|---|---|
+| A, no warmup | 29.4 s | 39.8 s | 42.4 s | **49.9 s** |
+| B, `/warmup` 20 s before | 11.8 s | 23.5 s | 28.0 s | **34.9 s** |
+
+Server stage timings were the same in both (OCR 9.8 / 9.4 s, speech 1.4 /
+2.3 s, TTS 3.3 / 3.5 s), so the whole 15 s difference is the cold start. Both
+jobs produced the same 7-span result and the same 1,557,646 B wav.
+
+**Result.** Measured, one run each, so expect a few seconds of variance. A cold
+start costs about 30 s (container start plus model load in the OCR child). A
+20 s lead removes 20 of it, leaving ~9 s, so a lead of about 30 s or more
+should hide it fully. Early text means the user can read the OCR text about
+10 s, and the spoken text about 7 s, before the audio is ready. Poll timing
+adds up to 1.5 s to every "visible" figure.
+
+**Changed as a result.** docs/API.md tells the frontend to call `/warmup` when
+the app opens and to show `stages` text as it arrives.
+
+**Still open.** Scheduled keep-warm (`min_containers` via
+`Function.autoscaler.update()` from a `modal.Cron`), GPU memory snapshots (alpha
+in Modal's docs; whether a model held by a child process can be captured is not
+documented) and fallback GPU types (`gpu=["T4", "L4"]`) were checked against
+the Modal docs but not tried.
+

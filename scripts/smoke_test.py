@@ -7,11 +7,19 @@ any laptop. Needs `requests`.
     python scripts/smoke_test.py https://<workspace>--mathtts.<region>.modal.run
     python scripts/smoke_test.py <url> --image "kr question 2.png"
     python scripts/smoke_test.py <url> --repeat 2   # 1st = cold start, 2nd = warm
+    python scripts/smoke_test.py <url> --warmup-lead 20   # POST /warmup, wait 20 s, then upload
 
 Each run submits the image, polls until the job finishes, checks that every
-stage returned output, prints them, and downloads the wav. It also checks that
-a non-image upload is rejected with 415 before any GPU work, which costs no
-rate-limit slot.
+stage returned output, prints them, and downloads the wav. While polling it
+checks that each stage's text appears before the job is done (GET /jobs returns
+outputs as they are ready) and reports when the OCR text and the spoken text
+first arrived. It also checks that a non-image upload is rejected with 415
+before any GPU work, which costs no rate-limit slot.
+
+Times are measured from the upload (POST /jobs), which is what the user waits
+for. With --warmup-lead, POST /warmup is sent that many seconds earlier, as an
+app would when it opens; without it, no warmup is sent, so a run with no worker
+up is a fully cold one.
 
 Each submitted job uses 1 of the 10 jobs/hour for your IP and one Azure
 synthesis. audio.status "quota_reached" is reported but is not a failure: the
@@ -43,6 +51,13 @@ def check_rejects_non_image(base):
     print("ok   non-image upload rejected (415 unsupported_type)")
 
 
+def warmup(base):
+    r = requests.post(f"{base}/warmup", timeout=60)
+    if r.status_code != 202 or r.json().get("status") != "warming":
+        fail(f"POST /warmup: expected 202 warming, got {r.status_code} {r.text[:200]}")
+    print("ok   POST /warmup -> 202 warming")
+
+
 def run_once(base, image):
     t0 = time.monotonic()
     with open(image, "rb") as f:
@@ -52,16 +67,23 @@ def run_once(base, image):
     job_id = r.json()["id"]
     print(f"ok   POST /jobs -> 202, id {job_id}")
 
-    last = None
+    last, first_seen = None, {}
     while True:
         r = requests.get(f"{base}/jobs/{job_id}", timeout=60)
         if r.status_code != 200:
             fail(f"GET /jobs/{job_id}: {r.status_code} {r.text[:300]}")
         body = r.json()
-        state = (body["status"], body.get("stage"))
+        now = time.monotonic() - t0
+        if "stage_status" not in body:
+            fail("GET /jobs: no stage_status")
+        if body["status"] != "done":  # early text: outputs show up before the job is done
+            for key in body.get("stages", {}):
+                first_seen.setdefault(key, now)
+        state = (body["status"], body.get("stage"), tuple(body["stage_status"].values()))
         if state != last:
-            print(f"     {time.monotonic() - t0:6.1f}s  {body['status']}"
-                  + (f" ({body['stage']})" if body.get("stage") else ""))
+            print(f"     {now:6.1f}s  {body['status']}"
+                  + (f" ({body['stage']})" if body.get("stage") else "")
+                  + "  " + " ".join(f"{k}={v}" for k, v in body["stage_status"].items()))
             last = state
         if body["status"] in ("done", "failed"):
             break
@@ -72,6 +94,14 @@ def run_once(base, image):
 
     if body["status"] == "failed":
         fail(f"job failed: {body.get('error')}")
+    if set(body["stage_status"].values()) != {"done"}:
+        fail(f"done job: stage_status {body['stage_status']}")
+    # polled every POLL_S, so a stage that finished just before the job did can be missed
+    if "ocr" not in first_seen:
+        fail("stages.ocr was not returned before the job finished (early text)")
+    print(f"ok   early text: OCR text at {first_seen['ocr']:.1f}s, spoken text at "
+          + (f"{first_seen['speech']:.1f}s" if "speech" in first_seen else "(not seen before done)"))
+    body["_first_seen"] = first_seen
 
     s = body["stages"]
     checks = {
@@ -125,6 +155,8 @@ def main():
     ap.add_argument("--image", default=str(ROOT / "kr question 1.png"))
     ap.add_argument("--repeat", type=int, default=1,
                     help="submit the image this many times in a row (2 = cold then warm)")
+    ap.add_argument("--warmup-lead", type=float, metavar="S",
+                    help="POST /warmup, then wait S seconds before the first upload")
     a = ap.parse_args()
     base = a.base_url.rstrip("/")
     image = Path(a.image)
@@ -132,17 +164,22 @@ def main():
         fail(f"no such image: {image}")
 
     check_rejects_non_image(base)
-    times = []
+    if a.warmup_lead is not None:
+        warmup(base)
+        print(f"     waiting {a.warmup_lead:g}s before uploading")
+        time.sleep(a.warmup_lead)
+    runs = []
     for n in range(1, a.repeat + 1):
         print(f"\n== request {n}/{a.repeat}: {image.name} ==")
         job_id, total, body = run_once(base, image)
-        times.append(total)
+        runs.append((total, body["_first_seen"]))
         print(f"     total {total:.1f}s (submit -> done), server timings {body['timings_s']}")
     print_stages(body)
 
-    print("\n== end-to-end time per request (submit -> done, as seen by this client) ==")
-    for n, t in enumerate(times, 1):
-        print(f"  request {n}: {t:6.1f}s")
+    print("\n== time per request, from the upload, as seen by this client ==")
+    for n, (t, seen) in enumerate(runs, 1):
+        speech = f"{seen['speech']:6.1f}s" if "speech" in seen else "     -"
+        print(f"  request {n}: OCR text {seen['ocr']:6.1f}s   spoken text {speech}   done {t:6.1f}s")
     print("\nPASS")
 
 
