@@ -9,12 +9,12 @@ import { setAudioModeAsync } from 'expo-audio';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
-import { AppState, Platform, useColorScheme } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { warmup } from '@/lib/api';
 import { restoreSession } from '@/lib/store';
-import { useColors } from '@/lib/theme';
+import { useColors, useScheme } from '@/lib/theme';
 
 // Korean wraps between words, not syllables (as in the designs).
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
@@ -32,7 +32,7 @@ export default function RootLayout() {
     IBMPlexSansKR_700Bold,
   });
   const c = useColors();
-  const scheme = useColorScheme();
+  const scheme = useScheme();
   // The photo, job and results of the current flow, so a refresh continues it.
   const [restored, setRestored] = useState(false);
 

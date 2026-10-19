@@ -72,8 +72,17 @@ export const font = {
   bold: family('IBMPlexSansKR_700Bold'),
 };
 
+// Light by default, whatever the device is set to. Set to true to follow the
+// system setting again (the dark tokens above are kept for that).
+const FOLLOW_SYSTEM_THEME = false;
+
+export function useScheme(): 'light' | 'dark' {
+  const system = useColorScheme();
+  return FOLLOW_SYSTEM_THEME && system === 'dark' ? 'dark' : 'light';
+}
+
 export function useColors(): Colors {
-  return useColorScheme() === 'dark' ? dark : light;
+  return useScheme() === 'dark' ? dark : light;
 }
 
 /** Two-column layout from 960px (Tokens: 데스크톱 배치). */
