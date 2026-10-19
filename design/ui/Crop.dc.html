@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>문제 영역 자르기</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&amp;family=Noto+Serif+KR:wght@400;600&amp;family=STIX+Two+Text:ital,wght@0,400;0,500;1,400;1,500&amp;display=swap">
+<style>
+body{margin:0}
+.mt{--bg:#F5F6F8;--surface:#FFFFFF;--surface-2:#EDF0F4;--border:#D3D8E0;--border-strong:#7D8796;--text:#12161C;--text-2:#475061;--primary:#1D4ED8;--on-primary:#FFFFFF;--primary-text:#1D4ED8;--primary-soft:#E6ECFC;--on-primary-soft:#1E3A8A;--hl-bg:#FFE58A;--hl-text:#12161C;--hl-line:#8A5A00;--note-bg:#FFF6E0;--note-text:#6B4500;--note-border:#E6C377;--error-bg:#FDECEC;--error-text:#9F1D1D;--error-border:#E8A3A3;--info-bg:#E8EEFB;--info-text:#1E3A8A;--info-border:#AFC2F0;--success:#15803D;--focus:#1D4ED8;--paper:#ECE9E1;--ink:#26282B;font-family:"IBM Plex Sans KR",system-ui,sans-serif;color:var(--text);background:var(--bg);-webkit-font-smoothing:antialiased}
+.mt.dark{--bg:#0E1116;--surface:#171B22;--surface-2:#222833;--border:#323A48;--border-strong:#7A8496;--text:#EDF0F4;--text-2:#B3BBC7;--primary:#8EB1FF;--on-primary:#0B1530;--primary-text:#9DBBFF;--primary-soft:#1C2A4A;--on-primary-soft:#C9D8FF;--hl-bg:#5C4A0E;--hl-text:#FFF4CC;--hl-line:#F2C94C;--note-bg:#2A2210;--note-text:#F3D38B;--note-border:#5A4719;--error-bg:#3A1717;--error-text:#FFB3B3;--error-border:#7A3030;--info-bg:#172443;--info-text:#C3D3FF;--info-border:#34487A;--success:#6FD69A;--focus:#9DBBFF}
+.mt button{font:inherit;color:inherit;cursor:pointer;margin:0}
+.mt a{color:var(--primary-text)}
+.mt a:hover{color:var(--on-primary-soft)}
+.mt :focus-visible{outline:3px solid var(--focus);outline-offset:3px}
+.math{font-family:"STIX Two Text",serif;white-space:nowrap}
+.frac{display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;line-height:1.05;font-size:.8em;margin:0 .1em}
+.frac>span+span{border-top:1.5px solid currentColor;padding:0 .15em}
+.paper{font-family:"Noto Serif KR",serif;background:var(--paper);color:var(--ink)}
+</style>
+</helmet>
+<div class="{{theme}}" style="width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden">
+  <header style="display: flex; align-items: center; gap: 4px; min-height: 64px; padding: 8px 8px; box-sizing: border-box; background: var(--surface); border-bottom: 1px solid var(--border)">
+    <a href="Main.dc.html" aria-label="뒤로" style="display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; border-radius: 12px; color: var(--text)">
+      <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+    </a>
+    <h1 style="margin: 0; font-size: 19px; line-height: 26px; font-weight: 700">문제 영역 맞추기</h1>
+  </header>
+
+  <main style="flex: 1; display: flex; flex-direction: column; gap: 16px; padding: 20px 20px 24px">
+    <p style="margin: 0; font-size: 17px; line-height: 26px">문제 <strong>하나만</strong> 들어가도록 테두리의 네 모서리를 움직여 주세요.</p>
+
+    <div role="img" aria-label="찍은 사진. 문제 6, 7, 8번 중 7번이 선택되어 있어요." style="position: relative; overflow: hidden; border-radius: 14px; background: #2A2D33">
+      <div class="paper" style="margin: 14px; padding: 22px 20px; border-radius: 4px; font-size: 15px; line-height: 26px; display: flex; flex-direction: column; gap: 26px">
+        <div>
+          <div>6. 다음 중 <span class="math"><i>y</i></span>가 <span class="math"><i>x</i></span>의 일차함수인 것은?</div>
+          <div style="display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 14px">
+            <span>① <span class="math"><i>y</i> = 3</span></span>
+            <span>② <span class="math"><i>y</i> = <i>x</i>² + 1</span></span>
+            <span>③ <span class="math"><i>y</i> = 2<i>x</i> − 5</span></span>
+          </div>
+        </div>
+        <div style="position: relative">
+          <div>7. 일차함수 <span class="math"><i>y</i> = <span class="frac"><span>2</span><span>3</span></span><i>x</i> − 4</span>의 그래프가 점 <span class="math">(6, <i>a</i>)</span>를 지날 때, <span class="math"><i>a</i></span>의 값을 구하시오.</div>
+          <div style="position: absolute; top: -12px; right: -10px; bottom: -12px; left: -10px; z-index: 1; border: 2px solid #FFFFFF; box-shadow: 0 0 0 999px rgba(10, 12, 16, 0.62)">
+            <button aria-label="왼쪽 위 모서리 조절" style="position: absolute; top: -24px; left: -24px; width: 48px; height: 48px; padding: 0; border: 0; background: transparent"><span style="position: absolute; top: 22px; left: 22px; width: 20px; height: 20px; border-top: 5px solid #FFFFFF; border-left: 5px solid #FFFFFF"></span></button>
+            <button aria-label="오른쪽 위 모서리 조절" style="position: absolute; top: -24px; right: -24px; width: 48px; height: 48px; padding: 0; border: 0; background: transparent"><span style="position: absolute; top: 22px; right: 22px; width: 20px; height: 20px; border-top: 5px solid #FFFFFF; border-right: 5px solid #FFFFFF"></span></button>
+            <button aria-label="왼쪽 아래 모서리 조절" style="position: absolute; bottom: -24px; left: -24px; width: 48px; height: 48px; padding: 0; border: 0; background: transparent"><span style="position: absolute; bottom: 22px; left: 22px; width: 20px; height: 20px; border-bottom: 5px solid #FFFFFF; border-left: 5px solid #FFFFFF"></span></button>
+            <button aria-label="오른쪽 아래 모서리 조절" style="position: absolute; bottom: -24px; right: -24px; width: 48px; height: 48px; padding: 0; border: 0; background: transparent"><span style="position: absolute; bottom: 22px; right: 22px; width: 20px; height: 20px; border-bottom: 5px solid #FFFFFF; border-right: 5px solid #FFFFFF"></span></button>
+          </div>
+        </div>
+        <div>8. 두 점 <span class="math">(1, 3)</span>, <span class="math">(3, 7)</span>을 지나는 직선의 기울기를 구하시오.</div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 8px">
+      <button style="flex: 1 1 140px; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 14px; border-radius: 12px; border: 2px solid var(--border-strong); background: var(--surface); font-size: 16px; font-weight: 600">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"></path><path d="M21 3v5h-5"></path></svg>
+        회전
+      </button>
+      <button style="flex: 1 1 140px; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 14px; border-radius: 12px; border: 2px solid var(--border-strong); background: var(--surface); font-size: 16px; font-weight: 600">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"></path></svg>
+        사진 전체 쓰기
+      </button>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px; margin-top: auto">
+      <a href="Processing.dc.html" style="display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 56px; padding: 0 20px; border-radius: 14px; background: var(--primary); color: var(--on-primary); font-size: 17px; line-height: 24px; font-weight: 700; text-decoration: none">
+        이 문제 읽기
+      </a>
+      <a href="Main.dc.html" style="display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 56px; padding: 0 20px; border-radius: 14px; border: 2px solid var(--border-strong); background: var(--surface); color: var(--text); font-size: 17px; line-height: 24px; font-weight: 600; text-decoration: none; box-sizing: border-box">
+        다시 찍기
+      </a>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.dark ? 'mt dark' : 'mt' };
+  }
+}
+</script>
+</body>
+</html>

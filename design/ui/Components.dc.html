@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>MathTTS 컴포넌트</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&amp;family=Noto+Serif+KR:wght@400;600&amp;display=swap">
+<style>
+body{margin:0}
+.mt{--bg:#F5F6F8;--surface:#FFFFFF;--surface-2:#EDF0F4;--border:#D3D8E0;--border-strong:#7D8796;--text:#12161C;--text-2:#475061;--primary:#1D4ED8;--on-primary:#FFFFFF;--primary-text:#1D4ED8;--primary-soft:#E6ECFC;--on-primary-soft:#1E3A8A;--hl-bg:#FFE58A;--hl-text:#12161C;--hl-line:#8A5A00;--note-bg:#FFF6E0;--note-text:#6B4500;--note-border:#E6C377;--error-bg:#FDECEC;--error-text:#9F1D1D;--error-border:#E8A3A3;--info-bg:#E8EEFB;--info-text:#1E3A8A;--info-border:#AFC2F0;--success:#15803D;--focus:#1D4ED8;--paper:#ECE9E1;--ink:#26282B;font-family:"IBM Plex Sans KR",system-ui,sans-serif;color:var(--text);background:var(--bg);-webkit-font-smoothing:antialiased}
+.mt.dark{--bg:#0E1116;--surface:#171B22;--surface-2:#222833;--border:#323A48;--border-strong:#7A8496;--text:#EDF0F4;--text-2:#B3BBC7;--primary:#8EB1FF;--on-primary:#0B1530;--primary-text:#9DBBFF;--primary-soft:#1C2A4A;--on-primary-soft:#C9D8FF;--hl-bg:#5C4A0E;--hl-text:#FFF4CC;--hl-line:#F2C94C;--note-bg:#2A2210;--note-text:#F3D38B;--note-border:#5A4719;--error-bg:#3A1717;--error-text:#FFB3B3;--error-border:#7A3030;--info-bg:#172443;--info-text:#C3D3FF;--info-border:#34487A;--success:#6FD69A;--focus:#9DBBFF}
+.mt button{font:inherit;color:inherit;cursor:pointer;margin:0}
+.mt a{color:var(--primary-text)}
+.mt :focus-visible{outline:3px solid var(--focus);outline-offset:3px}
+.mt input[type=range]{accent-color:var(--primary)}
+.paper{font-family:"Noto Serif KR",serif;background:var(--paper);color:var(--ink)}
+</style>
+</helmet>
+<div class="{{theme}}" style="width: 1280px; height: 2200px; box-sizing: border-box; padding: 64px; display: flex; flex-direction: column; gap: 56px; overflow: hidden">
+  <div style="display: flex; flex-direction: column; gap: 8px">
+    <h1 style="margin: 0; font-size: 40px; line-height: 50px; font-weight: 700; letter-spacing: -0.02em">컴포넌트</h1>
+    <p style="margin: 0; font-size: 18px; line-height: 28px; color: var(--text-2)">모든 크기는 px(= React Native dp) 기준, 시스템 글자 크기에 따라 함께 커져요. 높이는 최소값이며 글자가 커지면 늘어나야 해요.</p>
+  </div>
+
+  <section aria-labelledby="c-btn" style="display: flex; flex-direction: column; gap: 20px">
+    <h2 id="c-btn" style="margin: 0; font-size: 26px; line-height: 34px; font-weight: 700">1. 버튼</h2>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px">
+      <div style="display: flex; flex-direction: column; gap: 12px; padding: 20px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border)">
+        <span style="font-size: 15px; line-height: 22px; font-weight: 700; color: var(--text-2)">주 버튼 · Primary</span>
+        <button style="display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 56px; padding: 0 20px; border: 0; border-radius: 14px; background: var(--primary); color: var(--on-primary); font-size: 17px; line-height: 24px; font-weight: 700">새 문제</button>
+        <span style="font-size: 14px; line-height: 21px; color: var(--text-2)">높이 56 · 모서리 14 · 좌우 20 · 17/24 굵기 700 · primary 위 on-primary · 화면당 1개</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 12px; padding: 20px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border)">
+        <span style="font-size: 15px; line-height: 22px; font-weight: 700; color: var(--text-2)">촬영 버튼 · Primary Large</span>
+        <button style="display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 64px; padding: 0 20px; border: 0; border-radius: 16px; background: var(--primary); color: var(--on-primary); font-size: 19px; line-height: 26px; font-weight: 700">
+          <svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8a2 2 0 0 1 2-2h2.5l1.5-2h6l1.5 2H19a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+          사진 찍기
+        </button>
+        <span style="font-size: 14px; line-height: 21px; color: var(--text-2)">높이 64 · 모서리 16 · 19/26 굵기 700 · 아이콘 26 · 홈 화면 전용</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 12px; padding: 20px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border)">
+        <span style="font-size: 15px; line-height: 22px; font-weight: 700; color: var(--text-2)">보조 버튼 · Secondary</span>
+        <button style="display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 56px; padding: 0 20px; border-radius: 14px; border: 2px solid var(--border-strong); background: var(--surface); font-size: 17px; line-height: 24px; font-weight: 600">
+          <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-6-4-6 4z"></path></svg>
+          기록에 저장
+        </button>
+        <span style="font-size: 14px; line-height: 21px; color: var(--text-2)">높이 56 · 테두리 2 border-strong (대비 3.6:1) · surface · 17/24 굵기 600</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 12px; padding: 20px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border)">
+        <span style="font-size: 15px; line-height: 22px; font-weight: 700; color: var(--text-2)">텍스트 버튼 · Tertiary</span>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap">
+          <button style="display: inline-flex; align-items: center; gap: 6px; min-height: 48px; padding: 0 12px; border: 0; border-radius: 12px; background: transparent; color: var(--primary-text); font-size: 16px; font-weight: 600">
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"></path></svg>
+            크게 보기
+          </button>
+          <button style="display: inline-flex; align-items: center; min-height: 48px; padding: 0 12px; border: 0; border-radius: 12px; background: transparent; color: var(--error-text); font-size: 16px; font-weight: 600">기록 모두 지우기</button>
+        </div>
+        <span style="font-size: 14px; line-height: 21px; color: var(--text-2)">최소 48×48 · 배경 없음 · 16 굵기 600 · primary-text 또는 삭제는 error-text</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 12px; padding: 20px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border)">
+        <span style="font-size: 15px; line-height: 22px; font-weight: 700; color: var(--text-2)">기다림 · aria-disabled</span>
+        <button aria-disabled="true" style="display: flex; align-items: center; justify-content: center; min-height: 56px; padding: 0 20px; border-radius: 14px; border: 2px dashed var(--border-strong); background: var(--surface-2); color: var(--text-2); font-size: 17px; line-height: 24px; font-weight: 600; cursor: not-allowed">45초 후 다시 시도</button>
+        <span style="font-size: 14px; line-height: 21px; color: var(--text-2)">surface-2 · text-2 (7.1:1) · 점선 테두리 · 이유를 라벨에 씀 · 포커스는 받되 누르면 아무 일 없음</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 12px; padding: 20px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border)">
+        <span style="font-size: 15px; line-height: 22px; font-weight: 700; color: var(--text-2)">포커스 상태 · 모든 컨트롤 공통</span>
+        <button style="display: flex; align-items: center; justify-content: center; min-height: 56px; padding: 0 20px; border: 0; border-radius: 14px; background: var(--primary); color: var(--on-primary); font-size: 17px; line-height: 24px; font-weight: 700; outline: 3px solid var(--focus); outline-offset: 3px">새 문제</button>
+        <span style="font-size: 14px; line-height: 21px; color: var(--text-2)">외곽선 3 focus · 간격 3 · 모서리 따라감 · 키보드·스위치 접근 시 항상 표시</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 12px; padding: 20px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border)">
+        <span style="font-size: 15px; line-height: 22px; font-weight: 700; color: var(--text-2)">아이콘 버튼</span>
+        <div style="display: flex; gap: 12px; align-items: center">
+          <button aria-label="뒤로" style="display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; padding: 0; border: 0; border-radius: 12px; background: var(--surface-2)">
+            <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+          </button>
+          <button aria-label="기록 삭제" style="display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; padding: 0; border: 0; border-radius: 12px; background: var(--surface-2); color: var(--text-2)">
+            <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"></path></svg>
+          </button>
+          <button aria-label="알림 닫기" style="display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; padding: 0; border: 0; border-radius: 12px; background: var(--surface-2)">
+            <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+          </button>
+        </div>
+        <span style="font-size: 14px; line-height: 21px; color: var(--text-2)">48×48 · 아이콘 20–24 · 보이는 글자가 없으니 accessibilityLabel 필수 · 꼭 필요한 곳에만</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 12px; padding: 20px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border)">
+        <span style="font-size: 15px; line-height: 22px; font-weight: 700; color: var(--text-2)">선택 버튼 · 속도</span>
+        <div role="group" aria-label="읽는 속도" style="display: flex; gap: 8px">
+          <button aria-pressed="false" aria-label="0.75배속" style="flex: 1; min-height: 52px; border-radius: 12px; border: 2px solid var(--border-strong); background: var(--surface); font-size: 17px; font-weight: 500">0.75x</button>
+          <button aria-pressed="true" aria-label="1배속" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 52px; border-radius: 12px; border: 2px solid var(--primary); background: var(--primary-soft); color: var(--on-primary-soft); font-size: 17px; font-weight: 700">
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg>
+            1x
+          </button>
+          <button aria-pressed="false" aria-label="1.25배속" style="flex: 1; min-height: 52px; border-radius: 12px; border: 2px solid var(--border-strong); background: var(--surface); font-size: 17px; font-weight: 500">1.25x</button>
+        </div>
+        <span style="font-size: 14px; line-height: 21px; color: var(--text-2)">높이 52 · 선택 시 체크 + 굵게 + 배경 (색만으로 구분하지 않음) · 읽기 라벨 ‘1배속’</span>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="c-player" style="display: flex; flex-direction: column; gap: 20px">
+    <h2 id="c-player" style="margin: 0; font-size: 26px; line-height: 34px; font-weight: 700">2. 오디오 플레이어</h2>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px">
+      <div style="display: flex; flex-direction: column; gap: 14px; padding: 20px; border-radius: 20px; background: var(--surface); border: 1px solid var(--border)">
+        <div style="display: flex; align-items: center; justify-content: space-between">
+          <span style="font-size: 19px; line-height: 26px; font-weight: 700">문제 듣기</span>
+          <span style="font-size: 17px; line-height: 24px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-2)">0:05 / 0:12</span>
+        </div>
+        <input type="range" min="0" max="12" value="5" aria-label="재생 위치" style="width: 100%; height: 48px; margin: 0">
+        <div style="display: flex; align-items: flex-start; justify-content: center; gap: 16px">
+          <button style="display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 72px; padding: 4px; border: 0; background: transparent">
+            <span aria-hidden="true" style="width: 56px; height: 56px; box-sizing: border-box; border-radius: 50%; border: 2px solid var(--border-strong); background: var(--surface-2); display: flex; align-items: center; justify-content: center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 18l-7-6 7-6z"></path><path d="M20 18l-7-6 7-6z"></path></svg></span>
+            <span style="font-size: 15px; line-height: 20px; font-weight: 600">5초 전</span>
+          </button>
+          <button style="display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 92px; padding: 4px; border: 0; background: transparent">
+            <span aria-hidden="true" style="width: 80px; height: 80px; border-radius: 50%; background: var(--primary); color: var(--on-primary); display: flex; align-items: center; justify-content: center"><svg width="34" height="34" viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"></rect><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"></rect></svg></span>
+            <span style="font-size: 16px; line-height: 20px; font-weight: 700">일시정지</span>
+          </button>
+          <button style="display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 72px; padding: 4px; border: 0; background: transparent">
+            <span aria-hidden="true" style="width: 56px; height: 56px; box-sizing: border-box; border-radius: 50%; border: 2px solid var(--border-strong); background: var(--surface-2); display: flex; align-items: center; justify-content: center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path></svg></span>
+            <span style="font-size: 15px; line-height: 20px; font-weight: 600">처음부터</span>
+          </button>
+        </div>
+        <span style="font-size: 14px; line-height: 21px; color: var(--text-2); text-align: center">재생 중 상태</span>
+      </div>
+
+      <div role="status" style="display: flex; flex-direction: column; gap: 14px; padding: 20px; border-radius: 20px; background: var(--surface); border: 2px dashed var(--border-strong)">
+        <div style="display: flex; gap: 14px; align-items: flex-start">
+          <span aria-hidden="true" style="flex: none; width: 48px; height: 48px; border-radius: 50%; background: var(--surface-2); color: var(--text-2); display: flex; align-items: center; justify-content: center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z"></path><path d="M17 9l5 5M22 9l-5 5"></path></svg></span>
+          <div style="display: flex; flex-direction: column; gap: 4px">
+            <span style="font-size: 19px; line-height: 26px; font-weight: 700">지금은 음성을 들을 수 없어요</span>
+            <span style="font-size: 16px; line-height: 24px; color: var(--text-2)">음성 사용량이 잠시 다 찼어요. 아래 글로 확인해 주세요.</span>
+          </div>
+        </div>
+        <button style="display: flex; align-items: center; justify-content: center; min-height: 52px; border-radius: 14px; border: 2px solid var(--border-strong); background: var(--surface); font-size: 17px; font-weight: 600">음성 다시 시도</button>
+        <span style="font-size: 14px; line-height: 21px; color: var(--text-2); text-align: center">음성 사용 불가 상태 · 플레이어 자리를 대신함</span>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 10px; padding: 20px; border-radius: 20px; background: var(--surface-2)">
+        <span style="font-size: 17px; line-height: 24px; font-weight: 700">명세</span>
+        <ul style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 15px; line-height: 23px">
+          <li>카드: 안쪽 여백 20 · 모서리 20 · 요소 사이 14</li>
+          <li>재생/일시정지: 원 80, 아이콘 34, 라벨 16/20 굵기 700. 버튼 전체가 터치 영역</li>
+          <li>5초 전 · 처음부터: 원 56, 테두리 2, 라벨 15/20</li>
+          <li>탐색 막대: 터치 높이 48. 읽기 값 ‘5초 / 12초’ (accessibilityValue)</li>
+          <li>시간: tabular-nums, 17/24</li>
+          <li>속도: 0.75x / 1x / 1.25x, 높이 52, 기본 1x, 기기에 기억</li>
+          <li>재생 위치 갱신으로 화면 읽기 기능을 방해하지 않기 (live region 쓰지 않음)</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="c-steps" style="display: flex; flex-direction: column; gap: 20px">
+    <h2 id="c-steps" style="margin: 0; font-size: 26px; line-height: 34px; font-weight: 700">3. 단계 표시</h2>
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px">
+      <div style="display: flex; align-items: center; gap: 14px; padding: 20px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border)">
+        <span aria-hidden="true" style="flex: none; width: 32px; height: 32px; border-radius: 50%; background: var(--primary); color: var(--on-primary); display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg></span>
+        <span style="flex: 1; font-size: 17px; line-height: 24px; font-weight: 500">업로드</span>
+        <span style="font-size: 15px; line-height: 22px; color: var(--text-2)">완료</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 14px; padding: 20px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border)">
+        <span aria-hidden="true" style="flex: none; width: 32px; height: 32px; box-sizing: border-box; border-radius: 50%; border: 3px solid var(--primary); display: flex; align-items: center; justify-content: center"><span style="width: 12px; height: 12px; border-radius: 50%; background: var(--primary)"></span></span>
+        <span style="flex: 1; font-size: 17px; line-height: 24px; font-weight: 700">문제 읽기</span>
+        <span style="font-size: 15px; line-height: 22px; font-weight: 700; color: var(--primary-text)">진행 중</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 14px; padding: 20px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border)">
+        <span aria-hidden="true" style="flex: none; width: 32px; height: 32px; box-sizing: border-box; border-radius: 50%; border: 2px solid var(--border-strong); color: var(--text-2); display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600">3</span>
+        <span style="flex: 1; font-size: 17px; line-height: 24px; color: var(--text-2)">수식 해석</span>
+        <span style="font-size: 15px; line-height: 22px; color: var(--text-2)">대기</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 14px; padding: 20px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border)">
+        <span aria-hidden="true" style="flex: none; width: 32px; height: 32px; box-sizing: border-box; border-radius: 50%; background: var(--error-bg); border: 2px solid var(--error-text); color: var(--error-text); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700">!</span>
+        <span style="flex: 1; font-size: 17px; line-height: 24px; font-weight: 700">문제 읽기</span>
+        <span style="font-size: 15px; line-height: 22px; font-weight: 700; color: var(--error-text)">실패</span>
+      </div>
+    </div>
+    <p style="margin: 0; font-size: 15px; line-height: 23px; color: var(--text-2)">원 32 · 단계 행 최소 60 · 연결선 2 (완료 구간 primary, 나머지 border). 상태는 모양 + 글자로 구분 — 색만으로 구분하지 않음. 현재 단계에 accessibilityState 또는 aria-current="step". 단계가 바뀔 때만 한 번 읽어 줌 (“2단계, 문제 읽기, 진행 중”). 경과 시간은 1초마다 화면에만 갱신하고 읽어 주지 않음.</p>
+  </section>
+
+  <section aria-labelledby="c-banner" style="display: flex; flex-direction: column; gap: 20px">
+    <h2 id="c-banner" style="margin: 0; font-size: 26px; line-height: 34px; font-weight: 700">4. 메시지 배너</h2>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px">
+      <div role="status" style="display: flex; gap: 12px; align-items: flex-start; padding: 16px; border-radius: 14px; background: var(--info-bg); border: 1px solid var(--info-border); color: var(--info-text)">
+        <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: none"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v6M12 7.5v.5"></path></svg>
+        <div style="display: flex; flex-direction: column; gap: 4px">
+          <strong style="font-size: 17px; line-height: 24px">안내 · info</strong>
+          <span style="font-size: 16px; line-height: 24px">서버를 준비하고 있어요. 처음에는 몇 분 걸릴 수 있어요.</span>
+        </div>
+      </div>
+      <div style="display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 12px; background: var(--note-bg); border: 1px solid var(--note-border); color: var(--note-text); align-self: start">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: none; margin-top: 1px"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v6M12 7.5v.5"></path></svg>
+        <span style="font-size: 15px; line-height: 22px">시제품 안내 · note — 연구용 시제품입니다. 사진과 읽은 내용이 같은지 확인해 주세요.</span>
+      </div>
+      <div role="alert" style="display: flex; gap: 12px; align-items: flex-start; padding: 16px; border-radius: 14px; background: var(--error-bg); border: 1px solid var(--error-border); color: var(--error-text)">
+        <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: none"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v6M12 16.5v.5"></path></svg>
+        <div style="display: flex; flex-direction: column; gap: 4px">
+          <strong style="font-size: 17px; line-height: 24px">오류 · error</strong>
+          <span style="font-size: 16px; line-height: 24px">사진이 너무 커요. 5 MB 이하인 사진을 골라 주세요.</span>
+        </div>
+      </div>
+      <div role="alert" style="display: flex; gap: 12px; align-items: flex-start; padding: 16px; border-radius: 14px; background: var(--surface-2); border: 2px solid var(--border-strong)">
+        <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: none"><path d="M2 2l20 20M8.5 16.5a5 5 0 0 1 7 0M5 12.5a10 10 0 0 1 4.2-2.4M19 12.5a10 10 0 0 0-2.3-1.6M2 8.8a15 15 0 0 1 4.3-2.6M22 8.8A15 15 0 0 0 11 5"></path><path d="M12 20h.01"></path></svg>
+        <div style="display: flex; flex-direction: column; gap: 4px">
+          <strong style="font-size: 17px; line-height: 24px">오프라인 · neutral</strong>
+          <span style="font-size: 16px; line-height: 24px; color: var(--text-2)">인터넷에 연결되어 있지 않아요.</span>
+        </div>
+      </div>
+      <div role="alert" style="display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 14px; background: var(--error-bg); border: 1px solid var(--error-border); color: var(--error-text)">
+        <div style="display: flex; gap: 12px; align-items: flex-start">
+          <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: none"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v6M12 16.5v.5"></path></svg>
+          <div style="display: flex; flex-direction: column; gap: 4px">
+            <strong style="font-size: 17px; line-height: 24px">네트워크 오류 · 행동 포함</strong>
+            <span style="font-size: 16px; line-height: 24px">연결이 끊겼어요. 사진은 그대로 있어요.</span>
+          </div>
+        </div>
+        <button style="align-self: flex-start; display: inline-flex; align-items: center; min-height: 48px; padding: 0 16px; border-radius: 12px; border: 2px solid var(--error-text); background: transparent; color: var(--error-text); font-size: 16px; font-weight: 600">다시 시도</button>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px; padding: 16px; border-radius: 14px; background: var(--surface-2); font-size: 15px; line-height: 23px">
+        <strong style="font-size: 16px">명세</strong>
+        <span>여백 16 · 모서리 14 · 아이콘 24 · 제목 17/24 굵기 700 · 본문 16/24</span>
+        <span>오류·오프라인 role="alert" (바로 읽음), 안내 role="status"</span>
+        <span>제목은 무엇이 일어났는지, 본문은 무엇을 하면 되는지</span>
+        <span>시제품 안내만 작게: 여백 12/14 · 15/22 · 닫을 수 없음</span>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="c-row" style="display: flex; flex-direction: column; gap: 20px">
+    <h2 id="c-row" style="margin: 0; font-size: 26px; line-height: 34px; font-weight: 700">5. 기록 행</h2>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: start">
+      <div style="display: flex; align-items: stretch; border-radius: 14px; border: 1px solid var(--border); background: var(--surface)">
+        <a href="History.dc.html" style="flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; min-height: 84px; padding: 12px 4px 12px 12px; border-radius: 14px; text-decoration: none; color: var(--text)">
+          <span aria-hidden="true" class="paper" style="flex: none; width: 60px; height: 60px; border-radius: 8px; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 10px; box-sizing: border-box">
+            <span style="display: block; height: 3px; width: 100%; border-radius: 2px; background: #8C8A84"></span>
+            <span style="display: block; height: 3px; width: 80%; border-radius: 2px; background: #8C8A84"></span>
+            <span style="display: block; height: 3px; width: 55%; border-radius: 2px; background: #8C8A84"></span>
+          </span>
+          <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+            <span style="font-size: 17px; line-height: 24px; font-weight: 500; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden">일차함수 y = ⅔x − 4의 그래프가 점 (6, a)를 지날 때…</span>
+            <span style="font-size: 15px; line-height: 22px; color: var(--text-2)">오늘 오후 3:24</span>
+          </span>
+        </a>
+        <button aria-label="오늘 오후 3:24 기록 삭제" style="flex: none; align-self: center; width: 48px; height: 48px; margin-right: 6px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 12px; background: transparent; color: var(--text-2)">
+          <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"></path></svg>
+        </button>
+      </div>
+      <div style="display: flex; align-items: stretch; border-radius: 14px; border: 1px solid var(--border); background: var(--surface)">
+        <a href="History.dc.html" style="flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; min-height: 84px; padding: 12px 4px 12px 12px; border-radius: 14px; text-decoration: none; color: var(--text); outline: 3px solid var(--focus); outline-offset: 3px">
+          <span aria-hidden="true" class="paper" style="flex: none; width: 60px; height: 60px; border-radius: 8px; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 10px; box-sizing: border-box">
+            <span style="display: block; height: 3px; width: 100%; border-radius: 2px; background: #8C8A84"></span>
+            <span style="display: block; height: 3px; width: 70%; border-radius: 2px; background: #8C8A84"></span>
+            <span style="display: block; height: 3px; width: 40%; border-radius: 2px; background: #8C8A84"></span>
+          </span>
+          <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+            <span style="font-size: 17px; line-height: 24px; font-weight: 500; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden">두 점 (1, 3), (3, 7)을 지나는 직선의 기울기를 구하시오.</span>
+            <span style="font-size: 15px; line-height: 22px; color: var(--text-2)">오늘 오후 2:10 · 포커스</span>
+          </span>
+        </a>
+        <button aria-label="오늘 오후 2:10 기록 삭제" style="flex: none; align-self: center; width: 48px; height: 48px; margin-right: 6px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 12px; background: transparent; color: var(--text-2)">
+          <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"></path></svg>
+        </button>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px; padding: 16px; border-radius: 14px; background: var(--surface-2); font-size: 15px; line-height: 23px">
+        <strong style="font-size: 16px">명세</strong>
+        <span>행 최소 84 · 썸네일 60 (모서리 8) · 첫 줄 17/24 최대 2줄 · 날짜 15/22 text-2</span>
+        <span>행 전체 하나의 링크 + 별도 삭제 버튼 48 (밀어서 삭제 쓰지 않음)</span>
+        <span>읽기 라벨: “일차함수 … 오늘 오후 3시 24분, 결과 열기”</span>
+        <span>삭제는 확인 대화상자 또는 ‘되돌리기’ 알림</span>
+      </div>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":2200}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.dark ? 'mt dark' : 'mt' };
+  }
+}
+</script>
+</body>
+</html>

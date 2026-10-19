@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>음성 사용량 초과</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&amp;family=Noto+Serif+KR:wght@400;600&amp;family=STIX+Two+Text:ital,wght@0,400;0,500;1,400;1,500&amp;display=swap">
+<style>
+body{margin:0}
+.mt{--bg:#F5F6F8;--surface:#FFFFFF;--surface-2:#EDF0F4;--border:#D3D8E0;--border-strong:#7D8796;--text:#12161C;--text-2:#475061;--primary:#1D4ED8;--on-primary:#FFFFFF;--primary-text:#1D4ED8;--primary-soft:#E6ECFC;--on-primary-soft:#1E3A8A;--hl-bg:#FFE58A;--hl-text:#12161C;--hl-line:#8A5A00;--note-bg:#FFF6E0;--note-text:#6B4500;--note-border:#E6C377;--error-bg:#FDECEC;--error-text:#9F1D1D;--error-border:#E8A3A3;--info-bg:#E8EEFB;--info-text:#1E3A8A;--info-border:#AFC2F0;--success:#15803D;--focus:#1D4ED8;--paper:#ECE9E1;--ink:#26282B;font-family:"IBM Plex Sans KR",system-ui,sans-serif;color:var(--text);background:var(--bg);-webkit-font-smoothing:antialiased}
+.mt.dark{--bg:#0E1116;--surface:#171B22;--surface-2:#222833;--border:#323A48;--border-strong:#7A8496;--text:#EDF0F4;--text-2:#B3BBC7;--primary:#8EB1FF;--on-primary:#0B1530;--primary-text:#9DBBFF;--primary-soft:#1C2A4A;--on-primary-soft:#C9D8FF;--hl-bg:#5C4A0E;--hl-text:#FFF4CC;--hl-line:#F2C94C;--note-bg:#2A2210;--note-text:#F3D38B;--note-border:#5A4719;--error-bg:#3A1717;--error-text:#FFB3B3;--error-border:#7A3030;--info-bg:#172443;--info-text:#C3D3FF;--info-border:#34487A;--success:#6FD69A;--focus:#9DBBFF}
+.mt button{font:inherit;color:inherit;cursor:pointer;margin:0}
+.mt a{color:var(--primary-text)}
+.mt :focus-visible{outline:3px solid var(--focus);outline-offset:3px}
+.math{font-family:"STIX Two Text",serif;white-space:nowrap}
+.frac{display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;line-height:1.05;font-size:.8em;margin:0 .1em}
+.frac>span+span{border-top:1.5px solid currentColor;padding:0 .15em}
+.paper{font-family:"Noto Serif KR",serif;background:var(--paper);color:var(--ink)}
+</style>
+</helmet>
+<div class="{{theme}}" style="width: 390px; height: 1460px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden">
+  <header style="display: flex; align-items: center; gap: 4px; min-height: 64px; padding: 8px 8px; box-sizing: border-box; background: var(--surface); border-bottom: 1px solid var(--border)">
+    <a href="Main.dc.html" aria-label="처음 화면으로" style="display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; border-radius: 12px; color: var(--text)">
+      <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+    </a>
+    <h1 style="margin: 0; flex: 1; font-size: 19px; line-height: 26px; font-weight: 700">읽은 결과</h1>
+    <a href="History.dc.html" style="display: inline-flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: var(--text); font-size: 17px; font-weight: 600">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+      기록
+    </a>
+  </header>
+
+  <main style="flex: 1; display: flex; flex-direction: column; gap: 16px; padding: 16px 16px 24px">
+    <section role="status" aria-labelledby="audio-off-h" style="display: flex; flex-direction: column; gap: 14px; padding: 20px; border-radius: 20px; background: var(--surface); border: 2px dashed var(--border-strong)">
+      <div style="display: flex; gap: 14px; align-items: flex-start">
+        <span aria-hidden="true" style="flex: none; width: 48px; height: 48px; border-radius: 50%; background: var(--surface-2); display: flex; align-items: center; justify-content: center; color: var(--text-2)">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z"></path><path d="M17 9l5 5M22 9l-5 5"></path></svg>
+        </span>
+        <div style="display: flex; flex-direction: column; gap: 4px">
+          <h2 id="audio-off-h" style="margin: 0; font-size: 19px; line-height: 26px; font-weight: 700">지금은 음성을 들을 수 없어요</h2>
+          <p style="margin: 0; font-size: 16px; line-height: 24px; color: var(--text-2)">음성 사용량이 잠시 다 찼어요. 문제는 정상적으로 읽었으니 아래 글로 확인해 주세요. 화면 읽기 기능으로도 들을 수 있어요.</p>
+        </div>
+      </div>
+      <button style="display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 52px; padding: 0 16px; border-radius: 14px; border: 2px solid var(--border-strong); background: var(--surface); font-size: 17px; font-weight: 600">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"></path><path d="M21 3v5h-5"></path></svg>
+        음성 다시 시도
+      </button>
+    </section>
+
+    <div style="display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 12px; background: var(--note-bg); border: 1px solid var(--note-border); color: var(--note-text)">
+      <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: none; margin-top: 1px"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v6M12 7.5v.5"></path></svg>
+      <p style="margin: 0; font-size: 15px; line-height: 22px">연구용 시제품입니다. 사진과 읽은 내용이 같은지 확인해 주세요.</p>
+    </div>
+
+    <section aria-labelledby="spoken-h" style="display: flex; flex-direction: column; gap: 12px; padding: 20px; border-radius: 20px; background: var(--surface); border: 1px solid var(--border)">
+      <h2 id="spoken-h" style="margin: 0; font-size: 19px; line-height: 26px; font-weight: 700">읽어 줄 문장</h2>
+      <p style="margin: 0; font-size: 20px; line-height: 38px; font-weight: 500">일차함수 와이는 삼분의 이 엑스 빼기 사의 그래프가 점 육 콤마 에이를 지날 때, 에이의 값을 구하시오.</p>
+    </section>
+
+    <section aria-labelledby="cmp-h" style="display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; flex-direction: column; gap: 2px; padding: 8px 4px 0">
+        <h2 id="cmp-h" style="margin: 0; font-size: 19px; line-height: 26px; font-weight: 700">사진과 비교하기</h2>
+        <span style="font-size: 15px; line-height: 22px; color: var(--text-2)">수식과 숫자가 같은지 살펴보세요.</span>
+      </div>
+      <figure style="margin: 0; border-radius: 16px; overflow: hidden; background: var(--surface); border: 1px solid var(--border)">
+        <div class="paper" role="img" aria-label="원본 사진: 인쇄된 수학 문제 7번" style="padding: 18px 18px; font-size: 16px; line-height: 30px">7. 일차함수 <span class="math"><i>y</i> = <span class="frac"><span>2</span><span>3</span></span><i>x</i> − 4</span>의 그래프가 점 <span class="math">(6, <i>a</i>)</span>를 지날 때, <span class="math"><i>a</i></span>의 값을 구하시오.</div>
+        <figcaption style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 6px 4px 16px; border-top: 1px solid var(--border)">
+          <span style="font-size: 15px; line-height: 22px; font-weight: 600; color: var(--text-2)">원본 사진</span>
+          <button style="display: inline-flex; align-items: center; gap: 6px; min-height: 48px; padding: 0 12px; border: 0; border-radius: 12px; background: transparent; color: var(--primary-text); font-size: 16px; font-weight: 600">
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"></path></svg>
+            크게 보기
+          </button>
+        </figcaption>
+      </figure>
+      <div style="display: flex; flex-direction: column; gap: 10px; padding: 18px 18px 6px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border)">
+        <h3 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; color: var(--text-2)">읽은 문제</h3>
+        <p style="margin: 0; font-size: 20px; line-height: 38px">일차함수 <span class="math" style="font-size: 22px"><i>y</i> = <span class="frac"><span>2</span><span>3</span></span><i>x</i> − 4</span>의 그래프가 점 <span class="math" style="font-size: 22px">(6, <i>a</i>)</span>를 지날 때, <span class="math" style="font-size: 22px"><i>a</i></span>의 값을 구하시오.</p>
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px; padding-top: 6px; border-top: 1px solid var(--border)">
+          <span style="font-size: 15px; line-height: 22px; color: var(--text-2)">사진과 다른가요?</span>
+          <a href="Crop.dc.html" style="display: inline-flex; align-items: center; min-height: 48px; padding: 0 8px; font-size: 16px; font-weight: 600">다시 찍기</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div style="display: flex; flex-wrap: wrap; gap: 12px; padding: 16px 16px 24px; background: var(--surface); border-top: 1px solid var(--border)">
+    <button style="flex: 1 1 140px; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 56px; padding: 0 16px; border-radius: 14px; border: 2px solid var(--border-strong); background: var(--surface); font-size: 17px; line-height: 24px; font-weight: 600">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-6-4-6 4z"></path></svg>
+      기록에 저장
+    </button>
+    <a href="Main.dc.html" style="flex: 1 1 140px; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 56px; padding: 0 16px; border-radius: 14px; background: var(--primary); color: var(--on-primary); font-size: 17px; line-height: 24px; font-weight: 700; text-decoration: none">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
+      새 문제
+    </a>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":390,"height":1460}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.dark ? 'mt dark' : 'mt' };
+  }
+}
+</script>
+</body>
+</html>
