@@ -262,6 +262,9 @@ python ocr_vl.py --eval .              # OCR each image, score against *.expect 
 
 ## Web backend (Modal)
 
+The app that uses it is in [`frontend/`](frontend/README.md): Expo, exported as a
+static site for Cloudflare Pages.
+
 `backend/modal_app.py` runs the same pipeline as a web API on
 [Modal](https://modal.com): `POST /jobs` with an image, poll `GET /jobs/{id}`
 for every stage's output, then fetch the MP3 from `GET /audio/{id}`. Each
