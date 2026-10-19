@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>요청 제한</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&amp;family=Noto+Serif+KR:wght@400;600&amp;family=STIX+Two+Text:ital,wght@0,400;0,500;1,400;1,500&amp;display=swap">
+<style>
+body{margin:0}
+.mt{--bg:#F5F6F8;--surface:#FFFFFF;--surface-2:#EDF0F4;--border:#D3D8E0;--border-strong:#7D8796;--text:#12161C;--text-2:#475061;--primary:#1D4ED8;--on-primary:#FFFFFF;--primary-text:#1D4ED8;--primary-soft:#E6ECFC;--on-primary-soft:#1E3A8A;--hl-bg:#FFE58A;--hl-text:#12161C;--hl-line:#8A5A00;--note-bg:#FFF6E0;--note-text:#6B4500;--note-border:#E6C377;--error-bg:#FDECEC;--error-text:#9F1D1D;--error-border:#E8A3A3;--info-bg:#E8EEFB;--info-text:#1E3A8A;--info-border:#AFC2F0;--success:#15803D;--focus:#1D4ED8;--paper:#ECE9E1;--ink:#26282B;font-family:"IBM Plex Sans KR",system-ui,sans-serif;color:var(--text);background:var(--bg);-webkit-font-smoothing:antialiased}
+.mt.dark{--bg:#0E1116;--surface:#171B22;--surface-2:#222833;--border:#323A48;--border-strong:#7A8496;--text:#EDF0F4;--text-2:#B3BBC7;--primary:#8EB1FF;--on-primary:#0B1530;--primary-text:#9DBBFF;--primary-soft:#1C2A4A;--on-primary-soft:#C9D8FF;--hl-bg:#5C4A0E;--hl-text:#FFF4CC;--hl-line:#F2C94C;--note-bg:#2A2210;--note-text:#F3D38B;--note-border:#5A4719;--error-bg:#3A1717;--error-text:#FFB3B3;--error-border:#7A3030;--info-bg:#172443;--info-text:#C3D3FF;--info-border:#34487A;--success:#6FD69A;--focus:#9DBBFF}
+.mt button{font:inherit;color:inherit;cursor:pointer;margin:0}
+.mt a{color:var(--primary-text)}
+.mt :focus-visible{outline:3px solid var(--focus);outline-offset:3px}
+.math{font-family:"STIX Two Text",serif;white-space:nowrap}
+.frac{display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;line-height:1.05;font-size:.8em;margin:0 .1em}
+.frac>span+span{border-top:1.5px solid currentColor;padding:0 .15em}
+.paper{font-family:"Noto Serif KR",serif;background:var(--paper);color:var(--ink)}
+</style>
+</helmet>
+<div class="{{theme}}" style="width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden">
+  <header style="display: flex; align-items: center; gap: 4px; min-height: 64px; padding: 8px 8px; box-sizing: border-box; background: var(--surface); border-bottom: 1px solid var(--border)">
+    <a href="Main.dc.html" aria-label="뒤로" style="display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; border-radius: 12px; color: var(--text)">
+      <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+    </a>
+    <span style="font-size: 19px; line-height: 26px; font-weight: 700">문제 읽기</span>
+  </header>
+
+  <main style="flex: 1; display: flex; flex-direction: column; gap: 20px; padding: 24px 20px 24px">
+    <h1 style="margin: 0; font-size: 26px; line-height: 34px; font-weight: 700; letter-spacing: -0.02em">잠시 후 다시 시도해 주세요</h1>
+
+    <div role="status" style="display: flex; gap: 12px; align-items: flex-start; padding: 16px; border-radius: 14px; background: var(--info-bg); border: 1px solid var(--info-border); color: var(--info-text)">
+      <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: none"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <strong style="font-size: 17px; line-height: 24px; font-weight: 700">요청이 많아 잠시 기다려야 해요</strong>
+        <span style="font-size: 16px; line-height: 24px">짧은 시간에 요청이 많았어요. 사진은 그대로 있으니 시간이 지나면 다시 시도할 수 있어요.</span>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 20px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border)">
+      <span style="font-size: 15px; line-height: 22px; font-weight: 600; color: var(--text-2)">다시 시도할 수 있을 때까지</span>
+      <span style="font-size: 40px; line-height: 48px; font-weight: 700; font-variant-numeric: tabular-nums">{{secsLabel}}</span>
+    </div>
+
+    <figure style="margin: 0; border-radius: 14px; overflow: hidden; border: 1px solid var(--border); background: var(--surface)">
+      <div class="paper" role="img" aria-label="선택한 사진: 수학 문제 7번" style="padding: 14px 16px; font-size: 14px; line-height: 26px">7. 일차함수 <span class="math"><i>y</i> = <span class="frac"><span>2</span><span>3</span></span><i>x</i> − 4</span>의 그래프가 점 <span class="math">(6, <i>a</i>)</span>를 지날 때, <span class="math"><i>a</i></span>의 값을 구하시오.</div>
+      <figcaption style="padding: 10px 16px; font-size: 15px; line-height: 22px; color: var(--text-2); border-top: 1px solid var(--border)">선택한 사진</figcaption>
+    </figure>
+
+    <div style="margin-top: auto; display: flex; flex-direction: column; gap: 12px">
+      <sc-if value="{{waiting}}" hint-placeholder-val="{{ true }}">
+        <button aria-disabled="true" style="display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 56px; padding: 0 20px; border-radius: 14px; border: 2px dashed var(--border-strong); background: var(--surface-2); color: var(--text-2); font-size: 17px; line-height: 24px; font-weight: 600; cursor: not-allowed">{{waitLabel}}</button>
+      </sc-if>
+      <sc-if value="{{ready}}" hint-placeholder-val="{{ false }}">
+        <a href="Processing.dc.html" style="display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 56px; padding: 0 20px; border-radius: 14px; background: var(--primary); color: var(--on-primary); font-size: 17px; line-height: 24px; font-weight: 700; text-decoration: none">
+          <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"></path><path d="M21 3v5h-5"></path></svg>
+          다시 시도
+        </a>
+      </sc-if>
+      <a href="Main.dc.html" style="display: flex; align-items: center; justify-content: center; min-height: 56px; padding: 0 20px; border-radius: 14px; border: 2px solid var(--border-strong); background: var(--surface); color: var(--text); font-size: 17px; line-height: 24px; font-weight: 600; text-decoration: none; box-sizing: border-box">처음으로</a>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { secs: 45 };
+  }
+  componentDidMount() {
+    this.timer = setInterval(() => {
+      var s = this.state.secs;
+      if (s <= 0) { clearInterval(this.timer); return; }
+      this.setState({ secs: s - 1 });
+    }, 1000);
+  }
+  componentWillUnmount() {
+    clearInterval(this.timer);
+  }
+  renderVals() {
+    var s = this.state && this.state.secs != null ? this.state.secs : 45;
+    return {
+      theme: this.props.dark ? 'mt dark' : 'mt',
+      secsLabel: s > 0 ? s + '초' : '지금 가능',
+      waitLabel: s + '초 후 다시 시도',
+      waiting: s > 0,
+      ready: s <= 0
+    };
+  }
+}
+</script>
+</body>
+</html>

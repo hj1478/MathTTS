@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>MathTTS 토큰과 접근성 명세</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&amp;family=STIX+Two+Text:ital,wght@0,400;1,400&amp;display=swap">
+<style>
+body{margin:0}
+.mt{--bg:#F5F6F8;--surface:#FFFFFF;--surface-2:#EDF0F4;--border:#D3D8E0;--border-strong:#7D8796;--text:#12161C;--text-2:#475061;--primary-text:#1D4ED8;font-family:"IBM Plex Sans KR",system-ui,sans-serif;color:var(--text);background:var(--bg);-webkit-font-smoothing:antialiased}
+.mt.dark{--bg:#0E1116;--surface:#171B22;--surface-2:#222833;--border:#323A48;--border-strong:#7A8496;--text:#EDF0F4;--text-2:#B3BBC7;--primary-text:#9DBBFF}
+.mt td,.mt th{padding:10px 14px;border-bottom:1px solid var(--border);text-align:left;vertical-align:middle}
+.mt th{font-size:14px;line-height:20px;font-weight:700;color:var(--text-2)}
+.mt code{font-family:ui-monospace,Menlo,monospace;font-size:14px}
+</style>
+</helmet>
+<div class="{{theme}}" style="width: 1280px; height: 2400px; box-sizing: border-box; padding: 64px; display: flex; flex-direction: column; gap: 48px; overflow: hidden">
+  <div style="display: flex; flex-direction: column; gap: 8px">
+    <h1 style="margin: 0; font-size: 40px; line-height: 50px; font-weight: 700; letter-spacing: -0.02em">토큰 · 접근성 명세</h1>
+    <p style="margin: 0; font-size: 18px; line-height: 28px; color: var(--text-2)">대비는 WCAG 2.2 기준으로 계산했어요. 글자는 모두 4.5:1 이상, 컨트롤 테두리와 포커스 표시는 3:1 이상이에요.</p>
+  </div>
+
+  <section aria-labelledby="t-color" style="display: flex; flex-direction: column; gap: 16px">
+    <h2 id="t-color" style="margin: 0; font-size: 26px; line-height: 34px; font-weight: 700">1. 색</h2>
+    <div style="border-radius: 16px; background: var(--surface); border: 1px solid var(--border); overflow: hidden">
+      <table style="width: 100%; border-collapse: collapse; font-size: 15px; line-height: 22px">
+        <thead>
+          <tr><th>토큰</th><th>라이트</th><th>다크</th><th>쓰는 곳</th><th>대비 (라이트 / 다크)</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>bg</code></td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; border: 1px solid #00000033; background: #F5F6F8"></span><code>#F5F6F8</code></span></td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; border: 1px solid #FFFFFF33; background: #0E1116"></span><code>#0E1116</code></span></td><td>화면 배경</td><td>—</td></tr>
+          <tr><td><code>surface</code></td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; border: 1px solid #00000033; background: #FFFFFF"></span><code>#FFFFFF</code></span></td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; border: 1px solid #FFFFFF33; background: #171B22"></span><code>#171B22</code></span></td><td>카드, 헤더, 하단 버튼 영역</td><td>—</td></tr>
+          <tr><td><code>surface-2</code></td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; border: 1px solid #00000033; background: #EDF0F4"></span><code>#EDF0F4</code></span></td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; border: 1px solid #FFFFFF33; background: #222833"></span><code>#222833</code></span></td><td>보조 원형 버튼, 기다림 상태, 오프라인 배너</td><td>—</td></tr>
+          <tr><td><code>border</code></td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; background: #D3D8E0"></span><code>#D3D8E0</code></span></td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; background: #323A48"></span><code>#323A48</code></span></td><td>카드 윤곽, 구분선 (장식용)</td><td>—</td></tr>
+          <tr><td><code>border-strong</code></td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; background: #7D8796"></span><code>#7D8796</code></span></td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; background: #7A8496"></span><code>#7A8496</code></span></td><td>보조 버튼·속도 버튼 테두리, 드롭 영역 점선</td><td>3.6 / 4.6 (surface 위)</td></tr>
+          <tr><td><code>text</code></td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; background: #12161C"></span><code>#12161C</code></span></td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; border: 1px solid #00000033; background: #EDF0F4"></span><code>#EDF0F4</code></span></td><td>본문, 제목</td><td>18.1 / 15.1</td></tr>
+          <tr><td><code>text-2</code></td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; background: #475061"></span><code>#475061</code></span></td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; background: #B3BBC7"></span><code>#B3BBC7</code></span></td><td>보조 설명, 날짜, 대기 단계</td><td>8.1 / 8.9 (surface-2 위 7.1 / 7.6)</td></tr>
+          <tr><td><code>primary</code> + <code>on-primary</code></td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; background: #1D4ED8"></span><code>#1D4ED8</code> / <code>#FFFFFF</code></span></td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; background: #8EB1FF"></span><code>#8EB1FF</code> / <code>#0B1530</code></span></td><td>주 버튼, 재생 버튼, 완료 단계</td><td>6.7 / 8.5</td></tr>
+          <tr><td><code>primary-text</code></td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; background: #1D4ED8"></span><code>#1D4ED8</code></span></td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; background: #9DBBFF"></span><code>#9DBBFF</code></span></td><td>링크, 텍스트 버튼, ‘진행 중’</td><td>6.7 / 9.0</td></tr>
+          <tr><td><code>primary-soft</code> + <code>on-primary-soft</code></td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; border: 1px solid #00000033; background: #E6ECFC"></span><code>#E6ECFC</code> / <code>#1E3A8A</code></span></td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; background: #1C2A4A"></span><code>#1C2A4A</code> / <code>#C9D8FF</code></span></td><td>선택된 속도, 현재 메뉴</td><td>8.8 / 10.0</td></tr>
+          <tr><td><code>hl-bg</code> + <code>hl-text</code> + <code>hl-line</code></td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; background: #FFE58A"></span><code>#FFE58A</code> / <code>#12161C</code> / <code>#8A5A00</code></span></td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; background: #5C4A0E"></span><code>#5C4A0E</code> / <code>#FFF4CC</code> / <code>#F2C94C</code></span></td><td>지금 읽는 부분 (배경 + 밑줄 3)</td><td>14.5 / 7.8</td></tr>
+          <tr><td><code>note-*</code></td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; border: 1px solid #E6C377; background: #FFF6E0"></span><code>#FFF6E0</code> / <code>#6B4500</code> / <code>#E6C377</code></span></td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; border: 1px solid #5A4719; background: #2A2210"></span><code>#2A2210</code> / <code>#F3D38B</code> / <code>#5A4719</code></span></td><td>연구용 시제품 안내 (배경 / 글자 / 테두리)</td><td>7.9 / 10.9</td></tr>
+          <tr><td><code>error-*</code></td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; border: 1px solid #E8A3A3; background: #FDECEC"></span><code>#FDECEC</code> / <code>#9F1D1D</code> / <code>#E8A3A3</code></span></td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; border: 1px solid #7A3030; background: #3A1717"></span><code>#3A1717</code> / <code>#FFB3B3</code> / <code>#7A3030</code></span></td><td>오류 배너, 실패 단계, 삭제</td><td>6.9 / 9.4</td></tr>
+          <tr><td><code>info-*</code></td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; border: 1px solid #AFC2F0; background: #E8EEFB"></span><code>#E8EEFB</code> / <code>#1E3A8A</code> / <code>#AFC2F0</code></span></td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; border: 1px solid #34487A; background: #172443"></span><code>#172443</code> / <code>#C3D3FF</code> / <code>#34487A</code></span></td><td>서버 준비, 요청 제한 안내</td><td>8.9 / 10.3</td></tr>
+          <tr><td><code>focus</code></td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; background: #1D4ED8"></span><code>#1D4ED8</code></span></td><td><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; background: #9DBBFF"></span><code>#9DBBFF</code></span></td><td>포커스 외곽선 3, 간격 3</td><td>6.7 / 9.0</td></tr>
+          <tr><td><code>paper</code> + <code>ink</code></td><td colspan="2"><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 24px; height: 24px; border-radius: 6px; border: 1px solid #00000033; background: #ECE9E1"></span><code>#ECE9E1</code> / <code>#26282B</code> — 테마와 무관</span></td><td>시안 속 사진 모형 전용. 실제 앱은 사진을 그대로 보여 주고 다크 모드에서도 반전하지 않음</td><td>12.2</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; align-items: start">
+    <section aria-labelledby="t-type" style="display: flex; flex-direction: column; gap: 16px">
+      <h2 id="t-type" style="margin: 0; font-size: 26px; line-height: 34px; font-weight: 700">2. 글자</h2>
+      <div style="border-radius: 16px; background: var(--surface); border: 1px solid var(--border); overflow: hidden">
+        <table style="width: 100%; border-collapse: collapse; font-size: 15px; line-height: 22px">
+          <thead><tr><th>이름</th><th>크기/줄높이</th><th>굵기</th><th>쓰는 곳</th></tr></thead>
+          <tbody>
+            <tr><td style="font-size: 22px; font-weight: 700">display</td><td>28/38 · 데스크톱 36/46</td><td>700</td><td>홈 제목</td></tr>
+            <tr><td style="font-size: 20px; font-weight: 700">title</td><td>26/34 · 데스크톱 30/40</td><td>700</td><td>상태 화면 제목</td></tr>
+            <tr><td style="font-size: 18px; font-weight: 700">heading</td><td>19/26</td><td>700</td><td>섹션·헤더 제목</td></tr>
+            <tr><td style="font-size: 18px; font-weight: 500">spoken</td><td>20/38 · 데스크톱 22/42</td><td>500</td><td>읽어 주는 문장, 읽은 문제</td></tr>
+            <tr><td><span style="font-family: 'STIX Two Text', serif; font-size: 20px; font-style: italic">math</span></td><td>22 (본문의 1.1배)</td><td>400</td><td>수식. 변수는 기울임, 숫자·기호는 바로</td></tr>
+            <tr><td style="font-size: 17px">body</td><td>17/26</td><td>400</td><td>기본 본문</td></tr>
+            <tr><td style="font-size: 17px; font-weight: 600">button</td><td>17/24 · 촬영 19/26</td><td>600–700</td><td>모든 버튼</td></tr>
+            <tr><td style="font-size: 16px">banner</td><td>16/24</td><td>400</td><td>배너 본문</td></tr>
+            <tr><td style="font-size: 15px">caption</td><td>15/22</td><td>400–600</td><td>앱에서 쓰는 가장 작은 글자</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="margin: 0; font-size: 15px; line-height: 23px; color: var(--text-2)">한글: IBM Plex Sans KR (<code>@expo-google-fonts/ibm-plex-sans-kr</code>), 실패 시 시스템 글꼴. 수식: STIX Two Text. 숫자가 바뀌는 곳(시간, 경과 시간)은 tabular-nums.</p>
+    </section>
+
+    <section aria-labelledby="t-space" style="display: flex; flex-direction: column; gap: 16px">
+      <h2 id="t-space" style="margin: 0; font-size: 26px; line-height: 34px; font-weight: 700">3. 간격 · 모양 · 크기</h2>
+      <div style="border-radius: 16px; background: var(--surface); border: 1px solid var(--border); overflow: hidden">
+        <table style="width: 100%; border-collapse: collapse; font-size: 15px; line-height: 22px">
+          <tbody>
+            <tr><th style="width: 34%">간격 단계</th><td>4 · 8 · 12 · 16 · 20 · 24 · 32 · 48</td></tr>
+            <tr><th>화면 좌우 여백</th><td>모바일 16–20 · 데스크톱 24, 최대 폭 1120</td></tr>
+            <tr><th>모서리</th><td>작은 컨트롤 12 · 버튼 14 · 카드 16 · 큰 카드 20 · 드롭 영역 24</td></tr>
+            <tr><th>최소 터치 영역</th><td>48×48 (모든 컨트롤)</td></tr>
+            <tr><th>버튼 높이</th><td>보조·주 56 · 촬영 64 · 속도 52 · 텍스트 48</td></tr>
+            <tr><th>플레이어</th><td>재생 원 80 · 보조 원 56 · 탐색 막대 터치 높이 48</td></tr>
+            <tr><th>테두리</th><td>카드 1 (border) · 컨트롤 2 (border-strong) · 선택 2 (primary)</td></tr>
+            <tr><th>데스크톱 배치</th><td>폭 960 이상에서 2단 (본문 flex 999 1 560 / 옆 1 1 320)</td></tr>
+            <tr><th>움직임</th><td>없음. 진행은 경과 시간과 단계로만 보여 줌</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; align-items: start">
+    <section aria-labelledby="t-order" style="display: flex; flex-direction: column; gap: 16px">
+      <h2 id="t-order" style="margin: 0; font-size: 26px; line-height: 34px; font-weight: 700">4. 결과 화면 포커스 순서 · 읽기 라벨</h2>
+      <ol style="margin: 0; padding: 20px 20px 20px 44px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; font-size: 15px; line-height: 23px">
+        <li><strong>처음 화면으로</strong> — 아이콘 버튼</li>
+        <li><strong>기록</strong></li>
+        <li><strong>문제 듣기</strong> — 제목 (heading)</li>
+        <li><strong>재생 위치</strong> — 조절 막대, 값 “5초 / 12초”</li>
+        <li><strong>5초 전</strong></li>
+        <li><strong>재생 / 일시정지</strong> — 화면이 열리면 여기로 포커스 이동</li>
+        <li><strong>처음부터</strong></li>
+        <li><strong>0.75배속 · 1배속 · 1.25배속</strong> — 선택됨 상태 포함</li>
+        <li><strong>시제품 안내</strong> — 글</li>
+        <li><strong>읽어 주는 문장</strong> — 전체 문장을 한 번에 읽음</li>
+        <li><strong>원본 사진</strong> — 이미지 라벨 + 크게 보기</li>
+        <li><strong>읽은 문제</strong> — 라벨은 읽어 주는 문장과 같게 (수식을 기호 이름으로 읽지 않음)</li>
+        <li><strong>다시 찍기</strong></li>
+        <li><strong>기록에 저장</strong> — 토글, “저장됨”</li>
+        <li><strong>새 문제</strong></li>
+      </ol>
+    </section>
+
+    <section aria-labelledby="t-sr" style="display: flex; flex-direction: column; gap: 16px">
+      <h2 id="t-sr" style="margin: 0; font-size: 26px; line-height: 34px; font-weight: 700">5. 화면 읽기 기능 · 큰 글자</h2>
+      <ul style="margin: 0; padding: 20px 20px 20px 40px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; font-size: 15px; line-height: 23px">
+        <li>처리 단계가 바뀔 때만 한 번 알림 (<code>announceForAccessibility</code>). 경과 시간은 읽지 않음</li>
+        <li>결과가 나오면 “문제를 다 읽었어요. 재생 버튼” 알림 후 재생 버튼에 포커스. 자동 재생하지 않음 (화면 읽기 음성과 겹침)</li>
+        <li>하이라이트는 눈으로 보는 사람용. 재생 중 live region을 쓰지 않아 두 목소리가 겹치지 않게</li>
+        <li>오류·오프라인 배너는 <code>role="alert"</code>, 안내는 <code>role="status"</code></li>
+        <li>음성 사용 불가일 때도 읽어 주는 문장은 그대로 보여서 화면 읽기 기능으로 들을 수 있음</li>
+        <li>요청 제한 카운트다운은 시작과 끝에만 알림</li>
+        <li><code>allowFontScaling</code> 켬, 높이는 최소값만. 200%에서 재생 버튼은 한 줄 전체, 5초 전·처음부터는 두 칸, 버튼 줄은 <code>flexWrap</code></li>
+        <li>잘림은 기록 행 첫 줄(최대 2줄)에만. 나머지 글은 모두 줄바꿈</li>
+        <li>자르기 화면은 ‘사진 전체 쓰기’로 끌기 없이도 진행 가능</li>
+        <li>다크 모드는 시스템 설정을 따름 (<code>useColorScheme</code>)</li>
+      </ul>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":2400}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.dark ? 'mt dark' : 'mt' };
+  }
+}
+</script>
+</body>
+</html>

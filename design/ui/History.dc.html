@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>기록</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&amp;family=Noto+Serif+KR:wght@400;600&amp;family=STIX+Two+Text:ital,wght@0,400;0,500;1,400;1,500&amp;display=swap">
+<style>
+body{margin:0}
+.mt{--bg:#F5F6F8;--surface:#FFFFFF;--surface-2:#EDF0F4;--border:#D3D8E0;--border-strong:#7D8796;--text:#12161C;--text-2:#475061;--primary:#1D4ED8;--on-primary:#FFFFFF;--primary-text:#1D4ED8;--primary-soft:#E6ECFC;--on-primary-soft:#1E3A8A;--hl-bg:#FFE58A;--hl-text:#12161C;--hl-line:#8A5A00;--note-bg:#FFF6E0;--note-text:#6B4500;--note-border:#E6C377;--error-bg:#FDECEC;--error-text:#9F1D1D;--error-border:#E8A3A3;--info-bg:#E8EEFB;--info-text:#1E3A8A;--info-border:#AFC2F0;--success:#15803D;--focus:#1D4ED8;--paper:#ECE9E1;--ink:#26282B;font-family:"IBM Plex Sans KR",system-ui,sans-serif;color:var(--text);background:var(--bg);-webkit-font-smoothing:antialiased}
+.mt.dark{--bg:#0E1116;--surface:#171B22;--surface-2:#222833;--border:#323A48;--border-strong:#7A8496;--text:#EDF0F4;--text-2:#B3BBC7;--primary:#8EB1FF;--on-primary:#0B1530;--primary-text:#9DBBFF;--primary-soft:#1C2A4A;--on-primary-soft:#C9D8FF;--hl-bg:#5C4A0E;--hl-text:#FFF4CC;--hl-line:#F2C94C;--note-bg:#2A2210;--note-text:#F3D38B;--note-border:#5A4719;--error-bg:#3A1717;--error-text:#FFB3B3;--error-border:#7A3030;--info-bg:#172443;--info-text:#C3D3FF;--info-border:#34487A;--success:#6FD69A;--focus:#9DBBFF}
+.mt button{font:inherit;color:inherit;cursor:pointer;margin:0}
+.mt a{color:var(--primary-text)}
+.mt :focus-visible{outline:3px solid var(--focus);outline-offset:3px}
+.paper{font-family:"Noto Serif KR",serif;background:var(--paper);color:var(--ink)}
+</style>
+</helmet>
+<div class="{{theme}}" style="width: 390px; height: 900px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden">
+  <header style="display: flex; align-items: center; gap: 4px; min-height: 64px; padding: 8px 8px; box-sizing: border-box; background: var(--surface); border-bottom: 1px solid var(--border)">
+    <a href="Main.dc.html" aria-label="뒤로" style="display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; border-radius: 12px; color: var(--text)">
+      <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+    </a>
+    <h1 style="margin: 0; font-size: 19px; line-height: 26px; font-weight: 700">기록</h1>
+  </header>
+
+  <main style="flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 16px 16px 16px">
+    <p style="margin: 0 4px 4px; font-size: 15px; line-height: 22px; color: var(--text-2)">최근 결과는 이 기기에만 저장돼요. 계정은 필요 없어요.</p>
+
+    <h2 style="margin: 4px 4px 0; font-size: 16px; line-height: 22px; font-weight: 700; color: var(--text-2)">오늘</h2>
+    <ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px">
+      <sc-for list="{{today}}" as="it" hint-placeholder-count="2">
+        <li style="display: flex; align-items: stretch; border-radius: 14px; border: 1px solid var(--border); background: var(--surface)">
+          <a href="Result.dc.html" style="flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; min-height: 84px; padding: 12px 4px 12px 12px; border-radius: 14px; text-decoration: none; color: var(--text)">
+            <span aria-hidden="true" class="paper" style="flex: none; width: 60px; height: 60px; border-radius: 8px; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 10px; box-sizing: border-box">
+              <span style="display: block; height: 3px; width: 100%; border-radius: 2px; background: #8C8A84"></span>
+              <span style="display: block; height: 3px; width: {{it.w2}}; border-radius: 2px; background: #8C8A84"></span>
+              <span style="display: block; height: 3px; width: {{it.w3}}; border-radius: 2px; background: #8C8A84"></span>
+            </span>
+            <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+              <span style="font-size: 17px; line-height: 24px; font-weight: 500; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden">{{it.text}}</span>
+              <span style="font-size: 15px; line-height: 22px; color: var(--text-2)">{{it.date}}</span>
+            </span>
+          </a>
+          <button aria-label="{{it.del}}" style="flex: none; align-self: center; width: 48px; height: 48px; margin-right: 6px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 12px; background: transparent; color: var(--text-2)">
+            <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"></path></svg>
+          </button>
+        </li>
+      </sc-for>
+    </ul>
+
+    <h2 style="margin: 8px 4px 0; font-size: 16px; line-height: 22px; font-weight: 700; color: var(--text-2)">이전</h2>
+    <ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px">
+      <sc-for list="{{earlier}}" as="it" hint-placeholder-count="3">
+        <li style="display: flex; align-items: stretch; border-radius: 14px; border: 1px solid var(--border); background: var(--surface)">
+          <a href="Result.dc.html" style="flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; min-height: 84px; padding: 12px 4px 12px 12px; border-radius: 14px; text-decoration: none; color: var(--text)">
+            <span aria-hidden="true" class="paper" style="flex: none; width: 60px; height: 60px; border-radius: 8px; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 10px; box-sizing: border-box">
+              <span style="display: block; height: 3px; width: 100%; border-radius: 2px; background: #8C8A84"></span>
+              <span style="display: block; height: 3px; width: {{it.w2}}; border-radius: 2px; background: #8C8A84"></span>
+              <span style="display: block; height: 3px; width: {{it.w3}}; border-radius: 2px; background: #8C8A84"></span>
+            </span>
+            <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+              <span style="font-size: 17px; line-height: 24px; font-weight: 500; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden">{{it.text}}</span>
+              <span style="font-size: 15px; line-height: 22px; color: var(--text-2)">{{it.date}}</span>
+            </span>
+          </a>
+          <button aria-label="{{it.del}}" style="flex: none; align-self: center; width: 48px; height: 48px; margin-right: 6px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 12px; background: transparent; color: var(--text-2)">
+            <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"></path></svg>
+          </button>
+        </li>
+      </sc-for>
+    </ul>
+
+    <button style="margin-top: auto; align-self: center; min-height: 48px; padding: 0 16px; border: 0; border-radius: 12px; background: transparent; color: var(--error-text); font-size: 16px; font-weight: 600">기록 모두 지우기</button>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":390,"height":900}}'>
+function row(text, date, w2, w3) {
+  return { text: text, date: date, w2: w2, w3: w3, del: date + ' 기록 삭제' };
+}
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      theme: this.props.dark ? 'mt dark' : 'mt',
+      today: [
+        row('일차함수 y = ⅔x − 4의 그래프가 점 (6, a)를 지날 때, a의 값을 구하시오.', '오늘 오후 3:24', '80%', '55%'),
+        row('두 점 (1, 3), (3, 7)을 지나는 직선의 기울기를 구하시오.', '오늘 오후 2:10', '70%', '40%')
+      ],
+      earlier: [
+        row('연립방정식 x + y = 5, 2x − y = 1의 해를 구하시오.', '어제 오후 8:42', '90%', '30%'),
+        row('이차방정식 x² − 5x + 6 = 0의 두 근을 구하시오.', '10월 14일', '60%', '75%'),
+        row('삼각형 ABC에서 ∠A = 50°, ∠B = 70°일 때, ∠C의 크기를 구하시오.', '10월 12일', '85%', '50%')
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
