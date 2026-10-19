@@ -646,3 +646,160 @@ in Modal's docs; whether a model held by a child process can be captured is not
 documented) and fallback GPU types (`gpu=["T4", "L4"]`) were checked against
 the Modal docs but not tried.
 
+
+## 2026-10-19 — Warm job: 8.6–8.8 s to done, OCR text visible at 6.7–6.9 s; OCR is 3.7 s of it
+
+**Question.** Where does a warm job's time go? Earlier the same day, a warm
+smoke-test job took 15.9 s with only 3.7 s of OCR.
+
+**What I did.** Two measurements on `kr question 1.png`, T4, deployed `mathtts`.
+
+1. `python scripts/smoke_test.py <url> --repeat 2` with no worker up (cold, then warm).
+2. Logging-only `[trace]` lines in `backend/modal_app.py`, giving wall-clock
+   epoch times for: POST received / body read / validated / rate-limit slot
+   taken / record put / spawned; worker picked up; upload saved; OCR start/end;
+   each stage start and output; the start and end of every job-record write;
+   `volume.commit()`; and GET /jobs received / record read / returned. Then a
+   client script sent `POST /warmup`, waited 45 s, and ran 3 jobs back to back,
+   polling every 1.5 s as the app does now. Client and server times were merged
+   per job. They come from different clocks, but the ordering is consistent
+   (no read ever sees a write before it ends).
+
+**What happened.**
+
+Smoke test (times from upload, client side):
+
+| | OCR (server) | OCR text visible | spoken text visible | done |
+|---|---|---|---|---|
+| cold | 7.7 s | 28.9 s | 31.9 s | 34.4 s |
+| warm | 3.7 s | 10.4 s | 13.4 s | 15.9 s |
+
+Profiled jobs. Job 1 was the first OCR call on a container started by
+`/warmup`; jobs 2 and 3 were on the same container after it.
+
+| from POST send | job 1 | job 2 | job 3 |
+|---|---|---|---|
+| POST returns | 1.99 | 1.63 | 1.77 |
+| OCR starts (worker) | 1.97 | 1.59 | 1.74 |
+| OCR ends | 8.19 (6.2 s) | 5.35 (3.8 s) | 5.44 (3.7 s) |
+| OCR text in record | 8.26 | 5.44 | 5.51 |
+| OCR text seen by client | 9.34 | 6.65 | 6.88 |
+| speech text in record | 9.69 | 6.92 | 6.88 |
+| TTS done (`run_job` returns) | 10.60 | 7.66 | 7.52 |
+| `volume.commit()` | 0.82 s | 0.49 s | 0.85 s |
+| done in record | 11.48 | 8.22 | 8.43 |
+| done seen by client | 13.52 | 8.59 | 8.83 |
+| wav downloaded (1.56 MB) | 16.04 | 9.70 | 9.62 |
+
+Warm-job time outside OCR, speak.js and TTS (jobs 2–3):
+
+- POST to OCR start: 1.6–1.7 s. Of that: network in 0.18; rate-limit slot
+  0.47–0.65 (`take_slot` tries slot keys one Dict round trip at a time, so it
+  gets slower with each job already used this hour); queued-record put 0.12;
+  `spawn` 0.46–0.51; three Dict operations in the worker before OCR starts, 0.2.
+- Job-record writes: each `update()` is a Dict get plus a put, 60–120 ms, and
+  all of them are in line with the stages. Between OCR end and speech start
+  there are 5 writes (~0.35 s); there are about 13 per job.
+- `volume.commit()` before the done write: 0.49–0.85 s.
+- Polling: GET /jobs takes 0.67–0.77 s round trip while running and 0.44 s
+  once done. The difference is `call_ended()` (`FunctionCall.get(timeout=0)`,
+  ~0.24 s), which runs on every poll of a running job. Text reached the client
+  1.2–1.4 s after it was written.
+- Speech (two speak.js runs, one after the other): 1.0 s. TTS: 0.6 s.
+
+**Result.** Measured, 3 warm jobs. A warm job is done at 8.6–8.8 s, not 15.9 s,
+and OCR text is visible at 6.7–6.9 s. The 15.9 s smoke-test run was not
+reproduced, and with no traces from that run I can't explain it. The first OCR
+call on a fresh container is slow (6.2 s against 3.7 s) even after `/warmup`,
+because warmup loads the model but runs no inference. The Volume is not on the
+status path (job records are in the Dict), except for `volume.commit()`, which
+the done write waits for.
+
+**Changed as a result.** The `[trace]` logging stays in `backend/modal_app.py`.
+The fixes are in the next entry.
+
+**Still open.** The 15.9 s outlier. Whether the 3.7 s OCR is faster on an L4.
+
+## 2026-10-19 — After the warm-path fixes: warm job done at 6.8–8.6 s, text at 5.2–6.2 s; cold job with `/warmup` 20 s ahead done at 12.5 s
+
+**Question.** How much do the fixes from the profile above recover, and does an
+L4 run OCR faster than the T4?
+
+**What changed** (`backend/modal_app.py`, `backend/job.py`):
+
+1. GET /jobs asks Modal whether the call ended (`call_ended`) only when the
+   record has gone `LOST_CHECK_AFTER_S` = 10 s without an update. Clients poll
+   every 0.5 s (docs/API.md, `scripts/smoke_test.py`).
+2. The worker keeps the job record itself and puts it whole, with no get before
+   each put. It writes once per stage change, carrying the outputs finished
+   before it: 5 writes per job instead of ~13, still in order on the main thread.
+3. Rate-limit slot: all 10 slot keys are read at once (`contains`, in
+   parallel), then the first free one is claimed with put-if-absent.
+4. Audio is MP3 (Azure `Audio24Khz48KBitRateMonoMp3`), stored in the Dict as
+   `audio:<id>` before "done" is written, and served by GET /audio from there.
+   The web function no longer mounts the Volume. `volume.commit()` runs after
+   the outcome is written. Hourly cleanup removes `audio:` entries older than
+   24 h, using the same `created` rule as `job:` and `call:`.
+5. The plain and SSML speak.js passes run at the same time. When the plain pass
+   fails `--strict`, the SSML pass's output (or error) is discarded, as in
+   run.py (unit-tested).
+6. `Worker.load` makes one OCR call on `kr question 1.png` after loading the
+   model, so a job never gets the slow first inference.
+
+**What I did.** Deployed. Ran one cold job (`smoke_test.py --warmup-lead 20`,
+no worker up), then the same profile as above: `/warmup`, 45 s, 3 jobs back to
+back, now polling every 0.5 s. For L4 against T4, ran
+`modal run backend/diagnostics.py::warm_timing --gpu L4|T4 --n 5` (one
+container each: model load, first call, 5 warm calls on `kr question 1.png`).
+
+**What happened.**
+
+Warm jobs, seconds from POST send (before = jobs 2–3 of the profile above):
+
+| | before | after (jobs 1 / 2 / 3) |
+|---|---|---|
+| POST returns | 1.63, 1.77 | 0.98 / 0.94 / 0.84 |
+| OCR starts | 1.59, 1.74 | 1.42 / 1.42 / 1.07 |
+| OCR (server) | 3.8, 3.7 | 3.97 / 3.82 / 3.78 |
+| OCR text in record | 5.44, 5.51 | 5.54 / 5.35 / 4.95 |
+| OCR text seen by client | 6.65, 6.88 | 6.18 / 6.12 / **5.19** |
+| speech text seen | 8.59, 8.83 | 7.82 / 6.94 / 6.01 |
+| done in record | 8.22, 8.43 | 8.30 / 6.91 / 6.50 |
+| done seen by client | 8.59, 8.83 | 8.63 / **7.75** / **6.82** |
+| audio downloaded | 9.70, 9.62 (1.56 MB wav) | 9.52 / 8.25 / 7.37 (195 KB mp3) |
+
+- speak.js: 1.0 s → 0.51–0.55 s. Rate-limit slot: 0.47–0.65 s → 0.14–0.28 s.
+  Running polls: 0.67–0.77 s → 0.30–0.34 s round trip.
+- The first job after `/warmup` ran OCR in 3.97 s, against 6.2 s before fix 6.
+- Job 1 had one Dict write that took 1.1 s (6.17 → 7.28 s), which alone put it
+  over 8 s.
+- The client's poll period is 0.5 s of sleep plus a 0.3 s round trip, so
+  ~0.8 s. In job 2, "done" was in the record 0.85 s before the client saw it.
+- Cold job with `/warmup` 20 s ahead: queued until 6.0 s, OCR 3.74 s, text seen
+  at 11.3 s, **done at 12.5 s**, against 34.9 s on 2026-10-17. Not the same
+  conditions: the 2026-10-17 job also paid the slow first OCR call (9.4 s).
+
+L4 against T4, OCR only, same image, same harness:
+
+| | model load | first call | 5 warm calls | median |
+|---|---|---|---|---|
+| T4 | 14.97 s | 6.58 s | 3.75 3.86 3.64 4.04 3.69 | **3.75 s** |
+| L4 | 18.16 s | 8.95 s | 4.52 4.65 4.62 4.98 4.96 | **4.65 s** |
+
+Same text length (155 chars) on both.
+
+**Result.** Measured, 3 warm jobs and 1 cold job. Done is under 8 s in 2 of 3
+warm jobs (median 7.75 s). Text is seen at a median of 6.12 s; the server has
+it at 4.95–5.54 s, and the rest is the poll period. The L4 is about 24% slower
+than the T4 at OCR here (the native PaddleOCR-VL generate loop, one image at a
+time), and its model load and first call are slower too. At Modal's list prices
+(2026-10-19: T4 $0.000164/s, L4 $0.000222/s, memory $0.00000222/GiB/s × 16 GiB)
+a warm job holds the worker ~6.3 s on a T4 and ~7.2 s on an L4: **≈ $0.0013 vs
+$0.0019 per job**. A lone job that also pays the start (load + warm-up call)
+and the 90 s idle tail: **≈ $0.024 (T4) vs $0.032 (L4)**.
+
+**Changed as a result.** The fixes above. Staying on the T4.
+
+**Still open.** The 1.1 s Dict write outlier, and how often it happens. Polling
+on a fixed start-to-start interval would cut the ~0.8 s poll period to 0.5 s.
+That is client code, and the frontend does not exist yet.

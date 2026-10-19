@@ -264,7 +264,7 @@ python ocr_vl.py --eval .              # OCR each image, score against *.expect 
 
 `backend/modal_app.py` runs the same pipeline as a web API on
 [Modal](https://modal.com): `POST /jobs` with an image, poll `GET /jobs/{id}`
-for every stage's output, then fetch the wav from `GET /audio/{id}`. Each
+for every stage's output, then fetch the MP3 from `GET /audio/{id}`. Each
 stage's text is returned as soon as it is ready, so a client can show the OCR
 and spoken text before the audio is done, and `POST /warmup` lets the app start
 a GPU worker when it opens, before the user uploads. The endpoints, JSON and

@@ -1,4 +1,4 @@
-"""MathTTS as a web backend on Modal: image -> every stage's output + a wav.
+"""MathTTS as a web backend on Modal: image -> every stage's output + an mp3.
 
     modal deploy backend/modal_app.py      # production
     modal serve  backend/modal_app.py      # dev, hot-reloading temporary URL
@@ -13,15 +13,17 @@ unchanged. This file is only the hosting around it:
   web (CPU)     FastAPI: POST /warmup, POST /jobs, GET /jobs/{id}, GET /audio/{id}.
                 Validates the upload and applies the per-IP limit BEFORE a GPU
                 job is spawned. Never sees the Azure secret.
-  cleanup       hourly: deletes job folders (upload, audio, stage files) and
-                job records older than RETENTION_S, and expired rate-limit slots.
+  cleanup       hourly: deletes job folders (upload, stage files), job records
+                and audio older than RETENTION_S, and expired rate-limit slots.
 
 Those three are the whole app. The OCR diagnostics are a separate app,
 "mathtts-diag", in backend/diagnostics.py; they share pipeline_image().
 
 State:
-  Volume "mathtts-data"   /data/jobs/<id>/  upload.<ext>, ocr/, stitched/, audio.wav
+  Volume "mathtts-data"   /data/jobs/<id>/  upload.<ext>, ocr/, stitched/, audio.mp3
+                          (worker only; kept for debugging, never read by the web)
   Dict   "mathtts-jobs"   job:<id> -> status record (what GET /jobs returns)
+                          audio:<id> -> {"data": mp3 bytes, "created"} (GET /audio)
                           rl:<ip>|<hour>|<n> -> rate-limit slots (see limits.py)
 
 Checked against the Modal Python SDK 1.6.2 (2026-10). Parameter names that
@@ -73,6 +75,14 @@ OCR_ENV = {"FLAGS_allocator_strategy": "naive_best_fit"}
 JOB_TIMEOUT_S = OCR_CUTOFF_S + 120   # + speech (speak.js has its own 120 s limit) + TTS
 STARTUP_TIMEOUT_S = 300              # container start + model load in the child
 RETENTION_S = 24 * 3600        # uploads, audio and job records
+# GET /jobs asks Modal whether a queued/running job's call has ended (crashed)
+# only when its record has gone this long without an update: the check adds
+# ~0.24 s to a poll (FINDINGS.md, 2026-10-19), and a live worker writes at each stage.
+LOST_CHECK_AFTER_S = 10
+# One throwaway OCR call when a worker starts: the first inference in a fresh
+# process takes ~6.5 s against ~3.7 s after it (FINDINGS.md, 2026-10-19), and
+# loading the model alone does not pay that. Hidden behind POST /warmup.
+WARMUP_IMAGE = "kr question 1.png"
 GPU = "T4"
 # The image build step that bakes the weights only needs paddle importable with
 # a GPU build; keep it on one GPU type so changing GPU doesn't rebuild that layer.
@@ -160,6 +170,7 @@ def _with_pipeline_source(image):
         .add_local_file(REPO / "backend" / "job.py", "/root/backend/job.py")
         .add_local_file(REPO / "backend" / "limits.py", "/root/backend/limits.py")
         .add_local_file(REPO / "backend" / "ocr_proc.py", "/root/backend/ocr_proc.py")
+        .add_local_file(REPO / WARMUP_IMAGE, f"/root/{WARMUP_IMAGE}")
     )
 
 
@@ -178,6 +189,10 @@ def _key(job_id):
     return f"job:{job_id}"
 
 
+def _audio_key(job_id):
+    return f"audio:{job_id}"
+
+
 def _call_key(job_id):
     # its own key: the worker is the only writer of job:<id> once spawned
     return f"call:{job_id}"
@@ -192,6 +207,13 @@ def _record_failure(job_id, code, message):
     rec.update(status="failed", stage=None, updated=time.time(),
                error={"code": code, "message": message})
     store.put(_key(job_id), rec)
+
+
+def _trace(job_id, event, **fields):
+    """One latency-profiling log line (FINDINGS.md, 2026-10-19). Logging only.
+    Wall-clock epoch, so worker and web lines can be merged."""
+    extra = "".join(f" {k}={v}" for k, v in fields.items())
+    print(f"[trace] {job_id} {time.time():.3f} {event}{extra}", flush=True)
 
 
 def _retire_container():
@@ -221,7 +243,11 @@ class Worker:
         # the model loads once per container, in the child; killed if loading hangs
         self.ocr = OcrProcess("gpu", env=OCR_ENV)
         self.ocr.start(timeout=STARTUP_TIMEOUT_S - 30)
-        print(f"[worker] OCR process ready: {self.ocr.info}", flush=True)
+        # raises (and so fails this container's start) if the call hangs or errors
+        t = time.monotonic()
+        self.ocr.run(REPO / WARMUP_IMAGE, Path("/tmp/warmup-ocr"), timeout=60)
+        print(f"[worker] OCR process ready: {self.ocr.info}; warm-up OCR call "
+              f"{time.monotonic() - t:.1f}s", flush=True)
 
     @modal.exit()
     def unload(self):
@@ -235,43 +261,75 @@ class Worker:
 
     @modal.method()
     def run(self, job_id, image_bytes, ext):
+        try:
+            self._run(job_id, image_bytes, ext)
+        finally:
+            # after the outcome is written: nothing the web serves is on the volume
+            _trace(job_id, "volume_commit_start")
+            volume.commit()
+            _trace(job_id, "volume_commit_end")
+
+    def _run(self, job_id, image_bytes, ext):
+        _trace(job_id, "worker_picked_up")
         from modal.exception import InputCancellation
 
         from backend import job
         from backend.ocr_proc import OcrTimeout
 
-        def update(**fields):
-            rec = store.get(_key(job_id)) or {}
-            rec.update(fields, updated=time.time())
-            store.put(_key(job_id), rec)
-
         # Run once. A job that already started reaches here again only if Modal
         # rescheduled it after its container crashed; report that, don't re-run.
         rec = store.get(_key(job_id)) or {}
+        _trace(job_id, "started_check_read")
         if rec.get("started"):
             print(f"[job {job_id}] rescheduled after a crash; not re-running")
             if rec.get("status") != "failed":
                 _record_failure(job_id, "worker_lost", job.JOB_ERROR_MESSAGES["worker_lost"])
             return
 
+        def update(**fields):
+            # Once spawned, the worker is the only writer of job:<id> (the web
+            # writes it only after the call has ended), so it keeps the record
+            # here and puts it whole: one round trip, no get first.
+            rec.update(fields, updated=time.time())
+            what = ",".join(fields)
+            _trace(job_id, "write_start", fields=what)
+            store.put(_key(job_id), rec)
+            _trace(job_id, "write_end", fields=what)
+
         workdir = _job_dir(job_id)
         workdir.mkdir(parents=True, exist_ok=True)
         image = workdir / f"upload{ext}"
         image.write_bytes(image_bytes)
+        _trace(job_id, "upload_saved", bytes=len(image_bytes))
         update(status="running", stage="ocr", started=time.time())
 
         def ocr(img, out_dir, device):  # ocr_vl.run_image, in the killable child
-            return self.ocr.run(img, out_dir, timeout=OCR_CUTOFF_S)
+            _trace(job_id, "ocr_start")
+            try:
+                return self.ocr.run(img, out_dir, timeout=OCR_CUTOFF_S)
+            finally:
+                _trace(job_id, "ocr_end")
 
-        stages = {}
+        stages, unsent = {}, False
 
-        def output(key, value):  # GET /jobs shows each stage's text as soon as it exists
+        def on_stage(s):
+            # one write per stage change, carrying the outputs finished before it
+            nonlocal unsent
+            _trace(job_id, f"stage_{s}_start")
+            if s != rec.get("stage") or unsent:
+                update(stage=s, stages=stages)
+                unsent = False
+
+        def output(key, value):  # GET /jobs shows each stage's text from the next write on
+            nonlocal unsent
+            _trace(job_id, f"output_{key}_ready")
             stages[key] = value
-            update(stages=stages)
+            unsent = True
 
         try:
             result = job.run_job(image, workdir, "gpu", ocr=ocr,
-                                 on_stage=lambda s: update(stage=s), on_output=output)
+                                 on_stage=on_stage, on_output=output)
+            _trace(job_id, "run_job_returned")
         except InputCancellation:  # Modal's backstop timeout, or a cancel
             print(f"[job {job_id}] cancelled; killing OCR and retiring this container")
             self.ocr.kill()
@@ -281,24 +339,29 @@ class Worker:
         except job.JobError as e:
             code = "timeout" if isinstance(e.__cause__, OcrTimeout) else e.code
             print(f"[job {job_id}] failed: {code}: {e.detail}")
-            update(status="failed", stage=None,
+            update(status="failed", stage=None, stages=stages,
                    error={"code": code, "message": job.JOB_ERROR_MESSAGES[code]})
             if not self.ocr.alive():  # killed at the cutoff, or crashed: no model here now
                 _retire_container()
             return
         except Exception as e:
             print(f"[job {job_id}] internal error: {type(e).__name__}: {e}")
-            update(status="failed", stage=None,
+            update(status="failed", stage=None, stages=stages,
                    error={"code": "internal_error",
                           "message": job.JOB_ERROR_MESSAGES["internal_error"]})
             return
-        finally:
-            volume.commit()  # the web container reads audio.wav from the volume
 
         detail = result["audio"].pop("_detail", "")
-        if result["audio"]["status"] != "ready":
+        if result["audio"]["status"] == "ready":
+            # in the Dict, not on the volume: no commit/reload between the worker
+            # and GET /audio (FINDINGS.md, 2026-10-19). Written before "done".
+            data = (workdir / job.AUDIO_NAME).read_bytes()
+            store.put(_audio_key(job_id), {"data": data, "created": rec["created"]})
+            _trace(job_id, "audio_put", bytes=len(data))
+        else:
             print(f"[job {job_id}] audio {result['audio']['status']}: {detail}")
         update(status="done", stage=None, result=result)
+        _trace(job_id, "worker_return")
 
 
 # --- web API -----------------------------------------------------------------
@@ -307,14 +370,16 @@ def _origins():
     return list(dict.fromkeys(extra + DEV_ORIGINS))
 
 
-@app.function(image=web_image, volumes={DATA: volume},
-              env={"MATHTTS_CORS_ORIGINS": CORS_ORIGINS}, scaledown_window=300)
+@app.function(image=web_image, env={"MATHTTS_CORS_ORIGINS": CORS_ORIGINS},
+              scaledown_window=300)
 @modal.concurrent(max_inputs=50)
 @modal.asgi_app(label=APP_NAME)
 def web():
+    import asyncio
+
     from fastapi import FastAPI, Request
     from fastapi.middleware.cors import CORSMiddleware
-    from fastapi.responses import FileResponse, JSONResponse
+    from fastapi.responses import JSONResponse, Response
 
     from backend import limits, progress
 
@@ -328,9 +393,14 @@ def web():
                             status_code=status, headers=headers)
 
     async def take_slot(ip, limit=RATE_LIMIT_PER_HOUR):
+        # Read every slot at once, then claim a free one with put-if-absent: two
+        # round trips, instead of one per slot already used this hour. A taken
+        # slot stays taken for the window, so only free ones are worth trying.
         now = time.time()
-        for key in limits.slot_keys(ip, now, limit):
-            if await store.put.aio(f"rl:{key}", now, skip_if_exists=True):
+        keys = [f"rl:{k}" for k in limits.slot_keys(ip, now, limit)]
+        taken = await asyncio.gather(*(store.contains.aio(k) for k in keys))
+        for key, used in zip(keys, taken):
+            if not used and await store.put.aio(key, now, skip_if_exists=True):
                 return True, 0
         return False, limits.retry_after(now)
 
@@ -352,6 +422,7 @@ def web():
 
     @api.post("/jobs", status_code=202)
     async def create_job(request: Request):
+        t_recv = time.time()
         # 1. size: refuse on the declared length before reading the body
         # (no length = chunked upload, whose size is unknown until it is all read)
         declared = request.headers.get("content-length", "")
@@ -368,6 +439,7 @@ def web():
             return error(400, "bad_request", "multipart/form-data 형식의 'image' 필드가 필요합니다.")
         data = await upload.read(limits.MAX_UPLOAD_BYTES + 1)
         await form.close()
+        t_body = time.time()
         if len(data) > limits.MAX_UPLOAD_BYTES:
             return error(413, "file_too_large", "이미지는 5MB 이하만 올릴 수 있습니다.")
         if not data:
@@ -385,8 +457,10 @@ def web():
             print(f"[upload] rejected undecodable image: {reason}")
             return error(422, "invalid_image", "이미지를 열 수 없습니다. 다른 파일로 다시 시도해 주세요.")
 
+        t_valid = time.time()
         # 3. per-IP limit, shared across web containers via the Dict
         allowed, wait = await take_slot(client_ip(request))
+        t_slot = time.time()
         if not allowed:
             return error(429, "rate_limited",
                          f"요청이 너무 많습니다. 한 시간에 {RATE_LIMIT_PER_HOUR}개까지 처리할 수 있습니다.",
@@ -397,8 +471,15 @@ def web():
         now = time.time()
         await store.put.aio(_key(job_id), {"status": "queued", "stage": None,
                                            "created": now, "updated": now})
+        t_rec = time.time()
         call = await Worker().run.spawn.aio(job_id, data, ext)
+        t_spawn = time.time()
         await store.put.aio(_call_key(job_id), {"id": call.object_id, "created": now})
+        for event, t in (("post_received", t_recv), ("post_body_read", t_body),
+                         ("post_validated", t_valid), ("post_slot_taken", t_slot),
+                         ("post_record_put", t_rec), ("post_spawned", t_spawn)):
+            print(f"[trace] {job_id} {t:.3f} {event}", flush=True)
+        _trace(job_id, "post_return")
         return {"id": job_id, "status": "queued", "status_url": f"/jobs/{job_id}"}
 
     async def call_ended(job_id):
@@ -417,11 +498,17 @@ def web():
 
     @api.get("/jobs/{job_id}")
     async def get_job(job_id: str, request: Request):
+        t_get = time.time()
         rec = await store.get.aio(_key(job_id)) if job_id.isalnum() else None
+        if rec is not None:
+            print(f"[trace] {job_id} {t_get:.3f} get_received", flush=True)
+            _trace(job_id, "get_read", status=rec.get("status"),
+                   stages=",".join(rec.get("stages") or {}) or "-")
         if rec is None:
             return error(404, "not_found", "작업을 찾을 수 없습니다. 24시간이 지나 삭제되었을 수 있습니다.")
         status = rec.get("status")
-        if status in ("queued", "running") and await call_ended(job_id):
+        stale = time.time() - rec.get("updated", rec["created"]) > LOST_CHECK_AFTER_S
+        if status in ("queued", "running") and stale and await call_ended(job_id):
             # the worker writes its outcome before returning, so re-read first
             rec = await store.get.aio(_key(job_id)) or rec
             status = rec.get("status")
@@ -454,21 +541,18 @@ def web():
             body.update(audio=audio, timings_s=result["timings_s"])
         elif status == "failed":
             body["error"] = rec.get("error")
+        _trace(job_id, "get_return", status=status)
         return body
 
     @api.get("/audio/{job_id}", name="get_audio")
     async def get_audio(job_id: str):
         if not job_id.isalnum():
             return error(404, "not_found", "음성 파일이 없습니다.")
-        path = _job_dir(job_id) / "audio.wav"
-        if not path.exists():
-            try:
-                await volume.reload.aio()  # the worker committed after this container mounted
-            except Exception as e:
-                print(f"[audio] volume reload skipped: {type(e).__name__}")
-        if not path.exists():
+        audio = await store.get.aio(_audio_key(job_id))
+        if audio is None:
             return error(404, "not_found", "음성 파일이 없습니다. 24시간이 지나 삭제되었을 수 있습니다.")
-        return FileResponse(path, media_type="audio/wav", filename=f"mathtts-{job_id}.wav")
+        return Response(audio["data"], media_type="audio/mpeg", headers={
+            "Content-Disposition": f'attachment; filename="mathtts-{job_id}.mp3"'})
 
     return api
 
@@ -493,7 +577,7 @@ def cleanup():
     current = int(now // 3600)
     stale = []
     for key in store.keys():
-        if key.startswith(("job:", "call:")):
+        if key.startswith(("job:", "call:", "audio:")):
             rec = store.get(key)
             if rec and rec.get("created", 0) < cutoff:
                 stale.append(key)

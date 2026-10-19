@@ -10,6 +10,8 @@ a deploy never ships them. Nothing here is deployed; each check runs with
     modal run backend/diagnostics.py::output_check   # golden images: OCR text vs output/
     modal run backend/diagnostics.py::stack_check    # native state of a default-allocator hang
     modal run backend/diagnostics.py::cpu_check      # one image, device="cpu", no GPU
+    modal run backend/diagnostics.py::warm_timing    # load, 1 first call, N warm calls
+        --gpu T4|L4  --n 5
 
 The images are the production ones (modal_app.pipeline_image), plus
 modal_app.py itself so this module can import it in the container. All use the
@@ -104,6 +106,45 @@ def first_call_t4(i, image_bytes, ext, allocator):
 @app.function(image=gpu_image, gpu="L4", max_containers=DIAG_PARALLEL, **DIAG_KW)
 def first_call_l4(i, image_bytes, ext, allocator):
     return _first_call(i, image_bytes, ext, allocator)
+
+
+def _warm_calls(image_bytes, ext, n):
+    """Load the model once, make one first call, then n warm calls on the same
+    image, as a warm worker would. Times are the worker's view (OcrProcess.run)."""
+    from backend.ocr_proc import OcrProcess
+
+    from modal_app import OCR_ENV
+    out = {"gpu": _nvidia_smi("name")}
+    ocr = OcrProcess("gpu", env=OCR_ENV)
+    t = time.monotonic()
+    try:
+        ocr.start(timeout=STARTUP_TIMEOUT_S - 30)
+        out["load_s"] = round(time.monotonic() - t, 2)
+        work = Path("/tmp/warm")
+        work.mkdir(parents=True, exist_ok=True)
+        image = work / f"sample{ext}"
+        image.write_bytes(image_bytes)
+        times, chars = [], set()
+        for i in range(n + 1):
+            t = time.monotonic()
+            text, _ = ocr.run(image, work / f"ocr{i}", timeout=DIAG_HANG_S)
+            times.append(round(time.monotonic() - t, 2))
+            chars.add(len(text))
+        out.update(first_s=times[0], warm_s=times[1:], chars=sorted(chars))
+    finally:
+        ocr.close()
+        _retire_container()
+    return out
+
+
+@app.function(image=gpu_image, gpu="T4", **DIAG_KW)
+def warm_calls_t4(image_bytes, ext, n):
+    return _warm_calls(image_bytes, ext, n)
+
+
+@app.function(image=gpu_image, gpu="L4", **DIAG_KW)
+def warm_calls_l4(image_bytes, ext, n):
+    return _warm_calls(image_bytes, ext, n)
 
 
 @app.function(image=gpu_image, gpu="T4", **DIAG_KW)
@@ -388,3 +429,14 @@ def output_check(allocator: str = "naive_best_fit", report: str = ""):
     if report:
         Path(report).write_text(json.dumps(runs, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"full report: {report}")
+
+
+@app.local_entrypoint()
+def warm_timing(gpu: str = "L4", n: int = 5, image: str = str(REPO / "kr question 1.png")):
+    import statistics
+    fn = {"T4": warm_calls_t4, "L4": warm_calls_l4}[gpu]
+    path = Path(image)
+    r = fn.remote(path.read_bytes(), path.suffix.lower(), n)
+    print(f"\n===== warm OCR timing: {gpu} ({r['gpu']}), {path.name} =====")
+    print(f"model load {r['load_s']}s | first call {r['first_s']}s | warm calls {r['warm_s']} "
+          f"| median {statistics.median(r['warm_s'])}s | chars {r['chars']}")

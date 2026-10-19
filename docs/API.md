@@ -1,7 +1,7 @@
 # MathTTS HTTP API
 
 The backend in `backend/modal_app.py`, deployed on Modal. One image in; every
-pipeline stage's output plus a wav out. Jobs are asynchronous: submit, poll,
+pipeline stage's output plus an MP3 out. Jobs are asynchronous: submit, poll,
 then fetch the audio.
 
 A typical client:
@@ -106,7 +106,7 @@ a `429`.
 
 ## `GET /jobs/{id}` — status and results
 
-Poll every 1–2 s. A job record lives for 24 hours after creation.
+Poll every 0.5 s, counted from the start of the previous poll (a poll takes ~0.3 s). A job record lives for 24 hours after creation.
 
 Each stage's output is in `stages` **as soon as that stage finishes**, while
 later stages are still running. The OCR text arrives first, then the spoken
@@ -150,7 +150,7 @@ entries:
 |---|---|
 | `pending` | Not started yet |
 | `running` | In progress now |
-| `done` | Finished; its output is in `stages` (or, for `tts`, the wav is ready) |
+| `done` | Finished; its output is in `stages` (or, for `tts`, the audio is ready) |
 | `skipped` | Will not run. For `tts`: the speech has a placeholder (`strict_ok` is `false`), which is known as soon as `speech` is done; or the job failed at an earlier stage |
 | `failed` | The job failed in this stage (`status: "failed"`), or for `tts`, `audio.status` is `quota_reached` or `failed` |
 
@@ -211,7 +211,7 @@ stages are the result.
 
 | `audio.status` | `url` | Meaning |
 |---|---|---|
-| `ready` | set | The wav is at `url` |
+| `ready` | set | The MP3 is at `url` |
 | `quota_reached` | `null` | Azure answered 429 / quota exhausted (F0 free tier). The message says the monthly limit was reached |
 | `skipped` | `null` | `strict_ok` is `false`, so Azure was not asked to read a placeholder aloud |
 | `failed` | `null` | Azure failed for another reason, after one retry |
@@ -240,14 +240,15 @@ A job that fails after OCR (e.g. `speech_stage_failed`) still has
 | `speech_stage_failed` | speak.js crashed or wrote no output |
 | `timeout` | The OCR call did not finish within 300 s and was killed, or the job hit the 420 s limit. Retrying usually works |
 | `internal_error` | Any other worker error |
-| `worker_lost` | The worker died without reporting (out of memory, a lost container) |
+| `worker_lost` | The worker died without reporting (out of memory, a lost container). Reported once the job has gone 10 s without progress |
 
 **Errors:** `404 not_found` for an unknown id, or a job older than 24 hours.
 
-## `GET /audio/{id}` — the wav
+## `GET /audio/{id}` — the audio (MP3)
 
-**`200 OK`**, `Content-Type: audio/wav`, with
-`Content-Disposition: attachment; filename="mathtts-<id>.wav"`.
+**`200 OK`**, `Content-Type: audio/mpeg`, with
+`Content-Disposition: attachment; filename="mathtts-<id>.mp3"`. MP3, 24 kHz
+mono, 48 kbit/s (about 6 KB per second of speech).
 
 **Errors:** `404 not_found` if the job has no audio (`audio.status` is not
 `ready`), the id is unknown, or the file is older than 24 hours.

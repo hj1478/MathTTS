@@ -10,7 +10,7 @@ any laptop. Needs `requests`.
     python scripts/smoke_test.py <url> --warmup-lead 20   # POST /warmup, wait 20 s, then upload
 
 Each run submits the image, polls until the job finishes, checks that every
-stage returned output, prints them, and downloads the wav. While polling it
+stage returned output, prints them, and downloads the MP3. While polling it
 checks that each stage's text appears before the job is done (GET /jobs returns
 outputs as they are ready) and reports when the OCR text and the spoken text
 first arrived. It also checks that a non-image upload is rejected with 415
@@ -35,7 +35,7 @@ from pathlib import Path
 import requests
 
 ROOT = Path(__file__).resolve().parent.parent
-POLL_S = 1.5
+POLL_S = 0.5  # what docs/API.md tells clients
 TIMEOUT_S = 900  # covers a cold image pull + model load + the job
 
 
@@ -121,10 +121,13 @@ def run_once(base, image):
     audio = body["audio"]
     if audio["status"] == "ready":
         r = requests.get(audio["url"], timeout=60)
-        if r.status_code != 200 or r.content[:4] != b"RIFF" or r.content[8:12] != b"WAVE":
-            fail(f"GET {audio['url']}: expected a wav, got {r.status_code} "
+        # an MP3 starts with an ID3 tag or an MPEG frame sync (11 set bits)
+        is_mp3 = r.content[:3] == b"ID3" or (r.content[:1] == b"\xff"
+                                             and r.content[1:2] >= b"\xe0")
+        if r.status_code != 200 or not is_mp3:
+            fail(f"GET {audio['url']}: expected an MP3, got {r.status_code} "
                  f"{r.headers.get('content-type')} {r.content[:16]!r}")
-        print(f"ok   GET /audio/{job_id} -> {len(r.content):,} B wav")
+        print(f"ok   GET /audio/{job_id} -> {len(r.content):,} B mp3")
     elif audio["status"] == "quota_reached":
         print(f"WARN audio quota_reached: {audio['message']}")
     else:

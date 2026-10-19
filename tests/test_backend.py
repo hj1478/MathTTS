@@ -110,3 +110,49 @@ def test_stage_status(status, stages, audio, expected):
     got = progress.stage_status(status, stages, audio)
     assert list(got) == list(progress.STAGES)
     assert " ".join(got.values()) == expected
+
+
+# --- job.run_job stage 3: plain and SSML speak.js passes run at the same time ---
+def _fake_speak(plain_code, ssml_raises=False):
+    """Stands in for job._speak: writes the file speak.js would, returns its exit code."""
+    from backend import job
+
+    def speak(norm_path, out_dir, ssml):
+        out_dir.mkdir(parents=True, exist_ok=True)
+        base = norm_path.name.removesuffix(".norm.md")
+        if ssml:
+            if ssml_raises:
+                raise job.JobError("speech_stage_failed", "boom")
+            (out_dir / f"{base}.stitched.ssml").write_text("<speak/>", encoding="utf-8")
+            return 0, ["SUMMARY: ssml"]
+        (out_dir / f"{base}.stitched.txt").write_text("엑스 더하기 일", encoding="utf-8")
+        return plain_code, ["SUMMARY: plain"]
+    return speak
+
+
+def _run(tmp_path, monkeypatch, speak):
+    from backend import job
+    monkeypatch.setattr(job, "_speak", speak)
+    image = tmp_path / "q.png"
+    image.write_bytes(b"")
+
+    def ocr(img, out_dir, device):
+        out_dir.mkdir(parents=True, exist_ok=True)
+        return "문제 $x+1$", None
+    return job.run_job(image, tmp_path / "work", "gpu", tts=False, ocr=ocr)
+
+
+def test_speech_both_passes_ok(tmp_path, monkeypatch):
+    sp = _run(tmp_path, monkeypatch, _fake_speak(0))["stages"]["speech"]
+    assert sp["strict_ok"] and sp["ssml"] == "<speak/>"
+    assert sp["summary"] == ["SUMMARY: plain", "(ssml) SUMMARY: ssml"]
+
+
+@pytest.mark.parametrize("ssml_raises", [False, True])
+def test_speech_strict_failure_discards_ssml_pass(tmp_path, monkeypatch, ssml_raises):
+    # as in run.py, where the SSML pass never runs after a --strict failure
+    r = _run(tmp_path, monkeypatch, _fake_speak(2, ssml_raises))
+    sp = r["stages"]["speech"]
+    assert not sp["strict_ok"] and sp["ssml"] is None
+    assert sp["summary"] == ["SUMMARY: plain"]
+    assert not list((tmp_path / "work" / "stitched").glob("*.ssml"))

@@ -11,7 +11,13 @@ for running as a service rather than as a CLI:
     is sized for both.
   - Stage 4 synthesizes the SSML version only. tts_full.py writes plain AND
     SSML wavs for A/B listening; a service needs one, and one call per job
-    halves what the Azure F0 quota pays for.
+    halves what the Azure F0 quota pays for. It asks Azure for MP3 (24 kHz,
+    48 kbit/s mono) instead of tts_probe's WAV: about 1/8 the size, so it can
+    be served from the job store and downloads faster (FINDINGS.md, 2026-10-19).
+  - Stage 3 runs the plain and SSML speak.js passes at the same time instead
+    of one after the other. They write different files. When the plain pass
+    fails --strict, the SSML pass's output is discarded, so the result is the
+    same as run.py's, where the SSML pass would never have run.
   - A stage-4 failure does not fail the job. The text stages are the result;
     audio carries its own status, and an exhausted quota is reported as
     "quota_reached" rather than as an error.
@@ -31,6 +37,7 @@ import json
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -42,6 +49,8 @@ from backend import limits       # noqa: E402
 
 SPEAK_JS = ROOT / "sre-probe" / "speak.js"
 VOICE = "ko-KR-SunHiNeural"      # run.py's default
+AUDIO_NAME = "audio.mp3"
+AUDIO_MEDIA_TYPE = "audio/mpeg"
 SPEAK_TIMEOUT_S = 120
 
 # Korean messages travel with the machine-readable codes so every client
@@ -89,17 +98,21 @@ def _speak(norm_path, out_dir, ssml):
     return proc.returncode, summary
 
 
-def _synthesize(ssml_text, wav_path):
-    """Stage 4 via tts_probe (the code tts_full.py uses), with tts_full's one retry."""
+def _synthesize(ssml_text, audio_path):
+    """Stage 4 via tts_probe (the code tts_full.py uses), with tts_full's one retry.
+    MP3 instead of tts_probe's WAV (see the module docstring)."""
+    import azure.cognitiveservices.speech as speechsdk
     from tts_probe import make_config, synth
     try:
         cfg = make_config(VOICE)
     except SystemExit:  # make_config exits when credentials are missing
         return "failed", "Azure credentials not configured"
+    cfg.set_speech_synthesis_output_format(
+        speechsdk.SpeechSynthesisOutputFormat.Audio24Khz48KBitRateMonoMp3)
     ok, detail = False, ""
     for attempt in (1, 2):  # tts_full.py: transient Azure errors — one retry fixes them
         try:
-            ok, detail = synth(cfg, wav_path, ssml=ssml_text)
+            ok, detail = synth(cfg, audio_path, ssml=ssml_text)
         except Exception as e:
             ok, detail = False, f"{type(e).__name__}: {e}"
         if ok:
@@ -108,7 +121,7 @@ def _synthesize(ssml_text, wav_path):
             time.sleep(2)
     if ok:
         return "ready", detail
-    wav_path.unlink(missing_ok=True)  # never serve a half-written file
+    audio_path.unlink(missing_ok=True)  # never serve a half-written file
     return ("quota_reached" if limits.is_quota_error(detail) else "failed"), detail
 
 
@@ -117,7 +130,7 @@ def run_job(image, workdir, device, tts=True, on_stage=lambda stage: None, ocr=N
     """image -> dict of every stage's output. Raises JobError if a text stage fails.
 
     Writes into workdir: OCR markdown (+ the OCR's JSON), <stem>.norm.md,
-    stitched/<stem>.stitched.{txt,ssml}, and audio.wav when stage 4 succeeds.
+    stitched/<stem>.stitched.{txt,ssml}, and audio.mp3 when stage 4 succeeds.
 
     `ocr` replaces the call to ocr_vl.run_image (same arguments and return);
     the Modal worker passes one that runs it in a killable child process
@@ -178,12 +191,19 @@ def run_job(image, workdir, device, tts=True, on_stage=lambda stage: None, ocr=N
     ssml_path = stitch_dir / f"{base}.stitched.ssml"
     for p in (txt_path, ssml_path):
         p.unlink(missing_ok=True)
-    code, summary = _speak(norm_path, stitch_dir, ssml=False)
-    strict_ok = code == 0
-    if strict_ok:  # run.py stops here on a --strict failure; so does this
-        code, ssml_summary = _speak(norm_path, stitch_dir, ssml=True)
-        strict_ok = code == 0 and ssml_path.exists()
-        summary += [f"(ssml) {s}" for s in ssml_summary]
+    with ThreadPoolExecutor(2) as pool:  # both at once; see the module docstring
+        plain = pool.submit(_speak, norm_path, stitch_dir, ssml=False)
+        with_ssml = pool.submit(_speak, norm_path, stitch_dir, ssml=True)
+        code, summary = plain.result()
+        strict_ok = code == 0
+        if strict_ok:
+            ssml_code, ssml_summary = with_ssml.result()
+            strict_ok = ssml_code == 0 and ssml_path.exists()
+            summary += [f"(ssml) {s}" for s in ssml_summary]
+        else:  # run.py stops here on a --strict failure: no SSML pass, no SSML output
+            with_ssml.exception()  # wait for it; its result or error is discarded
+    if not strict_ok and code != 0:
+        ssml_path.unlink(missing_ok=True)
     timings["speech"] = round(time.monotonic() - t, 2)
     if not txt_path.exists():
         raise JobError("speech_stage_failed", "speak.js wrote no text output")
@@ -199,7 +219,7 @@ def run_job(image, workdir, device, tts=True, on_stage=lambda stage: None, ocr=N
     on_output("speech", stages["speech"])
 
     # --- stage 4: Azure TTS ------------------------------------------------
-    wav_path = workdir / "audio.wav"
+    audio_path = workdir / AUDIO_NAME
     if not tts:
         audio_status, audio_detail = "not_requested", ""
     elif not strict_ok or not ssml:
@@ -207,7 +227,7 @@ def run_job(image, workdir, device, tts=True, on_stage=lambda stage: None, ocr=N
     else:
         on_stage("tts")
         t = time.monotonic()
-        audio_status, audio_detail = _synthesize(ssml, wav_path)
+        audio_status, audio_detail = _synthesize(ssml, audio_path)
         timings["tts"] = round(time.monotonic() - t, 2)
 
     return {
