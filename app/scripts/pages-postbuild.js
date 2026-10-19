@@ -1,21 +1,15 @@
-// After `expo export --platform web`: make dist/ deployable on Cloudflare Pages.
+// After `expo export --platform web`: checks that dist/ will work on Cloudflare Pages.
 //
-// 1. Pages does not upload directories named node_modules, and Expo exports
-//    package assets (the IBM Plex Sans KR fonts, expo-router's icons) under
-//    dist/assets/node_modules/. On Pages those URLs fell through to index.html,
-//    so the fonts never loaded. Move the files to dist/assets/vendor/ and add a
-//    Pages rewrite (_redirects, status 200) from the old URLs to the new place.
-//    The bundles are left byte-for-byte as Expo built them: their file names
-//    carry a hash of their contents and _headers caches them for a year, so
-//    editing a bundle without renaming it would leave browsers on the old copy.
+// 1. Pages does not upload directories named node_modules. Package assets are
+//    published under assets/vendor/ (scripts/pages-asset-plugin.js); fail if
+//    anything still ends up under a node_modules directory, because on Pages its
+//    URL would fall through to index.html (that is how the fonts went missing).
 // 2. A top-level dist/404.html would turn off Pages' SPA fallback (index.html
 //    for unknown paths), so refreshing /result/<id> would 404. Fail if one exists.
 const fs = require('fs');
 const path = require('path');
 
 const dist = path.join(__dirname, '..', 'dist');
-const from = path.join(dist, 'assets', 'node_modules');
-const to = path.join(dist, 'assets', 'vendor');
 
 function files(dir) {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
@@ -24,22 +18,19 @@ function files(dir) {
   });
 }
 
-if (fs.existsSync(from)) {
-  fs.rmSync(to, { recursive: true, force: true });
-  fs.renameSync(from, to);
-  const rule = '/assets/node_modules/* /assets/vendor/:splat 200\n';
-  const redirects = path.join(dist, '_redirects');
-  const existing = fs.existsSync(redirects) ? fs.readFileSync(redirects, 'utf8') : '';
-  if (!existing.includes(rule)) fs.writeFileSync(redirects, rule + existing);
-  console.log('pages-postbuild: assets/node_modules -> assets/vendor, rewrite added to _redirects');
+const all = files(dist);
+const hidden = all.filter((p) => p.split(path.sep).includes('node_modules'));
+if (hidden.length) {
+  console.error(`pages-postbuild: under a node_modules directory, which Pages won't upload:\n  ${hidden.join('\n  ')}`);
+  process.exit(1);
 }
-
-const left = files(dist).filter((p) => p.split(path.sep).includes('node_modules'));
-if (left.length) {
-  console.error(`pages-postbuild: still under a node_modules directory, Pages won't upload:\n  ${left.join('\n  ')}`);
+const refs = all.filter((p) => p.endsWith('.js') && fs.readFileSync(p, 'utf8').includes('/assets/node_modules/'));
+if (refs.length) {
+  console.error(`pages-postbuild: bundles still reference /assets/node_modules/:\n  ${refs.join('\n  ')}`);
   process.exit(1);
 }
 if (fs.existsSync(path.join(dist, '404.html'))) {
   console.error('pages-postbuild: dist/404.html would turn off Cloudflare Pages SPA routing');
   process.exit(1);
 }
+console.log('pages-postbuild: ok');
