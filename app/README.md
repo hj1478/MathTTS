@@ -39,3 +39,46 @@ Notes:
   exact.
 - "읽은 문제" is typeset with KaTeX (in a WebView on native). Screen readers
   hear the spoken sentence instead of symbol names.
+- `POST /warmup` is also re-sent when the app returns from the background (or a
+  hidden browser tab) after 60 s or more, since the worker stops 90 s after its
+  last job.
+
+## Deploy: Cloudflare Pages
+
+Connect the repository to Pages and use these settings:
+
+| Setting | Value |
+|---|---|
+| Framework preset | None |
+| Root directory | `app` |
+| Build command | `npm run build:web` |
+| Build output directory | `dist` |
+| Environment variables | `NODE_VERSION` = `22`; optionally `EXPO_PUBLIC_API_URL` (defaults to the deployed backend) |
+
+`build:web` runs `expo export --platform web`. `web.output` is `"single"`, so
+the export is a single-page app: one `index.html`, hashed bundles and assets,
+and `_headers` (copied from `public/`). `_headers` caches the hashed files for a
+year and never caches `index.html`, so a new deploy shows up on the next load.
+
+**Client-side routing.** When the build output has no top-level `404.html`,
+Pages serves `index.html` for any path that isn't a file. So refreshing
+`/result/<id>`, `/history` or any other route loads the app instead of
+returning a 404. `build:web` fails if the export ever contains a `404.html`,
+because that would turn this fallback off. Don't add a `_redirects` catch-all;
+it isn't needed. What a refreshed screen shows depends on the screen:
+
+- a result saved to history reloads;
+- an unsaved result shows "결과를 찾을 수 없어요", because unsaved results are
+  kept only in memory;
+- `/processing` and `/crop` go back to the home screen, because the photo is
+  kept only in memory.
+
+**CORS.** The backend accepts browser requests only from origins listed in
+`MATHTTS_CORS_ORIGINS`. Redeploy it with the Pages origin(s):
+
+```sh
+MATHTTS_CORS_ORIGINS="https://<project>.pages.dev,https://<custom domain>" modal deploy backend/modal_app.py
+```
+
+The list is matched exactly, so preview deployments
+(`https://<hash>.<project>.pages.dev`) need their own entries.

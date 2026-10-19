@@ -262,8 +262,8 @@ python ocr_vl.py --eval .              # OCR each image, score against *.expect 
 
 ## Web backend (Modal)
 
-The app that uses it is in [`frontend/`](frontend/README.md): Expo, exported as a
-static site for Cloudflare Pages.
+The app that uses it is in [`app/`](app/README.md): Expo (iOS, Android, web); the
+web build deploys to Cloudflare Pages (see its README).
 
 `backend/modal_app.py` runs the same pipeline as a web API on
 [Modal](https://modal.com): `POST /jobs` with an image, poll `GET /jobs/{id}`
