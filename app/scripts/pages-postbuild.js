@@ -2,9 +2,12 @@
 //
 // 1. Pages does not upload directories named node_modules, and Expo exports
 //    package assets (the IBM Plex Sans KR fonts, expo-router's icons) under
-//    dist/assets/node_modules/. On Pages those URLs fall through to index.html,
-//    so the fonts never load. Move them to dist/assets/vendor/ and rewrite the
-//    references in the exported files.
+//    dist/assets/node_modules/. On Pages those URLs fell through to index.html,
+//    so the fonts never loaded. Move the files to dist/assets/vendor/ and add a
+//    Pages rewrite (_redirects, status 200) from the old URLs to the new place.
+//    The bundles are left byte-for-byte as Expo built them: their file names
+//    carry a hash of their contents and _headers caches them for a year, so
+//    editing a bundle without renaming it would leave browsers on the old copy.
 // 2. A top-level dist/404.html would turn off Pages' SPA fallback (index.html
 //    for unknown paths), so refreshing /result/<id> would 404. Fail if one exists.
 const fs = require('fs');
@@ -24,15 +27,11 @@ function files(dir) {
 if (fs.existsSync(from)) {
   fs.rmSync(to, { recursive: true, force: true });
   fs.renameSync(from, to);
-  let rewritten = 0;
-  for (const f of files(dist).filter((p) => /\.(js|html|css|json|map)$/.test(p))) {
-    const s = fs.readFileSync(f, 'utf8');
-    if (s.includes('/assets/node_modules/')) {
-      fs.writeFileSync(f, s.split('/assets/node_modules/').join('/assets/vendor/'));
-      rewritten++;
-    }
-  }
-  console.log(`pages-postbuild: assets/node_modules -> assets/vendor (${rewritten} file(s) rewritten)`);
+  const rule = '/assets/node_modules/* /assets/vendor/:splat 200\n';
+  const redirects = path.join(dist, '_redirects');
+  const existing = fs.existsSync(redirects) ? fs.readFileSync(redirects, 'utf8') : '';
+  if (!existing.includes(rule)) fs.writeFileSync(redirects, rule + existing);
+  console.log('pages-postbuild: assets/node_modules -> assets/vendor, rewrite added to _redirects');
 }
 
 const left = files(dist).filter((p) => p.split(path.sep).includes('node_modules'));

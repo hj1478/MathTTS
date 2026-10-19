@@ -71,8 +71,11 @@ exports package assets, including the IBM Plex Sans KR font files, under
 `dist/assets/node_modules/`. Deployed as is, those URLs fall through to
 `index.html`, the fonts never load, and the text renders in the browser's
 default serif. `pages-postbuild.js` moves them to `dist/assets/vendor/` and
-rewrites the references, and fails the build if anything is still under a
-`node_modules` directory. `_headers` caches the hashed files for a
+adds a Pages rewrite (`_redirects`: `/assets/node_modules/*` →
+`/assets/vendor/:splat`, status 200). The JS bundles are not edited: their names
+carry a hash of their contents and `_headers` caches them for a year, so an
+edited bundle under the same name would stay stale in browsers. The build fails
+if anything is still under a `node_modules` directory. `_headers` caches the hashed files for a
 year and never caches `index.html`, so a new deploy shows up on the next load.
 
 **Client-side routing.** When the build output has no top-level `404.html`,
