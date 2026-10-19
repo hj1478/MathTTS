@@ -1,5 +1,5 @@
 // Tokens from design/ui/Tokens.dc.html. Contrast ratios are listed there.
-import { useColorScheme, useWindowDimensions } from 'react-native';
+import { Platform, useColorScheme, useWindowDimensions } from 'react-native';
 
 const light = {
   bg: '#F5F6F8',
@@ -61,11 +61,15 @@ const dark: Colors = {
   focus: '#9DBBFF',
 };
 
+// On web the name is a CSS font-family list: if the font files fail to load,
+// fall back to the system sans-serif, not the browser's default serif.
+const family = (name: string) => (Platform.OS === 'web' ? `${name}, system-ui, sans-serif` : name);
+
 export const font = {
-  regular: 'IBMPlexSansKR_400Regular',
-  medium: 'IBMPlexSansKR_500Medium',
-  semibold: 'IBMPlexSansKR_600SemiBold',
-  bold: 'IBMPlexSansKR_700Bold',
+  regular: family('IBMPlexSansKR_400Regular'),
+  medium: family('IBMPlexSansKR_500Medium'),
+  semibold: family('IBMPlexSansKR_600SemiBold'),
+  bold: family('IBMPlexSansKR_700Bold'),
 };
 
 export function useColors(): Colors {

@@ -39,7 +39,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "build:web": "expo export --platform web && node -e \"if(require('fs').existsSync('dist/404.html')){console.error('dist/404.html would turn off Cloudflare Pages SPA routing');process.exit(1)}\"",
+    "build:web": "expo export --platform web && node scripts/pages-postbuild.js",
     "typecheck": "tsc --noEmit",
     "lint": "expo lint"
   },
