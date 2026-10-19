@@ -25,3 +25,4 @@ audio_kma/
 
 # macOS
 .DS_Store
+.playwright-mcp/
