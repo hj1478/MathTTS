@@ -78,8 +78,42 @@ async function call(path: string, init?: RequestInit): Promise<any> {
   return body;
 }
 
-/** Fire-and-forget: start a GPU worker while the user picks a photo. */
-export function warmup(): void {
+// The worker stops 90 s after its last request, so one warmup a minute keeps it
+// up; more only spends the per-IP budget (30 an hour, shared by everyone behind
+// one school network address). Remembered in localStorage on web, so reloads
+// and other tabs count too.
+const WARM_GAP_MS = 60_000;
+const WARM_KEY = 'mathtts.warmAt';
+let warmAt = 0;
+
+function lastWarm(): number {
+  if (Platform.OS === 'web') {
+    try {
+      return Math.max(warmAt, Number(window.localStorage.getItem(WARM_KEY)) || 0);
+    } catch {
+      // storage blocked: this page's memory only
+    }
+  }
+  return warmAt;
+}
+
+/** The worker is known to be up or starting (a job was sent or answered). */
+function markWarm(): void {
+  warmAt = Date.now();
+  if (Platform.OS === 'web') {
+    try {
+      window.localStorage.setItem(WARM_KEY, String(warmAt));
+    } catch {
+      // storage blocked
+    }
+  }
+}
+
+/** Fire-and-forget: start a GPU worker while the user picks a photo. Skipped
+ * if one was started (or a job ran) in the last minute, unless `force`. */
+export function warmup(force = false): void {
+  if (!force && Date.now() - lastWarm() < WARM_GAP_MS) return;
+  markWarm();
   fetch(API_URL + '/warmup', { method: 'POST' }).catch(() => {});
 }
 
@@ -99,9 +133,12 @@ export async function submitJob(img: UploadImage): Promise<string> {
     form.append('image', { uri: img.uri, name: img.name, type: img.mimeType } as any);
   }
   const body = await call('/jobs', { method: 'POST', body: form });
+  markWarm(); // the job starts (or keeps) a worker
   return body.id as string;
 }
 
-export function getJob(id: string): Promise<Job> {
-  return call('/jobs/' + id);
+export async function getJob(id: string): Promise<Job> {
+  const job: Job = await call('/jobs/' + id);
+  if (job.status !== 'failed') markWarm(); // a worker is starting, busy, or just finished
+  return job;
 }

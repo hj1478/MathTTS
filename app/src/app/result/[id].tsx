@@ -11,7 +11,19 @@ import { MathText } from '@/components/MathText';
 import { Player, Spoken, type ViewRef } from '@/components/Player';
 import { Banner, Button, Card, H2, Header, HeaderLink, Page, PROTOTYPE_NOTE, T } from '@/components/ui';
 import { when } from '@/lib/format';
-import { getReading, isSaved, loadSpeed, removeReading, saveReading, session, storeSpeed, type Reading } from '@/lib/store';
+import { getJob } from '@/lib/api';
+import {
+  getReading,
+  isSaved,
+  loadSpeed,
+  persistSession,
+  readingFromJob,
+  removeReading,
+  saveReading,
+  session,
+  storeSpeed,
+  type Reading,
+} from '@/lib/store';
 import { useColors, useWide } from '@/lib/theme';
 
 function NoAudio({ r, onRetry }: { r: Reading; onRetry: () => void }) {
@@ -68,7 +80,25 @@ export default function Result() {
   const playRef = useRef<ViewRef>(null);
 
   useEffect(() => {
-    getReading(id).then((x) => setR(x ?? null));
+    getReading(id).then(async (x) => {
+      if (x) return setR(x);
+      // Not on this device (another browser, or storage cleared): the server
+      // keeps the job for 24 h. Without the photo; still running → processing.
+      try {
+        const j = await getJob(id);
+        if (j.status === 'done') {
+          const fetched = readingFromJob(j, null);
+          session.readings.set(fetched.id, fetched);
+          persistSession();
+          return setR(fetched);
+        }
+        if (j.status === 'queued' || j.status === 'running')
+          return router.replace({ pathname: '/processing', params: { job: id } });
+      } catch {
+        // unknown or expired
+      }
+      setR(null);
+    });
     isSaved(id).then(setSaved);
     loadSpeed().then(setSpeed);
   }, [id]);
@@ -116,7 +146,10 @@ export default function Result() {
     if (Platform.OS !== 'web') AccessibilityInfo.announceForAccessibility(saved ? '기록에서 뺐어요' : '저장됨');
   };
   const again = () => {
+    if (!r.imageUri) return router.replace('/'); // opened by link: no photo here to send again
     session.upload = { uri: r.imageUri, width: r.imageWidth, height: r.imageHeight, mimeType: 'image/jpeg', name: 'photo.jpg' };
+    session.job = null;
+    persistSession();
     router.replace('/processing');
   };
   const pickSpeed = (v: number) => {
@@ -148,28 +181,32 @@ export default function Result() {
 
   const compare = (
     <Card style={{ borderRadius: 20 }}>
-      <View style={{ gap: 4 }}>
-        <H2>사진과 비교하기</H2>
-        <T v="caption" muted>
-          수식과 숫자가 같은지 살펴보세요.
-        </T>
-      </View>
-      <View style={{ gap: 8 }}>
-        <Pressable onPress={() => setZoom(true)} accessibilityLabel="원본 사진, 크게 보기" role="button">
-          <Image
-            source={{ uri: r.imageUri }}
-            resizeMode="contain"
-            style={{ width: '100%', aspectRatio: r.imageWidth && r.imageHeight ? Math.max(r.imageWidth / r.imageHeight, 1.2) : 1.6, borderRadius: 12, backgroundColor: c.surface2 }}
-          />
-        </Pressable>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <T v="caption" muted>
-            원본 사진
-          </T>
-          <Button kind="tertiary" icon="expand" label="크게 보기" onPress={() => setZoom(true)} />
-        </View>
-      </View>
-      <View style={{ height: 1, backgroundColor: c.border }} />
+      {r.imageUri ? (
+        <>
+          <View style={{ gap: 4 }}>
+            <H2>사진과 비교하기</H2>
+            <T v="caption" muted>
+              수식과 숫자가 같은지 살펴보세요.
+            </T>
+          </View>
+          <View style={{ gap: 8 }}>
+            <Pressable onPress={() => setZoom(true)} accessibilityLabel="원본 사진, 크게 보기" role="button">
+              <Image
+                source={{ uri: r.imageUri }}
+                resizeMode="contain"
+                style={{ width: '100%', aspectRatio: r.imageWidth && r.imageHeight ? Math.max(r.imageWidth / r.imageHeight, 1.2) : 1.6, borderRadius: 12, backgroundColor: c.surface2 }}
+              />
+            </Pressable>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <T v="caption" muted>
+                원본 사진
+              </T>
+              <Button kind="tertiary" icon="expand" label="크게 보기" onPress={() => setZoom(true)} />
+            </View>
+          </View>
+          <View style={{ height: 1, backgroundColor: c.border }} />
+        </>
+      ) : null}
       <View style={{ gap: 8 }}>
         <T v="section" role="heading" aria-level={3}>
           읽은 문제

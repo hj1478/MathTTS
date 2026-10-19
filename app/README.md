@@ -39,9 +39,16 @@ Notes:
   exact.
 - "읽은 문제" is typeset with KaTeX (in a WebView on native). Screen readers
   hear the spoken sentence instead of symbol names.
-- `POST /warmup` is also re-sent when the app returns from the background (or a
-  hidden browser tab) after 60 s or more, since the worker stops 90 s after its
-  last job.
+- `POST /warmup` goes through one throttle (`src/lib/api.ts`): at most once a
+  minute, counting a job sent or answered as a warmup, and remembered across
+  reloads and tabs on web. The worker stays up 90 s after its last request, so
+  that is enough, and it spares the 30-an-hour per-IP budget that everyone
+  behind one school network address shares. It is tried when the app opens,
+  returns from the background, the home screen regains focus and the crop
+  screen opens; the offline banner's "연결 다시 확인" always sends one.
+- The current flow (picked photo, cropped photo, job id, the last 3 results)
+  is kept in `sessionStorage` on web and AsyncStorage on native
+  (`persistSession` in `src/lib/store.ts`), so a refresh continues it.
 
 ## Deploy: Cloudflare Pages
 
@@ -65,13 +72,18 @@ Pages serves `index.html` for any path that isn't a file. So refreshing
 `/result/<id>`, `/history` or any other route loads the app instead of
 returning a 404. `build:web` fails if the export ever contains a `404.html`,
 because that would turn this fallback off. Don't add a `_redirects` catch-all;
-it isn't needed. What a refreshed screen shows depends on the screen:
+it isn't needed. On a refresh:
 
-- a result saved to history reloads;
-- an unsaved result shows "결과를 찾을 수 없어요", because unsaved results are
-  kept only in memory;
-- `/processing` and `/crop` go back to the home screen, because the photo is
-  kept only in memory.
+- `/crop` shows the same photo (unless the original was too big to keep, in
+  which case it goes home);
+- `/processing?job=<id>` keeps polling the same job instead of sending the
+  photo again;
+- `/result/<id>` shows the result, saved or not.
+
+`/jobs/<id>` opens any job by its id, also on another device, for the 24 h the
+server keeps it: it polls the job if it is still running, then shows the
+result without the photo. An unknown id shows the server's Korean "작업을 찾을
+수 없습니다" message.
 
 **CORS.** The backend accepts browser requests only from origins listed in
 `MATHTTS_CORS_ORIGINS`. Redeploy it with the Pages origin(s):

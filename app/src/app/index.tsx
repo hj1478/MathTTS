@@ -10,7 +10,7 @@ import { Banner, Button, Card, H2, Header, HeaderLink, Page, T } from '@/compone
 import { warmup } from '@/lib/api';
 import { megabytes } from '@/lib/format';
 import { fromFile, pickPhoto, type PickProblem, type PickResult } from '@/lib/image';
-import { listHistory, session, type Reading } from '@/lib/store';
+import { listHistory, persistSession, session, type Reading } from '@/lib/store';
 import { font, useColors, useWide } from '@/lib/theme';
 import { useOnline } from '@/lib/useOnline';
 
@@ -101,6 +101,7 @@ export default function Home() {
     setProblem(null);
     router.setParams({ err: undefined, msg: undefined });
     session.picked = r.picked;
+    persistSession();
     router.push('/crop');
   };
   const pick = async (src: 'camera' | 'library') => take(await pickPhoto(src));
@@ -148,7 +149,7 @@ export default function Home() {
         <Banner tone="neutral" title="인터넷에 연결되어 있지 않아요">
           <T v="banner">연결되면 문제를 읽을 수 있어요. 저장한 기록은 지금도 볼 수 있어요.</T>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
-            <Button kind="tertiary" label="연결 다시 확인" onPress={warmup} />
+            <Button kind="tertiary" label="연결 다시 확인" onPress={() => warmup(true)} />
             <Button kind="tertiary" label="기록 보기" href="/history" />
           </View>
         </Banner>

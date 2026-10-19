@@ -1,6 +1,6 @@
 // 3 처리 중 (Processing.dc.html) and what can end it short of a result:
 // 3b ProcessingFailed, E2 RateLimited, E5 NothingRecognized, and a dropped connection.
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Image, Platform, View } from 'react-native';
 
@@ -11,7 +11,7 @@ import { Banner, Button, Card, H1, H2, Header, Page, T } from '@/components/ui';
 import { ApiError, getJob, submitJob, type Job, type StageState } from '@/lib/api';
 import { elapsed } from '@/lib/format';
 import { pickPhoto } from '@/lib/image';
-import { readingFromJob, session } from '@/lib/store';
+import { persistSession, readingFromJob, session } from '@/lib/store';
 import { font, useColors } from '@/lib/theme';
 
 const POLL_MS = 500; // docs/API.md: every 0.5 s from the start of the previous poll
@@ -51,46 +51,62 @@ function stepStates(job: Job | undefined, uploaded: boolean, failedRun = false):
 
 export default function Processing() {
   const c = useColors();
-  const upload = session.upload;
-  const [phase, setPhase] = useState<Phase>({ k: 'submitting' });
+  // `?job=<id>` once submitted, so a refresh (or a /jobs/<id> link) resumes
+  // polling instead of sending the photo again. Read once, on mount.
+  const params = useLocalSearchParams<{ job?: string }>();
+  const [resumeId] = useState(() => params.job ?? null);
+  // The photo belongs to the resumed job only if this device sent it.
+  const own = !resumeId || session.job?.id === resumeId;
+  const upload = own ? session.upload : null;
+  const [phase, setPhase] = useState<Phase>(resumeId ? { k: 'polling', id: resumeId } : { k: 'submitting' });
   const [job, setJob] = useState<Job>();
   const [attempt, setAttempt] = useState(0);
-  const [start, setStart] = useState(Date.now());
+  const [start, setStart] = useState(() => (resumeId && own && session.job ? session.job.startedAt : Date.now()));
   const [now, setNow] = useState(Date.now());
   const [netDown, setNetDown] = useState(false);
   const alive = useRef(true);
 
   useEffect(() => {
-    if (!upload) router.replace('/');
+    if (!upload && !resumeId) router.replace('/');
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => {
       alive.current = false;
       clearInterval(t);
     };
-  }, [upload]);
+  }, [upload, resumeId]);
 
   // Submit, then poll until the job ends.
   useEffect(() => {
-    if (!upload) return;
+    const resume = attempt === 0 ? resumeId : null;
+    if (!upload && !resume) return;
     let stop = false;
     let timer: ReturnType<typeof setTimeout>;
-    const t0 = Date.now();
+    // When it started, for the 10-minute cutoff. A resumed job from another
+    // device takes it from the server's created_at on the first answer.
+    let t0 = resume ? (own && session.job ? session.job.startedAt : 0) : Date.now();
 
     (async () => {
       let id: string;
-      try {
-        id = await submitJob(upload);
-      } catch (e) {
-        if (stop) return;
-        const err = e instanceof ApiError ? e : new ApiError(0, 'network', String(e));
-        if (err.status === 429) return setPhase({ k: 'rate_limited', until: Date.now() + (err.retryAfter ?? 60) * 1000 });
-        if (err.status === 0) {
-          setNetDown(true);
-          return setPhase({ k: 'failed', title: '연결이 끊겼어요', message: '사진은 그대로 있어요. 연결을 확인하고 다시 시도해 주세요.' });
+      if (resume) {
+        id = resume;
+      } else {
+        try {
+          id = await submitJob(upload!);
+        } catch (e) {
+          if (stop) return;
+          const err = e instanceof ApiError ? e : new ApiError(0, 'network', String(e));
+          if (err.status === 429) return setPhase({ k: 'rate_limited', until: Date.now() + (err.retryAfter ?? 60) * 1000 });
+          if (err.status === 0) {
+            setNetDown(true);
+            return setPhase({ k: 'failed', title: '연결이 끊겼어요', message: '사진은 그대로 있어요. 연결을 확인하고 다시 시도해 주세요.' });
+          }
+          if (err.status >= 400 && err.status < 500)
+            return router.replace({ pathname: '/', params: { err: err.code, msg: err.message } });
+          return setPhase({ k: 'failed', title: '서버에서 오류가 났어요', message: err.message });
         }
-        if (err.status >= 400 && err.status < 500)
-          return router.replace({ pathname: '/', params: { err: err.code, msg: err.message } });
-        return setPhase({ k: 'failed', title: '서버에서 오류가 났어요', message: err.message });
+        session.job = { id, startedAt: t0 };
+        persistSession();
+        if (!stop) router.setParams({ job: id });
       }
       if (stop) return;
       setPhase({ k: 'polling', id });
@@ -98,16 +114,21 @@ export default function Processing() {
       let lastOk = Date.now();
       const poll = async () => {
         const began = Date.now();
-        if ((began - t0) / 1000 > GIVE_UP_S) return setPhase({ k: 'timeout' });
+        if (t0 && (began - t0) / 1000 > GIVE_UP_S) return setPhase({ k: 'timeout' });
         try {
           const j = await getJob(id);
           if (stop) return;
+          if (!t0) {
+            t0 = j.created_at * 1000;
+            setStart(t0);
+          }
           lastOk = Date.now();
           setNetDown(false);
           setJob(j);
           if (j.status === 'done') {
             const r = readingFromJob(j, upload);
             session.readings.set(r.id, r);
+            persistSession();
             return router.replace({ pathname: '/result/[id]', params: { id: r.id } });
           }
           if (j.status === 'failed') {
@@ -135,7 +156,7 @@ export default function Processing() {
       stop = true;
       clearTimeout(timer);
     };
-  }, [upload, attempt]);
+  }, [upload, attempt, resumeId, own]);
 
   const uploaded = phase.k !== 'submitting';
   const states = stepStates(job, uploaded, phase.k === 'timeout' || (phase.k === 'failed' && !job));
@@ -153,6 +174,9 @@ export default function Processing() {
   }, [curIdx, phase.k]);
 
   const retry = () => {
+    if (!upload) return router.replace('/'); // opened by link: no photo to send again
+    session.job = null;
+    router.setParams({ job: undefined });
     setStart(Date.now());
     setJob(undefined);
     setNetDown(false);
@@ -164,10 +188,11 @@ export default function Processing() {
     if (!r) return;
     if ('problem' in r) return router.replace('/');
     session.picked = r.picked;
+    persistSession();
     router.replace('/crop');
   };
 
-  if (!upload) return null;
+  if (!upload && !resumeId) return null;
 
   // ---- E2 요청 제한 ----
   if (phase.k === 'rate_limited') {
@@ -185,7 +210,7 @@ export default function Processing() {
             {left ? label : '지금'}
           </T>
         </Card>
-        <Photo uri={upload.uri} caption="선택한 사진" />
+        {upload && <Photo uri={upload.uri} caption="선택한 사진" />}
         <View style={{ gap: 12, marginTop: 'auto' }}>
           {left > 0 ? (
             <Button kind="waiting" label={`${label} 후 다시 시도`} />
@@ -207,7 +232,7 @@ export default function Processing() {
     ];
     return (
       <Shell title="읽은 결과">
-        <Photo uri={upload.uri} caption="올린 사진" />
+        {upload && <Photo uri={upload.uri} caption="올린 사진" />}
         <View style={{ gap: 8 }}>
           <H1>{'사진에서 문제를\n찾지 못했어요'}</H1>
           <T muted>글자를 알아볼 수 없었어요. 아래 방법으로 다시 찍어 보세요.</T>

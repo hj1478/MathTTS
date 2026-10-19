@@ -6,7 +6,7 @@ import { ActivityIndicator, Image, PanResponder, View } from 'react-native';
 import { Banner, Button, Header, Page, T } from '@/components/ui';
 import { warmup } from '@/lib/api';
 import { prepareUpload, rotate90, type Rect } from '@/lib/image';
-import { session, type Picked } from '@/lib/store';
+import { persistSession, session, type Picked } from '@/lib/store';
 import { font, useColors } from '@/lib/theme';
 
 const MIN = 48; // smallest crop box side, in screen px
@@ -131,6 +131,8 @@ export default function Crop() {
       // The browser couldn't decode it (e.g. HEIC outside Safari): send as is; the server explains.
       session.upload = img;
     }
+    session.job = null; // a new photo: processing submits it
+    persistSession();
     router.replace('/processing');
   };
 
@@ -139,6 +141,7 @@ export default function Crop() {
     try {
       const r = await rotate90(img);
       session.picked = r;
+      persistSession();
       setImg(r);
     } catch {
       setFailed(true);
