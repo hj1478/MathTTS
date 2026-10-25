@@ -82,3 +82,26 @@ def test_crashed_child_is_reported():
     assert not ocr.alive()
     with pytest.raises(OcrFailed, match="not running"):
         ocr.run("/tmp/a.png", "/tmp/out", timeout=5)
+
+
+def test_child_that_survives_sigkill_counts_as_gone(monkeypatch):
+    # A child stuck in the GPU driver can outlive SIGKILL. It will never answer
+    # again, so alive() must say so: the worker then retires the container
+    # instead of sending every later job to it.
+    import signal
+    import subprocess
+    ocr = _start("ok")
+    pid = ocr.pid
+
+    def never_dies(timeout=None):
+        raise subprocess.TimeoutExpired("fake", timeout)
+    monkeypatch.setattr(ocr._proc, "wait", never_dies)
+    monkeypatch.setattr(os, "killpg", lambda *a: None)    # the SIGKILL "doesn't take"
+    assert ocr.kill() is False
+    assert not ocr.alive()
+    with pytest.raises(OcrFailed, match="not running"):
+        ocr.run("/tmp/a.png", "/tmp/out", timeout=5)
+    monkeypatch.undo()
+    os.killpg(pid, signal.SIGKILL)                       # the real child, for the test's sake
+    ocr._proc.wait(5)                                    # and reap it
+    assert _group_gone(pid)

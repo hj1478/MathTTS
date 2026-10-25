@@ -79,10 +79,18 @@ RETENTION_S = 24 * 3600        # uploads, audio and job records
 # only when its record has gone this long without an update: the check adds
 # ~0.24 s to a poll (FINDINGS.md, 2026-10-19), and a live worker writes at each stage.
 LOST_CHECK_AFTER_S = 10
+# A running job's record is written at every stage and Modal stops the call at
+# JOB_TIMEOUT_S, so a running record this old has no worker behind it, whatever
+# Modal answers (or fails to answer) about the call.
+RUNNING_LOST_AFTER_S = JOB_TIMEOUT_S + 60
+# POST /jobs writes call:<id> right after the spawn. A queued job still without
+# it after this long lost its spawn (the web container died between the two).
+SPAWN_LOST_AFTER_S = 60
 # One throwaway OCR call when a worker starts: the first inference in a fresh
 # process takes ~6.5 s against ~3.7 s after it (FINDINGS.md, 2026-10-19), and
 # loading the model alone does not pay that. Hidden behind POST /warmup.
 WARMUP_IMAGE = "kr question 1.png"
+WARMUP_CALL_S = 60             # cutoff for that call (it takes ~6.5 s)
 GPU = "T4"
 # The image build step that bakes the weights only needs paddle importable with
 # a GPU build; keep it on one GPU type so changing GPU doesn't rebuild that layer.
@@ -242,10 +250,13 @@ class Worker:
         from backend.ocr_proc import OcrProcess
         # the model loads once per container, in the child; killed if loading hangs
         self.ocr = OcrProcess("gpu", env=OCR_ENV)
-        self.ocr.start(timeout=STARTUP_TIMEOUT_S - 30)
+        # load + warm-up call stay inside Modal's startup_timeout, with 30 s for the
+        # container itself, so a slow start fails here (logged, child killed)
+        # rather than being cut off by Modal mid-load
+        self.ocr.start(timeout=STARTUP_TIMEOUT_S - 30 - WARMUP_CALL_S)
         # raises (and so fails this container's start) if the call hangs or errors
         t = time.monotonic()
-        self.ocr.run(REPO / WARMUP_IMAGE, Path("/tmp/warmup-ocr"), timeout=60)
+        self.ocr.run(REPO / WARMUP_IMAGE, Path("/tmp/warmup-ocr"), timeout=WARMUP_CALL_S)
         print(f"[worker] OCR process ready: {self.ocr.info}; warm-up OCR call "
               f"{time.monotonic() - t:.1f}s", flush=True)
 
@@ -261,13 +272,18 @@ class Worker:
 
     @modal.method()
     def run(self, job_id, image_bytes, ext):
+        done = False
         try:
-            self._run(job_id, image_bytes, ext)
+            done = self._run(job_id, image_bytes, ext)
         finally:
-            # after the outcome is written: nothing the web serves is on the volume
-            _trace(job_id, "volume_commit_start")
-            volume.commit()
-            _trace(job_id, "volume_commit_end")
+            # Nothing the web serves is on the volume; a job's files are kept for
+            # debugging. Commit at once only when the job failed. A finished job's
+            # files go in Modal's background commit (or at container exit), which
+            # keeps the ~0.5-0.9 s commit off the path to this worker's next job.
+            if not done:
+                _trace(job_id, "volume_commit_start")
+                volume.commit()
+                _trace(job_id, "volume_commit_end")
 
     def _run(self, job_id, image_bytes, ext):
         _trace(job_id, "worker_picked_up")
@@ -284,7 +300,12 @@ class Worker:
             print(f"[job {job_id}] rescheduled after a crash; not re-running")
             if rec.get("status") != "failed":
                 _record_failure(job_id, "worker_lost", job.JOB_ERROR_MESSAGES["worker_lost"])
-            return
+            return False
+        if rec.get("status") == "failed":
+            # already reported to the client (GET /jobs gave up on it while it
+            # queued); "failed" is final, so don't run it into "done"
+            print(f"[job {job_id}] already failed before it started; not running")
+            return False
 
         def update(**fields):
             # Once spawned, the worker is the only writer of job:<id> (the web
@@ -335,21 +356,24 @@ class Worker:
             self.ocr.kill()
             _record_failure(job_id, "timeout", job.JOB_ERROR_MESSAGES["timeout"])
             _retire_container()
-            return
+            return False
         except job.JobError as e:
             code = "timeout" if isinstance(e.__cause__, OcrTimeout) else e.code
             print(f"[job {job_id}] failed: {code}: {e.detail}")
             update(status="failed", stage=None, stages=stages,
                    error={"code": code, "message": job.JOB_ERROR_MESSAGES[code]})
-            if not self.ocr.alive():  # killed at the cutoff, or crashed: no model here now
+            # Killed at the cutoff, crashed, or still stuck after SIGKILL: either
+            # way no usable model here now. An OCR timeout retires the container
+            # even if the child looks alive, rather than trust that GPU again.
+            if isinstance(e.__cause__, OcrTimeout) or not self.ocr.alive():
                 _retire_container()
-            return
+            return False
         except Exception as e:
             print(f"[job {job_id}] internal error: {type(e).__name__}: {e}")
             update(status="failed", stage=None, stages=stages,
                    error={"code": "internal_error",
                           "message": job.JOB_ERROR_MESSAGES["internal_error"]})
-            return
+            return False
 
         detail = result["audio"].pop("_detail", "")
         if result["audio"]["status"] == "ready":
@@ -360,8 +384,12 @@ class Worker:
             _trace(job_id, "audio_put", bytes=len(data))
         else:
             print(f"[job {job_id}] audio {result['audio']['status']}: {detail}")
+        # GET /jobs reads a done job's stages from result; the running copy would
+        # only double every later poll's read
+        rec.pop("stages", None)
         update(status="done", stage=None, result=result)
         _trace(job_id, "worker_return")
+        return True
 
 
 # --- web API -----------------------------------------------------------------
@@ -380,38 +408,77 @@ def web():
     from fastapi import FastAPI, Request
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse, Response
+    from starlette.exceptions import HTTPException
 
     from backend import limits, progress
-
-    api = FastAPI(title="MathTTS", docs_url=None, redoc_url=None, openapi_url=None)
-    api.add_middleware(CORSMiddleware, allow_origins=_origins(),
-                       allow_methods=["GET", "POST"], allow_headers=["*"],
-                       expose_headers=["Retry-After"])
 
     def error(status, code, message, headers=None):
         return JSONResponse({"error": {"code": code, "message": message}},
                             status_code=status, headers=headers)
 
-    async def take_slot(ip, limit=RATE_LIMIT_PER_HOUR):
-        # Read every slot at once, then claim a free one with put-if-absent: two
-        # round trips, instead of one per slot already used this hour. A taken
-        # slot stays taken for the window, so only free ones are worth trying.
+    def catch_all(app):
+        """An unhandled exception -> 500 in the standard error body. Added before
+        CORS so it runs inside it: the 500 still carries the CORS headers, and a
+        browser client sees the error instead of a CORS failure."""
+        async def wrapped(scope, receive, send):
+            if scope["type"] != "http":
+                return await app(scope, receive, send)
+            started = False
+
+            async def send_tracked(message):
+                nonlocal started
+                started = started or message["type"] == "http.response.start"
+                await send(message)
+            try:
+                await app(scope, receive, send_tracked)
+            except Exception as e:
+                if started:
+                    raise
+                print(f"[web] internal error on {scope.get('path')}: {type(e).__name__}: {e}",
+                      flush=True)
+                await error(500, "internal_error",
+                            "서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.")(scope, receive, send)
+        return wrapped
+
+    api = FastAPI(title="MathTTS", docs_url=None, redoc_url=None, openapi_url=None)
+    api.add_middleware(catch_all)
+    api.add_middleware(CORSMiddleware, allow_origins=_origins(),
+                       allow_methods=["GET", "POST"], allow_headers=["*"],
+                       expose_headers=["Retry-After"])
+
+    @api.exception_handler(HTTPException)
+    async def http_error(request, exc):
+        # FastAPI's own 404 (unknown path) and 405 (wrong method), in the same body
+        if exc.status_code == 404:
+            return error(404, "not_found", "요청한 주소가 없습니다.")
+        if exc.status_code == 405:
+            return error(405, "method_not_allowed", "이 주소에서 지원하지 않는 요청 방식입니다.",
+                         headers=exc.headers)
+        code = "internal_error" if exc.status_code >= 500 else "bad_request"
+        return error(exc.status_code, code, str(exc.detail), headers=exc.headers)
+
+    async def take_slot(who, limit=RATE_LIMIT_PER_HOUR):
+        """-> (slot key or None, retry_after_seconds).
+        Read every slot at once, then claim a free one with put-if-absent: two
+        round trips, instead of one per slot already used this hour. A taken
+        slot stays taken for the window, so only free ones are worth trying."""
         now = time.time()
-        keys = [f"rl:{k}" for k in limits.slot_keys(ip, now, limit)]
+        keys = [f"rl:{k}" for k in limits.slot_keys(who, now, limit)]
         taken = await asyncio.gather(*(store.contains.aio(k) for k in keys))
         for key, used in zip(keys, taken):
             if not used and await store.put.aio(key, now, skip_if_exists=True):
-                return True, 0
-        return False, limits.retry_after(now)
+                return key, 0
+        return None, limits.retry_after(now)
 
     def client_ip(request):
-        return request.client.host if request.client else "unknown"
+        # an IPv6 client is counted by its /64 (limits.client_key)
+        return limits.client_key(request.client.host if request.client else "unknown")
 
     @api.post("/warmup", status_code=202)
     async def warmup(request: Request):
         # its own slots ("warm:<ip>"), so warming never uses up a job slot
-        allowed, wait = await take_slot(f"warm:{client_ip(request)}", WARMUP_LIMIT_PER_HOUR)
-        if not allowed:
+        slot, wait = await take_slot(f"warm:{client_ip(request)}", WARMUP_LIMIT_PER_HOUR)
+        if slot is None:
             return error(429, "rate_limited",
                          f"요청이 너무 많습니다. 한 시간에 {WARMUP_LIMIT_PER_HOUR}번까지 요청할 수 있습니다.",
                          headers={"Retry-After": str(wait)})
@@ -452,16 +519,18 @@ def web():
                 return error(415, "heic_not_supported",
                              "HEIC 사진은 지원하지 않습니다. JPEG 또는 PNG로 저장해 다시 올려 주세요.")
             return error(415, "unsupported_type", "PNG, JPEG, WebP, BMP, TIFF 이미지만 올릴 수 있습니다.")
-        reason = limits.check_decodes(data)
+        # Pillow parses up to 5 MB: off the event loop, so it doesn't stall the
+        # other requests this container is serving (up to 50 at once)
+        reason = await asyncio.to_thread(limits.check_decodes, data)
         if reason:
             print(f"[upload] rejected undecodable image: {reason}")
             return error(422, "invalid_image", "이미지를 열 수 없습니다. 다른 파일로 다시 시도해 주세요.")
 
         t_valid = time.time()
         # 3. per-IP limit, shared across web containers via the Dict
-        allowed, wait = await take_slot(client_ip(request))
+        slot, wait = await take_slot(client_ip(request))
         t_slot = time.time()
-        if not allowed:
+        if slot is None:
             return error(429, "rate_limited",
                          f"요청이 너무 많습니다. 한 시간에 {RATE_LIMIT_PER_HOUR}개까지 처리할 수 있습니다.",
                          headers={"Retry-After": str(wait)})
@@ -472,7 +541,19 @@ def web():
         await store.put.aio(_key(job_id), {"status": "queued", "stage": None,
                                            "created": now, "updated": now})
         t_rec = time.time()
-        call = await Worker().run.spawn.aio(job_id, data, ext)
+        try:
+            call = await Worker().run.spawn.aio(job_id, data, ext)
+        except Exception as e:
+            # No GPU job exists. Give the slot back (nothing ran) and close the
+            # record, so it never sits "queued" with no worker behind it.
+            print(f"[job {job_id}] spawn failed: {type(e).__name__}: {e}", flush=True)
+            await store.put.aio(_key(job_id), {
+                "status": "failed", "stage": None, "created": now, "updated": time.time(),
+                "error": {"code": "internal_error",
+                          "message": "처리를 시작하지 못했습니다. 잠시 후 다시 시도해 주세요."}})
+            await store.pop.aio(slot, None)
+            return error(503, "service_unavailable",
+                         "지금은 처리를 시작할 수 없습니다. 잠시 후 다시 시도해 주세요.")
         t_spawn = time.time()
         await store.put.aio(_call_key(job_id), {"id": call.object_id, "created": now})
         for event, t in (("post_received", t_recv), ("post_body_read", t_body),
@@ -482,18 +563,32 @@ def web():
         _trace(job_id, "post_return")
         return {"id": job_id, "status": "queued", "status_url": f"/jobs/{job_id}"}
 
-    async def call_ended(job_id):
-        """True once the spawned call has finished, by return or by crash
-        (out-of-memory, timeout, lost container)."""
+    # Failures to reach Modal at all, as opposed to an outcome of the call: a gRPC
+    # error (modal's NotFoundError etc. derive from it), a dropped connection.
+    from grpclib import GRPCError
+    from modal.exception import ClientClosed, ConnectionError as ModalConnectionError
+    unreachable = (GRPCError, ModalConnectionError, ClientClosed, OSError)
+
+    async def call_ended(job_id, rec):
+        """True once the spawned call has certainly finished, by return or by crash
+        (out-of-memory, timeout, lost container). False while it may still run,
+        and when Modal can't be asked right now: failed is final, so a live job
+        must not be marked failed over a network blip."""
         call = await store.get.aio(_call_key(job_id))
         if not call:
-            return False  # spawn in flight
+            # spawn in flight, or lost with the web container that made it
+            return time.time() - rec["created"] > SPAWN_LOST_AFTER_S
         try:
             await modal.FunctionCall.from_id(call["id"]).get.aio(timeout=0)
         except TimeoutError:
-            return False  # still queued or running
+            return False  # builtin TimeoutError: no output yet, still queued or running
+        except unreachable as e:
+            print(f"[job {job_id}] call status unknown: {type(e).__name__}: {e}", flush=True)
+            return False
         except Exception:
-            pass
+            # the call's outcome: FunctionTimeoutError, InternalFailure (crash),
+            # RemoteError, OutputExpiredError, or run()'s own exception
+            return True
         return True
 
     @api.get("/jobs/{job_id}")
@@ -507,8 +602,10 @@ def web():
         if rec is None:
             return error(404, "not_found", "작업을 찾을 수 없습니다. 24시간이 지나 삭제되었을 수 있습니다.")
         status = rec.get("status")
-        stale = time.time() - rec.get("updated", rec["created"]) > LOST_CHECK_AFTER_S
-        if status in ("queued", "running") and stale and await call_ended(job_id):
+        quiet = time.time() - rec.get("updated", rec["created"])
+        if status in ("queued", "running") and quiet > LOST_CHECK_AFTER_S and (
+                (status == "running" and quiet > RUNNING_LOST_AFTER_S)
+                or await call_ended(job_id, rec)):
             # the worker writes its outcome before returning, so re-read first
             rec = await store.get.aio(_key(job_id)) or rec
             status = rec.get("status")
@@ -575,16 +672,24 @@ def cleanup():
                 removed += 1
         volume.commit()
     current = int(now // 3600)
-    stale = []
+    stale, audio, created = [], [], {}
     for key in store.keys():
-        if key.startswith(("job:", "call:", "audio:")):
+        if key.startswith(("job:", "call:")):
             rec = store.get(key)
+            if key.startswith("job:") and rec:
+                created[key[4:]] = rec.get("created", 0)
             if rec and rec.get("created", 0) < cutoff:
                 stale.append(key)
+        elif key.startswith("audio:"):
+            audio.append(key)
         elif key.startswith("rl:"):
             bucket = limits.slot_bucket(key)
             if bucket is not None and bucket < current:
                 stale.append(key)
+    # An audio entry's "created" is its job's, so the job record dates it, and
+    # the MP3 bytes aren't downloaded just to read a timestamp. Audio whose job
+    # record is already gone is past retention too.
+    stale += [key for key in audio if created.get(key[6:], 0) < cutoff]
     for key in stale:
         store.pop(key, None)
     print(f"[cleanup] removed {removed} job folder(s), {len(stale)} record(s)")

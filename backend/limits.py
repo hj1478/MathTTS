@@ -4,6 +4,7 @@ Pure helpers with no Modal or FastAPI import, so tests/test_backend.py can
 check them locally. backend/modal_app.py is the only caller.
 """
 import io
+import ipaddress
 import re
 
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
@@ -76,6 +77,23 @@ def is_quota_error(detail):
     return bool(_QUOTA.search(detail or ""))
 
 
+def client_key(ip):
+    """Who a rate limit counts: the IPv4 address, or the /64 of an IPv6 one.
+
+    An IPv6 client usually holds a whole /64 and can pick any source address in
+    it, so counting single addresses would give it unlimited slots.
+    """
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return ip  # "unknown", or anything else the server reports as is
+    if addr.version == 6 and addr.ipv4_mapped:
+        return str(addr.ipv4_mapped)
+    if addr.version == 6:
+        return str(ipaddress.ip_network(f"{addr}/64", strict=False))
+    return str(addr)
+
+
 def slot_keys(ip, now, limit, window_s=3600):
     """The `limit` slot keys for `ip` in the current fixed window.
 
@@ -103,5 +121,5 @@ def take_slot(put_if_absent, ip, now, limit, window_s=3600):
 
 def slot_bucket(key):
     """Window number of a take_slot key (for cleanup), or None if not one."""
-    parts = key.split("|")
+    parts = key.split("|")  # an IPv6 /64 key holds "/" and ":" but never "|"
     return int(parts[-2]) if len(parts) >= 3 and parts[-2].isdigit() else None

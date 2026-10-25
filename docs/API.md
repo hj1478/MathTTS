@@ -36,6 +36,14 @@ Every error response, on every endpoint, has the same body:
 `code` is stable and machine-readable. `message` is Korean text you can show to
 the user as is.
 
+Besides the per-endpoint errors below, any endpoint can return:
+
+| Status | `code` | When |
+|---|---|---|
+| 404 | `not_found` | Unknown path |
+| 405 | `method_not_allowed` | Wrong method for the path (e.g. `GET /jobs`) |
+| 500 | `internal_error` | An unexpected server error. Retrying later usually works |
+
 ---
 
 ## `POST /warmup` — start a worker ahead of the upload
@@ -103,6 +111,7 @@ a `429`.
 | 415 | `heic_not_supported` | HEIC/HEIF/AVIF (iPhone default); convert to JPEG or PNG |
 | 422 | `invalid_image` | The bytes look like an image but don't decode, or it has more than 40 megapixels |
 | 429 | `rate_limited` | Over 10 jobs this clock hour from this IP. The `Retry-After` header gives the seconds until the next hour starts |
+| 503 | `service_unavailable` | The GPU job could not be started (a Modal error). No rate-limit slot is used; retry in a little while |
 
 ## `GET /jobs/{id}` — status and results
 
@@ -240,7 +249,7 @@ A job that fails after OCR (e.g. `speech_stage_failed`) still has
 | `speech_stage_failed` | speak.js crashed or wrote no output |
 | `timeout` | The OCR call did not finish within 300 s and was killed, or the job hit the 420 s limit. Retrying usually works |
 | `internal_error` | Any other worker error |
-| `worker_lost` | The worker died without reporting (out of memory, a lost container). Reported once the job has gone 10 s without progress |
+| `worker_lost` | The worker died without reporting (out of memory, a lost container). Reported once the job has gone 10 s without progress and Modal confirms the call has ended; also when a job never reached a worker (queued for 60 s with no call recorded), or stayed `running` for 480 s with no progress |
 
 **Errors:** `404 not_found` for an unknown id, or a job older than 24 hours.
 
@@ -261,7 +270,7 @@ mono, 48 kbit/s (about 6 KB per second of speech).
 |---|---|---|
 | Upload size | 5 MB | `limits.MAX_UPLOAD_BYTES` |
 | Image types | PNG, JPEG, WebP, BMP, TIFF | `limits.sniff_image` |
-| Jobs per client IP | 10 per clock hour, shared across web containers (`modal.Dict`) | `modal_app.RATE_LIMIT_PER_HOUR` |
+| Jobs per client IP | 10 per clock hour, shared across web containers (`modal.Dict`). An IPv6 client is counted by its /64 prefix | `modal_app.RATE_LIMIT_PER_HOUR`, `limits.client_key` |
 | Warmups per client IP | 30 per clock hour, separate from the job budget | `modal_app.WARMUP_LIMIT_PER_HOUR` |
 | Concurrent GPU workers | 2 (T4); more jobs queue | `modal_app.MAX_WORKERS` |
 | Worker idle timeout | 90 s after the last job or warmup, then it scales to zero | `modal_app.SCALEDOWN_S` |

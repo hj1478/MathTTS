@@ -44,13 +44,16 @@ class OcrProcess:
         self.info = None                  # what the child reported once loaded
         self._proc = None
         self._conn = None
+        # set when the child outlived SIGKILL (stuck in the GPU driver): it can
+        # never answer again, so the worker must treat the model as gone
+        self._lost = False
 
     @property
     def pid(self):
         return self._proc.pid if self._proc else None
 
     def alive(self):
-        return self._proc is not None and self._proc.poll() is None
+        return not self._lost and self._proc is not None and self._proc.poll() is None
 
     def start(self, timeout):
         """Start the child and wait until it reports the model loaded."""
@@ -105,6 +108,7 @@ class OcrProcess:
                 self._proc.wait(10)
             except subprocess.TimeoutExpired:
                 print(f"[ocr] child {self._proc.pid} did not die after SIGKILL", flush=True)
+                self._lost = True
                 return False
         if self._conn is not None:
             self._conn.close()
