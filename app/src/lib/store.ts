@@ -143,25 +143,49 @@ export async function restoreSession(): Promise<void> {
 // The server keeps audio for 24 h (docs/API.md, Retention).
 const SERVER_RETENTION_MS = 24 * 3600 * 1000;
 const KEY = 'mathtts.history.v1';
-const WEB_MAX = 30; // localStorage holds ~5 MB; each entry carries a JPEG data URL
+const WEB_MAX = 30; // localStorage holds ~5 MB; each entry carries a JPEG thumbnail
+// Native history is one AsyncStorage row, and Android can't read a row past
+// ~2 MB; an entry is a few KB (the photo and MP3 are files), so this stays far under.
+const NATIVE_MAX = 200;
+const THUMB_SIDE = 800; // web history keeps a smaller copy of the photo, still legible zoomed
 
-export async function listHistory(): Promise<Reading[]> {
-  let items: Reading[] = [];
-  try {
-    items = JSON.parse((await AsyncStorage.getItem(KEY)) ?? '[]');
-  } catch {
-    items = [];
-  }
-  const now = Date.now();
-  return items.map((r) =>
-    r.audioUrl?.startsWith('http') && now - r.createdAt > SERVER_RETENTION_MS
-      ? { ...r, audioStatus: 'expired', audioUrl: null }
-      : r,
-  );
+/** A remote MP3 the server has already deleted can't play; say so instead. */
+export function withExpiry(r: Reading): Reading {
+  return r.audioUrl?.startsWith('http') && Date.now() - r.createdAt > SERVER_RETENTION_MS
+    ? { ...r, audioStatus: 'expired', audioUrl: null }
+    : r;
 }
 
+// The last parse, reused while the stored text is unchanged (the home screen
+// reads history on every focus). Compared by text, so other tabs' writes count.
+let parsed: { raw: string; items: Reading[] } | null = null;
+
+/** Throws if the saved list can't be read, so a caller never writes over it. */
+async function readHistory(): Promise<Reading[]> {
+  const raw = await AsyncStorage.getItem(KEY);
+  if (raw == null) return [];
+  if (parsed?.raw !== raw) {
+    const items = JSON.parse(raw);
+    if (!Array.isArray(items)) throw new Error('history is not a list');
+    parsed = { raw, items };
+  }
+  return [...parsed.items];
+}
+
+/** For showing: an unreadable list shows as empty (and is left alone). */
+export async function listHistory(): Promise<Reading[]> {
+  try {
+    return (await readHistory()).map(withExpiry);
+  } catch {
+    return [];
+  }
+}
+
+/** The saved copy first: it has the on-device files, the session copy may not. */
 export async function getReading(id: string): Promise<Reading | undefined> {
-  return session.readings.get(id) ?? (await listHistory()).find((r) => r.id === id);
+  const saved = (await listHistory()).find((r) => r.id === id);
+  const current = session.readings.get(id);
+  return saved ?? (current && withExpiry(current));
 }
 
 export async function isSaved(id: string): Promise<boolean> {
@@ -172,27 +196,45 @@ async function write(items: Reading[]) {
   await AsyncStorage.setItem(KEY, JSON.stringify(items));
 }
 
+/** Web: shrink a data-URL photo to THUMB_SIDE so ~30 fit in localStorage. */
+async function thumbnail(r: Reading): Promise<Reading> {
+  if (!r.imageUri.startsWith('data:') || Math.max(r.imageWidth, r.imageHeight) <= THUMB_SIDE) return r;
+  try {
+    const { shrink } = await import('./image');
+    const t = await shrink(r.imageUri, r.imageWidth, r.imageHeight, THUMB_SIDE);
+    return { ...r, imageUri: t.uri, imageWidth: t.width, imageHeight: t.height };
+  } catch {
+    return r; // keep the full photo; the write below trims if it doesn't fit
+  }
+}
+
 export async function saveReading(r: Reading): Promise<void> {
-  const items = (await listHistory()).filter((x) => x.id !== r.id);
+  const items = (await readHistory()).filter((x) => x.id !== r.id);
   let kept = r;
   if (Platform.OS !== 'web') {
     const { keepFiles } = await import('./files');
     kept = await keepFiles(r);
+  } else {
+    kept = await thumbnail(r);
   }
   items.unshift(kept);
-  if (Platform.OS === 'web') items.splice(WEB_MAX);
-  try {
-    await write(items);
-  } catch {
-    // Storage full: drop the oldest half and try once more.
-    items.splice(Math.max(1, Math.floor(items.length / 2)));
-    await write(items);
+  const dropped = items.splice(Platform.OS === 'web' ? WEB_MAX : NATIVE_MAX);
+  // Storage full: drop the oldest entries, one at a time, until it fits.
+  for (;;) {
+    try {
+      await write(items);
+      break;
+    } catch (e) {
+      if (items.length <= 1) throw e;
+      dropped.push(...items.splice(-1));
+    }
   }
+  dropped.forEach(dropReadingFiles);
 }
 
 /** `keepFiles` leaves the photo and MP3 on disk so a 되돌리기 can restore them. */
 export async function removeReading(id: string, opts?: { keepFiles?: boolean }): Promise<void> {
-  const items = await listHistory();
+  const items = await readHistory();
   const gone = items.find((x) => x.id === id);
   await write(items.filter((x) => x.id !== id));
   if (gone && !opts?.keepFiles) await dropReadingFiles(gone);
@@ -200,6 +242,18 @@ export async function removeReading(id: string, opts?: { keepFiles?: boolean }):
 
 export async function dropReadingFiles(r: Reading): Promise<void> {
   if (Platform.OS !== 'web') (await import('./files')).dropFiles(r);
+}
+
+/** Native: delete photo/MP3 folders no saved entry points at (an app killed
+ * during the 되돌리기 window, an older trim). Run once at startup. */
+export async function dropOrphanFiles(): Promise<void> {
+  if (Platform.OS === 'web') return;
+  try {
+    const items = await readHistory();
+    (await import('./files')).dropFilesExcept(new Set(items.map((r) => r.id)));
+  } catch {
+    // History unreadable: keep every file.
+  }
 }
 
 export async function clearHistory(): Promise<void> {

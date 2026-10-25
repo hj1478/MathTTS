@@ -53,18 +53,30 @@ export class ApiError extends Error {
 
 const OFFLINE_MESSAGE = '연결이 끊겼어요. 사진은 그대로 있어요.';
 
-async function call(path: string, init?: RequestInit): Promise<any> {
+// Without a deadline a request can hang for good (Android's HTTP client has no
+// read timeout), and the poll loop waits on it forever.
+const GET_TIMEOUT_MS = 10_000;
+const UPLOAD_TIMEOUT_MS = 60_000;
+
+async function call(path: string, init?: RequestInit, ms = GET_TIMEOUT_MS): Promise<any> {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), ms); // covers reading the body too
   let res: Response;
-  try {
-    res = await fetch(API_URL + path, init);
-  } catch {
-    throw new ApiError(0, 'network', OFFLINE_MESSAGE);
-  }
   let body: any = null;
   try {
-    body = await res.json();
-  } catch {
-    // Non-JSON error page (e.g. a proxy); fall through with a generic message.
+    try {
+      res = await fetch(API_URL + path, { ...init, signal: ctl.signal });
+    } catch {
+      throw new ApiError(0, 'network', OFFLINE_MESSAGE);
+    }
+    try {
+      body = await res.json();
+    } catch {
+      if (ctl.signal.aborted) throw new ApiError(0, 'network', OFFLINE_MESSAGE);
+      // Non-JSON error page (e.g. a proxy); fall through with a generic message.
+    }
+  } finally {
+    clearTimeout(t);
   }
   if (!res.ok) {
     const retry = Number(res.headers.get('retry-after'));
@@ -114,7 +126,7 @@ function markWarm(): void {
 export function warmup(force = false): void {
   if (!force && Date.now() - lastWarm() < WARM_GAP_MS) return;
   markWarm();
-  fetch(API_URL + '/warmup', { method: 'POST' }).catch(() => {});
+  call('/warmup', { method: 'POST' }).catch(() => {});
 }
 
 export interface UploadImage {
@@ -132,7 +144,7 @@ export async function submitJob(img: UploadImage): Promise<string> {
     // React Native's FormData takes a file descriptor object.
     form.append('image', { uri: img.uri, name: img.name, type: img.mimeType } as any);
   }
-  const body = await call('/jobs', { method: 'POST', body: form });
+  const body = await call('/jobs', { method: 'POST', body: form }, UPLOAD_TIMEOUT_MS);
   markWarm(); // the job starts (or keeps) a worker
   return body.id as string;
 }

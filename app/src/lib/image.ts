@@ -3,7 +3,7 @@ import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { Platform } from 'react-native';
 
-import type { Picked } from './store';
+import { session, type Picked } from './store';
 
 export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // backend/limits.py
 const MAX_SIDE = 2400; // plenty for OCR; keeps phone photos well under 5 MB
@@ -66,10 +66,22 @@ export async function pickPhoto(source: 'camera' | 'library'): Promise<PickResul
   return fromAsset(res.assets[0]);
 }
 
+// The previous pick's blob: URL, freed when the next file is chosen.
+let lastObjectUrl: string | null = null;
+
+function revokeLastObjectUrl() {
+  const u = lastObjectUrl;
+  lastObjectUrl = null;
+  // A result shown this session may still use it (a photo sent as is).
+  if (u && ![...session.readings.values()].some((r) => r.imageUri === u)) URL.revokeObjectURL(u);
+}
+
 /** A file dropped on the desktop drop zone (web only). */
 export async function fromFile(file: File): Promise<PickResult> {
   if (!file.type.startsWith('image/')) return { problem: { kind: 'not_image', name: file.name } };
+  revokeLastObjectUrl();
   const uri = URL.createObjectURL(file);
+  lastObjectUrl = uri;
   const size = await new Promise<{ w: number; h: number }>((resolve) => {
     const img = new window.Image();
     img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
@@ -81,14 +93,22 @@ export async function fromFile(file: File): Promise<PickResult> {
   };
 }
 
-async function render(ctx: ReturnType<typeof ImageManipulator.manipulate>, name: string): Promise<Picked> {
-  const ref = await ctx.renderAsync();
-  const web = Platform.OS === 'web';
-  const out = await ref.saveAsync({ format: SaveFormat.JPEG, compress: 0.9, base64: web });
-  // On web a data URL survives reloads, so history can keep it.
-  const uri = web && out.base64 ? 'data:image/jpeg;base64,' + out.base64 : out.uri;
-  const size = web && out.base64 ? Math.floor((out.base64.length * 3) / 4) : undefined;
-  return { uri, width: out.width, height: out.height, mimeType: 'image/jpeg', name: name.replace(/\.\w+$/, '') + '.jpg', size };
+async function render(ctx: ReturnType<typeof ImageManipulator.manipulate>, name: string, compress = 0.9): Promise<Picked> {
+  // Both hold a decoded bitmap (~48 MB for a 12 MP photo) until released.
+  let ref: Awaited<ReturnType<typeof ctx.renderAsync>> | undefined;
+  try {
+    ref = await ctx.renderAsync();
+    const web = Platform.OS === 'web';
+    const out = await ref.saveAsync({ format: SaveFormat.JPEG, compress, base64: web });
+    // On web a data URL survives reloads, so history can keep it.
+    const uri = web && out.base64 ? 'data:image/jpeg;base64,' + out.base64 : out.uri;
+    if (uri !== out.uri && out.uri.startsWith('blob:')) URL.revokeObjectURL(out.uri); // web: unused copy
+    const size = web && out.base64 ? Math.floor((out.base64.length * 3) / 4) : undefined;
+    return { uri, width: out.width, height: out.height, mimeType: 'image/jpeg', name: name.replace(/\.\w+$/, '') + '.jpg', size };
+  } finally {
+    ref?.release();
+    ctx.release();
+  }
 }
 
 export async function rotate90(p: Picked): Promise<Picked> {
@@ -114,4 +134,11 @@ export async function prepareUpload(p: Picked, r: Rect | null): Promise<Picked> 
   }
   if (Math.max(w, h) > MAX_SIDE) ctx.resize(w >= h ? { width: MAX_SIDE } : { height: MAX_SIDE });
   return render(ctx, p.name);
+}
+
+/** A smaller JPEG copy, at most `side` px on the long side (history thumbnails). */
+export async function shrink(uri: string, width: number, height: number, side: number): Promise<Picked> {
+  const ctx = ImageManipulator.manipulate(uri);
+  ctx.resize(width >= height ? { width: side } : { height: side });
+  return render(ctx, 'photo.jpg', 0.7);
 }

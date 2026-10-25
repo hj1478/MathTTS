@@ -13,7 +13,7 @@ import { AppState, Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { warmup } from '@/lib/api';
-import { restoreSession } from '@/lib/store';
+import { dropOrphanFiles, restoreSession } from '@/lib/store';
 import { useColors, useScheme } from '@/lib/theme';
 
 // Korean wraps between words, not syllables (as in the designs).
@@ -38,6 +38,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     restoreSession().finally(() => setRestored(true));
+    dropOrphanFiles(); // native: files left by an interrupted 되돌리기 window
     // A GPU worker takes ~30 s to start; begin while the user picks a photo.
     warmup();
     setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});

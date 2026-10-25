@@ -22,7 +22,13 @@ export async function keepFiles(r: Reading): Promise<Reading> {
   if (r.audioUrl?.startsWith('http')) {
     try {
       const mp3 = new File(dir, 'audio.mp3');
-      if (!mp3.exists) await File.downloadFileAsync(r.audioUrl, mp3);
+      if (!mp3.exists) {
+        // Android writes straight into the target and can leave half a file
+        // if the download breaks; only a finished download gets the real name.
+        const part = new File(dir, 'audio.part');
+        await File.downloadFileAsync(r.audioUrl, part, { idempotent: true });
+        await part.move(mp3, { overwrite: true });
+      }
       out.audioUrl = mp3.uri;
     } catch {
       // Keep the remote URL; it is served for 24 h.
@@ -37,5 +43,16 @@ export function dropFiles(r: Reading): void {
     if (dir.exists) dir.delete();
   } catch {
     // Nothing to clean up.
+  }
+}
+
+/** Delete every history/<id> folder whose id isn't in `keep`. */
+export function dropFilesExcept(keep: Set<string>): void {
+  try {
+    const root = new Directory(Paths.document, 'history');
+    if (!root.exists) return;
+    for (const d of root.list()) if (d instanceof Directory && !keep.has(d.name)) d.delete();
+  } catch {
+    // Leave them for next time.
   }
 }

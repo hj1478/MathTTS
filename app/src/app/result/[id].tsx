@@ -11,7 +11,7 @@ import { MathText } from '@/components/MathText';
 import { Player, Spoken, type ViewRef } from '@/components/Player';
 import { Banner, Button, Card, H2, Header, HeaderLink, Page, PROTOTYPE_NOTE, T } from '@/components/ui';
 import { when } from '@/lib/format';
-import { getJob } from '@/lib/api';
+import { ApiError, getJob } from '@/lib/api';
 import {
   getReading,
   isSaved,
@@ -22,6 +22,7 @@ import {
   saveReading,
   session,
   storeSpeed,
+  withExpiry,
   type Reading,
 } from '@/lib/store';
 import { useColors, useWide } from '@/lib/theme';
@@ -73,8 +74,16 @@ export default function Result() {
   const wide = useWide();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [r, setR] = useState<Reading | null | undefined>(session.readings.get(id));
+  const [r, setR] = useState<Reading | null | undefined>(() => {
+    const x = session.readings.get(id);
+    return x && withExpiry(x);
+  });
+  // Couldn't ask the server (offline, 5xx): not the same as "doesn't exist".
+  const [unreachable, setUnreachable] = useState(false);
+  const [tries, setTries] = useState(0);
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [speed, setSpeed] = useState(1);
   const [zoom, setZoom] = useState(false);
   const playRef = useRef<ViewRef>(null);
@@ -94,14 +103,15 @@ export default function Result() {
         }
         if (j.status === 'queued' || j.status === 'running')
           return router.replace({ pathname: '/processing', params: { job: id } });
-      } catch {
+      } catch (e) {
+        if (!(e instanceof ApiError && e.status === 404)) return setUnreachable(true);
         // unknown or expired
       }
       setR(null);
     });
     isSaved(id).then(setSaved);
     loadSpeed().then(setSpeed);
-  }, [id]);
+  }, [id, tries]);
 
   const hasAudio = !!r && r.audioStatus === 'ready' && !!r.audioUrl;
   const player = useAudioPlayer(hasAudio ? r!.audioUrl : null, { updateInterval: 250 });
@@ -124,6 +134,28 @@ export default function Result() {
     return () => clearTimeout(t);
   }, [r, hasAudio]);
 
+  if (!r && unreachable) {
+    return (
+      <View style={{ flex: 1, backgroundColor: c.bg }}>
+        <Header title="읽은 결과" back={{ label: '처음 화면으로', onPress: () => router.replace('/') }} />
+        <Page>
+          <Banner tone="neutral" title="결과를 불러오지 못했어요">
+            연결을 확인하고 다시 시도해 주세요.
+          </Banner>
+          <Button
+            kind="primary"
+            icon="restart"
+            label="다시 시도"
+            onPress={() => {
+              setUnreachable(false);
+              setTries((n) => n + 1);
+            }}
+          />
+          <Button kind="tertiary" label="처음으로" onPress={() => router.replace('/')} />
+        </Page>
+      </View>
+    );
+  }
   if (r === null) {
     return (
       <View style={{ flex: 1, backgroundColor: c.bg }}>
@@ -140,10 +172,21 @@ export default function Result() {
   if (!r) return null;
 
   const toggleSave = async () => {
-    if (saved) await removeReading(r.id);
-    else await saveReading(r);
-    setSaved(!saved);
-    if (Platform.OS !== 'web') AccessibilityInfo.announceForAccessibility(saved ? '기록에서 뺐어요' : '저장됨');
+    if (saving) return; // a save copies the photo and MP3; one at a time
+    setSaving(true);
+    setSaveError(null);
+    try {
+      if (saved) await removeReading(r.id);
+      else await saveReading(r);
+      setSaved(!saved);
+      if (Platform.OS !== 'web') AccessibilityInfo.announceForAccessibility(saved ? '기록에서 뺐어요' : '저장됨');
+    } catch {
+      const msg = saved ? '기록에서 빼지 못했어요' : '기록에 저장하지 못했어요';
+      setSaveError(msg);
+      if (Platform.OS !== 'web') AccessibilityInfo.announceForAccessibility(msg);
+    } finally {
+      setSaving(false);
+    }
   };
   const again = () => {
     if (!r.imageUri) return router.replace('/'); // opened by link: no photo here to send again
@@ -164,6 +207,11 @@ export default function Result() {
   );
 
   const note = <Banner tone="note">{PROTOTYPE_NOTE}</Banner>;
+  const saveProblem = saveError && (
+    <Banner tone="error" title={saveError}>
+      기기의 저장 공간이 부족할 수 있어요. 잠시 후 다시 시도해 주세요.
+    </Banner>
+  );
 
   const spoken = (
     <Card style={{ borderRadius: 20 }}>
@@ -223,7 +271,7 @@ export default function Result() {
   const actions = (
     <>
       <Button
-        kind="secondary"
+        kind={saving ? 'waiting' : 'secondary'}
         icon={saved ? 'bookmarkFilled' : 'bookmark'}
         label={saved ? '저장됨' : '기록에 저장'}
         aria-pressed={saved}
@@ -259,6 +307,7 @@ export default function Result() {
           </View>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 24, alignItems: 'flex-start' }}>
             <View style={{ flexGrow: 999, flexShrink: 1, flexBasis: 560, gap: 24 }}>
+              {saveProblem}
               {listen}
               {spoken}
             </View>
@@ -270,6 +319,7 @@ export default function Result() {
         </Page>
       ) : (
         <Page footer={actions}>
+          {saveProblem}
           {listen}
           {note}
           {spoken}

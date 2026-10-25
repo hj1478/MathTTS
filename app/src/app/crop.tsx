@@ -97,6 +97,8 @@ export default function Crop() {
   const [drawn, setRect] = useState<{ key: string; r: Rect } | null>(null);
   const [busy, setBusy] = useState<'rotate' | 'read' | null>(null);
   const [failed, setFailed] = useState(false);
+  // Set synchronously, so a second tap before the re-render is ignored too.
+  const working = useRef(false);
 
   useEffect(() => {
     if (!session.picked) router.replace('/');
@@ -121,6 +123,8 @@ export default function Crop() {
   const onRect = (r: Rect) => setRect({ key, r });
 
   const go = async (full: boolean) => {
+    if (working.current) return;
+    working.current = true;
     setBusy('read');
     setFailed(false);
     try {
@@ -137,6 +141,8 @@ export default function Crop() {
   };
 
   const rotate = async () => {
+    if (working.current) return;
+    working.current = true;
     setBusy('rotate');
     try {
       const r = await rotate90(img);
@@ -146,6 +152,7 @@ export default function Crop() {
     } catch {
       setFailed(true);
     } finally {
+      working.current = false;
       setBusy(null);
     }
   };
@@ -184,8 +191,8 @@ export default function Crop() {
         </View>
         {failed && <Banner tone="error" title="사진을 돌리지 못했어요">다른 사진을 골라 주세요.</Banner>}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-          <Button kind="secondary" icon="rotate" label="회전" onPress={rotate} style={{ flex: 1, minWidth: 120, paddingHorizontal: 12 }} />
-          <Button kind="secondary" icon="fullFrame" label="사진 전체 쓰기" onPress={() => go(true)} style={{ flex: 1.4, minWidth: 160, paddingHorizontal: 12 }} />
+          <Button kind={busy ? 'waiting' : 'secondary'} icon="rotate" label="회전" onPress={rotate} style={{ flex: 1, minWidth: 120, paddingHorizontal: 12 }} />
+          <Button kind={busy ? 'waiting' : 'secondary'} icon="fullFrame" label="사진 전체 쓰기" onPress={() => go(true)} style={{ flex: 1.4, minWidth: 160, paddingHorizontal: 12 }} />
         </View>
         <View style={{ gap: 12, marginTop: 'auto' }}>
           {busy ? (

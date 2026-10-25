@@ -4,6 +4,8 @@ import { View } from 'react-native';
 import katex from 'katex';
 import { WebView } from 'react-native-webview';
 
+import { plainPreview } from '@/lib/format';
+import { KATEX_CSS, KATEX_CSS_VERSION } from '@/lib/katexCss.generated';
 import { mathHtml } from '@/lib/mathHtml';
 import { useColors } from '@/lib/theme';
 
@@ -14,14 +16,16 @@ export interface MathTextProps {
   big?: boolean;
 }
 
-const KATEX_CSS = `https://cdn.jsdelivr.net/npm/katex@${katex.version}/dist/katex.min.css`;
+// Inlined (fonts included) so saved results typeset offline.
+if (__DEV__ && KATEX_CSS_VERSION !== katex.version)
+  console.warn(`katexCss.generated.ts is for katex ${KATEX_CSS_VERSION}, not ${katex.version}: run node scripts/katex-native-css.js`);
 
 export function MathText({ text, label, big }: MathTextProps) {
   const c = useColors();
   const [height, setHeight] = useState(60);
   const html = useMemo(
     () => `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="stylesheet" href="${KATEX_CSS}">
+<style>${KATEX_CSS}</style>
 <style>html,body{margin:0;padding:0;background:transparent;color:${c.text};
 font:500 ${big ? 22 : 20}px/${big ? 42 : 38}px -apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;
 overflow-wrap:anywhere}</style></head><body><div id="m">${mathHtml(text)}</div>
@@ -32,7 +36,8 @@ new ResizeObserver(h).observe(document.getElementById('m'));window.onload=h;h();
   return (
     <View
       accessible
-      accessibilityLabel={label}
+      // Until the spoken sentence exists (mid-processing), the plain text.
+      accessibilityLabel={label || plainPreview(text)}
       importantForAccessibility="yes"
       style={{ height }}
     >

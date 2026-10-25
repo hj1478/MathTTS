@@ -55,9 +55,10 @@ export default function Processing() {
   // polling instead of sending the photo again. Read once, on mount.
   const params = useLocalSearchParams<{ job?: string }>();
   const [resumeId] = useState(() => params.job ?? null);
-  // The photo belongs to the resumed job only if this device sent it.
-  const own = !resumeId || session.job?.id === resumeId;
-  const upload = own ? session.upload : null;
+  // The photo belongs to the resumed job only if this device sent it. Decided
+  // once: a retry clears session.job, and must still have the photo to send.
+  const [own] = useState(() => !resumeId || session.job?.id === resumeId);
+  const [upload] = useState(() => (own ? session.upload : null));
   const [phase, setPhase] = useState<Phase>(resumeId ? { k: 'polling', id: resumeId } : { k: 'submitting' });
   const [job, setJob] = useState<Job>();
   const [attempt, setAttempt] = useState(0);
@@ -84,6 +85,13 @@ export default function Processing() {
     // When it started, for the 10-minute cutoff. A resumed job from another
     // device takes it from the server's created_at on the first answer.
     let t0 = resume ? (own && session.job ? session.job.startedAt : 0) : Date.now();
+    // On its own timer, so a request that never settles can't hold off the cutoff.
+    const giveUp = setInterval(() => {
+      if (stop || !t0 || (Date.now() - t0) / 1000 <= GIVE_UP_S) return;
+      stop = true;
+      clearTimeout(timer);
+      setPhase({ k: 'timeout' });
+    }, 1000);
 
     (async () => {
       let id: string;
@@ -114,7 +122,7 @@ export default function Processing() {
       let lastOk = Date.now();
       const poll = async () => {
         const began = Date.now();
-        if (t0 && (began - t0) / 1000 > GIVE_UP_S) return setPhase({ k: 'timeout' });
+        if (stop) return; // includes the 10-minute cutoff (giveUp)
         try {
           const j = await getJob(id);
           if (stop) return;
@@ -155,6 +163,7 @@ export default function Processing() {
     return () => {
       stop = true;
       clearTimeout(timer);
+      clearInterval(giveUp);
     };
   }, [upload, attempt, resumeId, own]);
 
