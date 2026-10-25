@@ -40,6 +40,19 @@ TRANSFORMS = [
     (r"$\sqrt 10$", r"$\sqrt{10}$"),
     (r"$\sqrt a$", r"$\sqrt{a}$"),
     (r"$\sqrt(25)$", r"$\sqrt{25}$"),
+    # a signed operand is still an operator signal
+    ("x=-1일 때", "$x=-1$일 때"),
+    ("x<-1 또는 x>2", "$x<-1$ 또는 $x>2$"),
+    # bare LaTeX in prose keeps its meaning instead of being scrubbed
+    (r"x \le 3일 때", r"$x \leq 3$일 때"),
+    (r"x \ne 0", r"$x \neq 0$"),
+    (r"\alpha+\beta의 값", r"$\alpha +\beta$의 값"),
+    (r"\angle ABC=30^{\circ}", r"$\angle ABC=30°$"),
+    (r"\triangle ABC의 넓이", r"$\triangle ABC$의 넓이"),
+    (r"\sqrt{2}의 값", r"$\sqrt{2}$의 값"),            # not $\sqrt \{2\}$ (중괄호)
+    (r"2\sqrt{3}이다", r"$2\sqrt{3}$이다"),
+    (r"\overline{AB}의 길이", r"$\overline{AB}$의 길이"),
+    (r"\dfrac{1}{2}배", r"$\frac{1}{2}$배"),
 ]
 
 # Deliberate non-transforms: erring toward NOT wrapping when unsure.
@@ -49,6 +62,7 @@ UNCHANGED = [
     "3.14",                      # bare number
     "7. 다음 물음에 답하시오.",   # list numbering
     "가격은 $5달러$이다",         # $..$ containing Hangul is not math
+    "초1-2 단원평가",              # grade label, still not subtraction
 ]
 
 

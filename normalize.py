@@ -82,6 +82,11 @@ SYM = {"×": r"\times ", "÷": r"\div ", "·": r"\cdot ", "⋅": r"\cdot ", "±"
        "∫": r"\int ", "√": r"\sqrt ", "π": r"\pi ", "θ": r"\theta ", "α": r"\alpha ",
        "β": r"\beta ", "γ": r"\gamma ", "λ": r"\lambda ", "μ": r"\mu ", "σ": r"\sigma ",
        "φ": r"\phi ", "ω": r"\omega ", "ρ": r"\rho ", "Δ": r"\Delta ", "∆": r"\Delta ",
+       "δ": r"\delta ", "ε": r"\epsilon ", "ζ": r"\zeta ", "η": r"\eta ", "ι": r"\iota ",
+       "κ": r"\kappa ", "ν": r"\nu ", "ξ": r"\xi ", "τ": r"\tau ", "υ": r"\upsilon ",
+       "χ": r"\chi ", "ψ": r"\psi ", "Γ": r"\Gamma ", "Θ": r"\Theta ", "Λ": r"\Lambda ",
+       "Ξ": r"\Xi ", "Π": r"\Pi ", "Σ": r"\Sigma ", "Φ": r"\Phi ", "Ψ": r"\Psi ",
+       "Ω": r"\Omega ",
        # geometry/relations common in KO middle-school print. Spoken forms verified
        # against SRE-ko: ∠→"각", °→"도", ≡→"합동이다", ⊥→"수직이다", ∥→"평행하다";
        # ∽ and → read literally ("물결표", "오른쪽 화살표") but silence loses meaning.
@@ -230,10 +235,28 @@ _TEXT_CMD = re.compile(r"\\text\s*\{([^{}]*)\}")
 # masking variant: skips bodies that already hold a \x00 sentinel, so the
 # second masking pass (for env-Hangul wraps) can't re-mask a masked token
 _TEXT_CMD_UNMASKED = re.compile("\\\\text\\s*\\{([^{}\x00]*)\\}")
-_BARE_CMD = {"times": "×", "div": "÷", "cdot": "·", "leq": "≤", "geq": "≥",
-             "neq": "≠", "pm": "±", "pi": "π", "sqrt": "√", "infty": "∞",
-             # bare trig commands -> Korean words (in-span \tan is fine as-is)
-             "sin": "사인 ", "cos": "코사인 ", "tan": "탄젠트 "}
+# Every command SYM produces maps back to its unicode char, so a bare relation
+# or Greek letter joins the surrounding run ("x \le 3" -> "x ≤ 3" -> one span)
+# instead of being scrubbed as residue ("x   3", relation gone).
+_BARE_CMD = {v.strip()[1:]: k for k, v in SYM.items() if v.startswith("\\")}
+_BARE_CMD.update({"cdot": "·", "Delta": "Δ", "leq": "≤", "geq": "≥",  # SYM has 2 spellings
+                  "cong": "≅", "le": "≤", "ge": "≥", "ne": "≠", "leqslant": "≤", "geqslant": "≥",
+                  "lt": "<", "gt": ">", "varphi": "φ", "varepsilon": "ε",
+                  "circ": "°", "square": "□", "sqrt": "√",
+                  # bare trig commands -> Korean words (in-span \tan is fine as-is)
+                  "sin": "사인 ", "cos": "코사인 ", "tan": "탄젠트 "})
+# Commands with no unicode form that temml/SRE still read well: kept as a $..$
+# span with their brace arguments ("\overline{AB}" -> 선분 A B) rather than
+# scrubbed. Anything not listed here or above is still dropped as OCR residue:
+# a span temml cannot parse would stitch as a placeholder and cost the audio.
+_KEEP_CMD = ("overline|underline|vec|overrightarrow|overleftrightarrow|hat|bar|dot|tilde|"
+             "widehat|log|ln|lim|binom|cdots|ldots|dots|therefore|because|cap|cup|"
+             "subset|subseteq|supset|emptyset|varnothing|Rightarrow|rightarrow|"
+             "Leftrightarrow|leftrightarrow|mid|prime|mathrm")
+_BARE_KEEP = re.compile(r"\\(?:" + _KEEP_CMD + r")(?![A-Za-z])(?:\s*\{(?:[^{}]|\{[^{}]*\})*\})*")
+# a bare \sqrt{..} keeps its braces as grouping inside a span; turned into "√"
+# first, the braces became literal \{..\} and were spoken as 중괄호
+_BARE_SQRT = re.compile(r"(\d*)\\sqrt\s*(?:\[[^\]]*\]\s*)?\{(?:[^{}]|\{[^{}]*\})*\}")
 # (?![A-Za-z]) not \b: a digit may follow directly ("2\times13") and \b would
 # fail between two word chars, dropping the command instead of converting it
 _BARE_CMD_RE = re.compile(r"\\(" + "|".join(_BARE_CMD) + r")(?![A-Za-z]) ?")
@@ -248,7 +271,7 @@ _TEXT_MASK = re.compile("\x00(\\d+)\x00")
 # A directly-adjacent leading integer is a MIXED NUMBER (2\frac{3}{4} = 대분수)
 # and must stay inside the span so SRE reads "2 와 4 분의 3".
 _FRAC_ARG = r"\{((?:[^{}]|\{[^{}]*\})*)\}"
-_BARE_FRAC = re.compile(r"(\d*)\\frac\s*" + _FRAC_ARG + r"\s*" + _FRAC_ARG)
+_BARE_FRAC = re.compile(r"(\d*)\\[dt]?frac\s*" + _FRAC_ARG + r"\s*" + _FRAC_ARG)
 _FRAC_MASK = re.compile("\x01(\\d+)\x01")
 # mixed number with the integer OUTSIDE the span ("2$\frac{1}{3}$") -> move it in
 _MIXED_SPAN = re.compile(r"(\d+)\$\s*(?=\\frac)")
@@ -274,7 +297,8 @@ _CONNECTOR_ONLY = re.compile(r"^[·⋅… ]+$")
 # math signals for _is_math (paren clause is plain string logic, not a regex)
 _SIG_UNI = re.compile(rf"[{_UNI_CLS}]")                            # x², ≤, π, √, ×
 _SIG_ADJ = re.compile(r"[A-Za-z][0-9]|[0-9][A-Za-z]")              # 3x, x2
-_SIG_OP = re.compile(r"[0-9A-Za-z]\s*[-+*/=^<>]\s*[0-9A-Za-z]")    # x-y, 2+3, a=b
+# an operand may carry a sign: "x=-1일 때", "x<-1 또는" are as much math as "x=1"
+_SIG_OP = re.compile(r"[0-9A-Za-z]\s*[-+*/=^<>]\s*[-+]?\s*[0-9A-Za-z]")  # x-y, 2+3, a=-b
 _SIG_NEG = re.compile(r"^-\s*[0-9]")                               # -2.4
 _SIG_ABS = re.compile(r"\|[^|]+\|")                                # |a|, |x-2|
 _SIG_RATIO = re.compile(r"[0-9A-Za-z]:[0-9A-Za-z]")                # 3:4 (비례식)
@@ -396,7 +420,7 @@ def _delatex_prose(s):
     s = _TEXT_CMD.sub(r"\1", s)
     s = re.sub(r"\\text\s*\{", " ", s)   # unclosed \text{ (OCR) — orphan brace
                                          # would join a math run as 중괄호
-    kept = []  # valid bare \frac -> $..$ span, masked past the residue scrub
+    kept = []  # valid bare \frac/\sqrt/_KEEP_CMD -> $..$ span, masked past the residue scrub
 
     def _keep_frac(m):
         # canonicalize NOW: this span is restored after the SPAN loop has run,
@@ -406,7 +430,13 @@ def _delatex_prose(s):
         kept.append(f"${body}$")
         return f"\x01{len(kept) - 1}\x01"
 
+    def _keep(m):
+        kept.append(f"${_latexify(m.group())}$")
+        return f"\x01{len(kept) - 1}\x01"
+
     s = _BARE_FRAC.sub(_keep_frac, s)
+    s = _BARE_SQRT.sub(_keep, s)
+    s = _BARE_KEEP.sub(_keep, s)
     s = _BARE_CMD_RE.sub(lambda m: _BARE_CMD[m.group(1)], s)
 
     def scripts(table):

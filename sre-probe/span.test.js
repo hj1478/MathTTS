@@ -16,7 +16,8 @@ const fs = require('fs');
 const path = require('path');
 
 const { SPAN, checkWellFormed, splitRadicals, splitRepeating, splitSegments,
-        splitFences, splitChains, splitAbs, fixMisreads } = require('./speak.js');
+        splitFences, splitChains, splitAbs, splitSpecials, endsWithJong,
+        fixMisreads } = require('./speak.js');
 
 const cases = JSON.parse(
   fs.readFileSync(path.join(__dirname, '..', 'eval', 'fixtures', 'span_cases.json'), 'utf8')
@@ -157,4 +158,120 @@ test('splitChains consumes the WHOLE chain, however many links', () => {
   // and must not start matching INSIDE a term: "x^2" was sliced to "x^" + "2"
   assert.deepStrictEqual(splitChains('x^2<y<z'),
     [{ latex: 'x^2 < y' }, { text: ',' }, { latex: 'y < z' }]);
+});
+
+test('splitChains takes fractions, roots, π and absolute values as terms', () => {
+  assert.deepStrictEqual(splitChains('0<x<\\pi'),
+    [{ latex: '0 < x' }, { text: ',' }, { latex: 'x < \\pi' }]);
+  assert.deepStrictEqual(splitChains('\\frac{1}{2}<x<\\frac{3}{2}'),
+    [{ latex: '\\frac{1}{2} < x' }, { text: ',' }, { latex: 'x < \\frac{3}{2}' }]);
+  assert.deepStrictEqual(splitChains('-\\frac12\\le x\\le 1'),
+    [{ latex: '-\\frac12 \\le x' }, { text: ',' }, { latex: 'x \\le 1' }]);
+  assert.deepStrictEqual(splitChains('3<|x-1|<5'),
+    [{ latex: '3 < |x-1|' }, { text: ',' }, { latex: '|x-1| < 5' }]);
+  // \left is not \le
+  assert.deepStrictEqual(splitChains('\\left|x\\right|<1'), [{ latex: '\\left|x\\right|<1' }]);
+});
+
+test('splitAbs: a coefficient is spoken as 곱하기, a relation keeps the prefix reading', () => {
+  // 2|x-1| must not sound like |2x-1| ("2 x 빼기 1 의 절댓값")
+  assert.deepStrictEqual(splitAbs('2|x-1|'),
+    [{ latex: '2' }, { text: '곱하기' }, { latex: 'x-1' }, { text: '의 절댓값' }]);
+  assert.deepStrictEqual(splitAbs('a-|x-1|'),
+    [{ latex: 'a-' }, { latex: 'x-1' }, { text: '의 절댓값' }]);
+  // moving 절댓값 would strand "3 <" as "3 은 보다 작다"
+  assert.deepStrictEqual(splitAbs('3 < |x-1|'), [{ latex: '3 < |x-1|' }]);
+  assert.deepStrictEqual(splitAbs('|x-1| < 5'),
+    [{ latex: 'x-1' }, { text: '의 절댓값' }, { latex: ' < 5' }]);
+});
+
+test('splitSpecials turns a dangling sign minus into its own word', () => {
+  assert.deepStrictEqual(splitSpecials('y=-|x-1|+3', false),
+    [{ latex: 'y=' }, { text: '마이너스', sign: true }, { latex: 'x-1' },
+     { text: '의 절댓값' }, { latex: '+3' }]);
+  assert.deepStrictEqual(splitSpecials('-0.\\dot{3}', false),
+    [{ text: '마이너스', sign: true }, { text: '영 점 삼 삼 반복' }]);
+  // between two roots the minus is binary and stays latex
+  assert.deepStrictEqual(splitSpecials('\\sqrt{a+b}-\\sqrt{a-b}', true),
+    [{ root: 'a+b' }, { latex: '-' }, { root: 'a-b' }]);
+});
+
+test('splitRepeating reads the integer part as a number', () => {
+  assert.deepStrictEqual(splitRepeating('12.\\dot{5}'), [{ text: '십이 점 오 오 반복' }]);
+  assert.deepStrictEqual(splitRepeating('105.\\dot{2}'), [{ text: '백오 점 이 이 반복' }]);
+  assert.deepStrictEqual(splitRepeating('10.\\dot{1}'), [{ text: '십 점 일 일 반복' }]);
+  assert.deepStrictEqual(splitRepeating('3.\\dot{1}'), [{ text: '삼 점 일 일 반복' }]);
+});
+
+test('endsWithJong follows the last SPOKEN word', () => {
+  assert.strictEqual(endsWithJong('루트 x 더하기 1'), true);     // 일
+  assert.strictEqual(endsWithJong('루트 x 더하기 2'), false);    // 이
+  assert.strictEqual(endsWithJong('10'), true);                  // 십
+  assert.strictEqual(endsWithJong('선분 P R'), true);            // 알
+  assert.strictEqual(endsWithJong('선분 A D'), false);           // 디
+  assert.strictEqual(endsWithJong(' 루트 \x01<say-as interpret-as="characters">x</say-as> 더하기 1\x02 '),
+    true);                                                       // markup + voice markers
+  assert.strictEqual(endsWithJong('의 절댓값'), true);
+});
+
+// End to end through temml + SRE: what the listener actually hears.
+const { execFileSync } = require('child_process');
+const os = require('os');
+
+function stitch(lines, mode) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'speak-test-'));
+  try {
+    fs.writeFileSync(path.join(dir, 't.norm.md'), lines.join('\n\n'));
+    const args = [path.join(__dirname, 'speak.js'), '--combos', 'clearspeak/default',
+                  '--write', dir, path.join(dir, 't.norm.md')];
+    if (mode) args.splice(1, 0, mode);
+    execFileSync(process.execPath, args, { encoding: 'utf8' });
+    const read = (ext) => fs.readFileSync(path.join(dir, `t.stitched.${ext}`), 'utf8');
+    const strip = (s) => s.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (mode === '--both') return { txt: read('txt'), ssml: read('ssml') };
+    return mode === '--ssml' ? strip(read('ssml')).split(/ (?=[A-Z]\) )/)
+                             : read('txt').trim().split(/\n+/).map((l) => l.trim());
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('speech: a leading minus is a sign, not 빼기', () => {
+  const [a, b, c, d] = stitch(['$-2<x<3$', '$y=-|x-1|+3$', '$-0.\\dot{3}$', '$\\sqrt{a+b}+1$']);
+  assert.strictEqual(a, '마이너스 2 는 x 보다 작다 , x 는 3 보다 작다');
+  assert.strictEqual(b, 'y 는 마이너스 x 빼기 1 의 절댓값 더하기 3');
+  assert.strictEqual(c, '마이너스 영 점 삼 삼 반복');
+  assert.strictEqual(d, '루트 a 더하기 b 더하기 1');           // binary after an operand
+});
+
+test('speech: chains keep their particles; |..| coefficients are spoken', () => {
+  const [a, b, c, d] = stitch(['$0<x<\\pi$', '$\\frac{1}{2}<x<\\frac{3}{2}$',
+                               '$3<|x-1|<5$', '$2|x-1|$']);
+  assert.strictEqual(a, '0 은 x 보다 작다 , x 는 파이 보다 작다');
+  assert.strictEqual(b, '2 분의 1 은 x 보다 작다 , x 는 2 분의 3 보다 작다');
+  assert.strictEqual(c, '3 은 절댓값 x 빼기 1 보다 작다 , x 빼기 1 의 절댓값 은 5 보다 작다');
+  assert.strictEqual(d, '2 곱하기 x 빼기 1 의 절댓값');
+});
+
+test('speech (SSML): sign and 은/는 across a radical split', () => {
+  const [a, b] = stitch(['A) $-\\sqrt{x+1}$', 'B) $\\sqrt{x+1}=3$'], '--ssml');
+  assert.strictEqual(a, 'A) 마이너스 루트 x 더하기 1');
+  assert.strictEqual(b, 'B) 루트 x 더하기 1 은 3');
+});
+
+test('--both writes the same files as separate plain and --ssml runs', () => {
+  const lines = ['문제 $-2<x<3$ 일 때', '$\\sqrt{a+b}-\\sqrt{a-b}=2|x-1|$'];
+  const both = stitch(lines, '--both');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'speak-test-'));
+  try {
+    fs.writeFileSync(path.join(dir, 't.norm.md'), lines.join('\n\n'));
+    for (const extra of [[], ['--ssml']]) {
+      execFileSync(process.execPath, [path.join(__dirname, 'speak.js'), ...extra, '--combos',
+        'clearspeak/default', '--write', dir, path.join(dir, 't.norm.md')]);
+    }
+    assert.strictEqual(both.txt, fs.readFileSync(path.join(dir, 't.stitched.txt'), 'utf8'));
+    assert.strictEqual(both.ssml, fs.readFileSync(path.join(dir, 't.stitched.ssml'), 'utf8'));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

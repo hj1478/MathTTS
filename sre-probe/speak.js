@@ -14,9 +14,15 @@
  *   node speak.js --dir ../output              # every *.norm.md in the folder
  *   node speak.js --combos mathspeak/sbrief,clearspeak/default --dir ../output
  *   node speak.js --ssml [--voice ko-KR-SunHiNeural] --dir ../output
+ *   node speak.js --both --write OUT f.norm.md    # plain .txt AND .ssml, one process
  *
  * Default combos: clearspeak/default (natural register, used for the stitched
  * view) and mathspeak/default (unambiguous register), per the index.js probe.
+ * Only the FIRST combo reaches the stitched output; the rest are for the table.
+ *
+ * --both: the plain pass, then the --ssml pass, in one process (temml runs
+ * once; the files written are the same as two separate runs). The SSML pass's
+ * SUMMARY lines are prefixed "(ssml) ", and the exit status covers both.
  *
  * --ssml: SRE emits SSML per span (its own structural <break>s + <say-as> around
  * identifiers). SRE's envelope is <speak version="1.1" xml:lang="ko"> with no
@@ -70,6 +76,7 @@ function parseArgs(argv) {
   const files = [];
   let combos = DEFAULT_COMBOS;
   let ssml = false;
+  let both = false;
   let voice = 'ko-KR-SunHiNeural';
   let write = null;
   let strict = false;
@@ -78,6 +85,8 @@ function parseArgs(argv) {
     const a = argv[i];
     if (a === '--ssml') {
       ssml = true;
+    } else if (a === '--both') {
+      both = true;
     } else if (a === '--strict') {
       strict = true;
     } else if (a === '--voice') {
@@ -106,13 +115,13 @@ function parseArgs(argv) {
   }
   if (!files.length) {
     console.error(
-      'usage: node speak.js <file.norm.md ...> | --dir FOLDER [--combos d/s,d/s] [--ssml] [--voice NAME] [--alt-voice NAME] [--write DIR] [--strict]'
+      'usage: node speak.js <file.norm.md ...> | --dir FOLDER [--combos d/s,d/s] [--ssml | --both] [--voice NAME] [--alt-voice NAME] [--write DIR] [--strict]'
     );
     process.exit(1);
   }
   // radicand voice defaults to the opposite gender of the main voice
   altVoice ??= voice.includes('InJoon') ? 'ko-KR-SunHiNeural' : 'ko-KR-InJoonNeural';
-  return { files, combos, ssml, voice, altVoice, write, strict };
+  return { files, combos, ssml, both, voice, altVoice, write, strict };
 }
 
 /* ----------------------------- SSML helpers ----------------------------- */
@@ -150,13 +159,35 @@ const DIGIT_KO = { 0: '영', 1: '일', 2: '이', 3: '삼', 4: '사',
                    5: '오', 6: '육', 7: '칠', 8: '팔', 9: '구' };
 const wordsKo = (digits) => [...digits].map((d) => DIGIT_KO[d]).join('');
 
+/** Integer digits as a sino-Korean NUMBER, the way the integer part of a
+ * decimal is read: "12" -> "십이", "105" -> "백오", "10000" -> "만". */
+function numberKo(digits) {
+  const n = digits.replace(/^0+(?=\d)/, '');
+  if (n === '0') return '영';
+  const PLACE = ['', '십', '백', '천'];
+  const GROUP = ['', '만', '억', '조'];
+  const groups = [];
+  for (let end = n.length; end > 0; end -= 4) groups.unshift(n.slice(Math.max(0, end - 4), end));
+  return groups.map((g, gi) => {
+    const unit = GROUP[groups.length - 1 - gi];
+    let out = '';
+    [...g].forEach((d, i) => {
+      if (d === '0') return;
+      const place = PLACE[g.length - 1 - i];
+      out += (d === '1' && place ? '' : DIGIT_KO[d]) + place;  // 십, not 일십
+    });
+    if (!out) return '';
+    return (out === '일' && unit ? '' : out) + unit;           // 만, not 일만
+  }).join('');
+}
+
 // dotted form 0.1\dot{2}\dot{3} (normalize.py's canonical output for 2̇) or
 // overline form 1.\overline{23}
 const REPDEC = /(\d+)\.((?:\d|\\dot\{\d\})*\\dot\{\d\}(?:\d|\\dot\{\d\})*|\d*\\overline\{\d+\})/g;
 
 /** (integer digits, fractional latex) -> reading-C Korean text, or null when
- * the notation is invalid (digits after the last dot). Integer part is read
- * digit-by-digit — 순환소수 problems rarely exceed one digit before the point. */
+ * the notation is invalid (digits after the last dot). The integer part is a
+ * number ("십이 점 ..."); the digits after the point are read one by one. */
 function readRepeating(intPart, fracRaw) {
   let pre;
   let rep;
@@ -173,7 +204,7 @@ function readRepeating(intPart, fracRaw) {
     rep = toks.slice(first).map((t) => t.d).join('');
   }
   const r = wordsKo(rep);
-  return `${wordsKo(intPart)} 점${pre ? ` ${wordsKo(pre)}` : ''} ${r} ${r} 반복`;
+  return `${numberKo(intPart)} 점${pre ? ` ${wordsKo(pre)}` : ''} ${r} ${r} 반복`;
 }
 
 /** Split a span's LaTeX at repeating decimals: [{latex}|{text}, ...] where
@@ -243,7 +274,8 @@ const MATCHING = { '(': ')', '[': ']' };
 // in 스 with none -> 는/와. SRE's own binary readings corroborate the set
 // ("x 는 3 보다", "s 는 3 보다", "f 는 3 보다"); an earlier version of this list
 // wrongly included f/s/x by reading their spelling rather than their sound.
-const BATCHIM = new Set(['l', 'm', 'n']);
+// r is 알 and takes 은 — SRE says "r 은 3" too.
+const BATCHIM = new Set(['l', 'm', 'n', 'r']);
 const PERP = /([A-Za-z])\s*\\perp\s*([A-Za-z])(?![A-Za-z])/g;
 const hasBatchim = (w) => BATCHIM.has(w[w.length - 1].toLowerCase());
 
@@ -255,15 +287,35 @@ const lastHangul = (s) => {
 };
 const hasJong = (ch) => (ch.charCodeAt(0) - 0xac00) % 28 !== 0;
 
+// Whether the last SPOKEN word ends in a 받침 — a trailing digit or letter is
+// read aloud too, so "루트 x 더하기 1" ends in 일 (은), not in 기 from 더하기.
+// Digits: 영 일 삼 육 칠 팔 have one, and a trailing 0 is 영/십/백/천/만.
+// null when nothing tells (no Hangul, digit or letter at the end).
+function endsWithJong(s) {
+  const t = s.replace(/<[^>]*>|[\x01\x02]/g, ' ').trimEnd();  // markup, voice markers
+  const c = t[t.length - 1] ?? '';
+  if (/[0-9]/.test(c)) return '013678'.includes(c);
+  if (/[A-Za-z]/.test(c)) return BATCHIM.has(c.toLowerCase());
+  if (/[가-힣]/.test(c)) return hasJong(c);
+  const h = lastHangul(t);
+  return h ? hasJong(h) : null;
+}
+
 // A CHAIN of relations loses every particle: SRE reads "x \\leq 3" correctly as
 // "x 는 3 보다 작거나 같다" but "p \\leq k < q" as a bare "p 작거나 같다 k 작다
 // q". Splitting the chain into its overlapping binary pairs gets the particles
 // back from SRE itself, so no 받침 table is involved — the pivot is simply
 // spoken twice, which is how the relation is read aloud anyway.
-const RELS = String.raw`\\leq|\\geq|\\lt|\\gt|<|>`;
+const RELS = String.raw`\\(?:leq|geq|le|ge|lt|gt)(?![A-Za-z])|<|>`;
 // a term may carry a superscript ("x^2 < y < z"); the lookbehind stops the
-// match starting INSIDE one, which used to slice "x^2" into "x^" + "2"
-const TERM = String.raw`-?[A-Za-z0-9.]+(?:\^\{?[A-Za-z0-9]+\}?)?`;
+// match starting INSIDE one, which used to slice "x^2" into "x^" + "2".
+// Besides plain letters/digits, a term may be a fraction, a root, a Greek
+// letter or an absolute value — "0 < x < \\pi", "\\frac{1}{2} < x < \\frac{3}{2}"
+// and "3 < |x-1| < 5" are as common as "1 < x < 3" (braces: one nesting level).
+const BRACED = String.raw`\{(?:[^{}]|\{[^{}]*\})*\}`;
+const ATOM = String.raw`(?:\\frac(?:${BRACED}${BRACED}|\d\d)|\\sqrt(?:\[[^\]]*\])?${BRACED}`
+  + String.raw`|\\(?:pi|alpha|beta|theta|infty)(?![A-Za-z])|\|[^|<>=]+\||[A-Za-z0-9.]+)`;
+const TERM = String.raw`-?${ATOM}(?:\^\{?[A-Za-z0-9]+\}?)?`;
 const CHAIN = new RegExp(
   String.raw`(?<![A-Za-z0-9.^_{\\])` + `${TERM}(?:\\s*(?:${RELS})\\s*${TERM}){2,}`, 'g');
 const CHAIN_TOKEN = new RegExp(`${RELS}|${TERM}`, 'g');
@@ -298,14 +350,24 @@ function splitChains(latex) {
 // and unambiguous, and inbox_eval.py's judge prompt asserts exactly that.
 const ABS = /\|([^|]+)\|/g;
 const SIMPLE_OPERAND = /^\s*-?[A-Za-z0-9.]+\s*$/;
+// Right after a relation the move would strand it: "3 < |x-1|" spoke as
+// "3 은 보다 작다 x 빼기 1 의 절댓값" — Korean puts the verb LAST, so the
+// relation needs its object inside the same SRE fragment. The prefix reading
+// ("3 은 절댓값 x 빼기 1 보다 작다") is complete there, the verb closes it.
+const ENDS_REL = new RegExp(`(?:${RELS})\\s*$`);
+// "2|x-1|": a coefficient glued to the bars. With 절댓값 moved after the
+// operand, it would sound exactly like |2x-1| ("2 x 빼기 1 의 절댓값").
+const ENDS_OPERAND = /[A-Za-z0-9.)}]\s*$/;
 
 function splitAbs(latex) {
   const segs = [];
   let last = 0;
   for (const m of latex.matchAll(ABS)) {
     if (SIMPLE_OPERAND.test(m[1])) continue;   // prefix reading is already fine
+    if (ENDS_REL.test(latex.slice(0, m.index))) continue;
     const before = latex.slice(last, m.index);
     if (before.trim()) segs.push({ latex: before });
+    if (ENDS_OPERAND.test(before)) segs.push({ text: '곱하기' });
     segs.push({ latex: m[1] }, { text: '의 절댓값' });
     last = m.index + m[0].length;
   }
@@ -345,8 +407,47 @@ function splitFences(latex) {
   return segs;
 }
 
+// A fragment ending in a SIGN minus ("y=-" before |x-1|, a lone "-" before
+// 0.\dot{3} or a radical) is spoken by SRE as a dangling "빼기". The sign
+// belongs to what follows, so it becomes its own word.
+const SIGN_TAIL = /^(.*?)\s*-\s*$/s;
+const SIGN_CONTEXT = /(?:^|[=<>(\[{,]|\\(?:leq|geq|le|ge|lt|gt|neq|ne)(?![A-Za-z]))\s*$/;
+const SIGN = { text: '마이너스', sign: true };
+
+function splitSignTails(segs) {
+  const out = [];
+  segs.forEach((seg, i) => {
+    const m = seg.latex !== undefined && i + 1 < segs.length && seg.latex.match(SIGN_TAIL);
+    // a fragment that is ONLY the minus ("\\sqrt{a}-\\sqrt{b}" splits around
+    // it) takes its context from the segment before
+    if (m && (m[1].trim() ? SIGN_CONTEXT.test(m[1]) : !endsOnOperand(out[out.length - 1]))) {
+      if (m[1].trim()) out.push({ latex: m[1] });
+      out.push(SIGN);
+    } else {
+      out.push(seg);
+    }
+  });
+  return out;
+}
+
+/** True when `prev` (the segment before a fragment starting with +/-) ends on
+ * an operand, so that sign is a binary operator: "\sqrt{a+b}+1", "|x-2|-3".
+ * After nothing, a chain's comma, a relation or an opening bracket it is a
+ * sign: "-2 < x" is 마이너스 2, never 빼기 2. */
+function endsOnOperand(prev) {
+  if (!prev) return false;
+  if (prev.root !== undefined) return true;
+  if (prev.text !== undefined) return !(prev.sign || prev.text === ',' || prev.text === '곱하기');
+  return !/(?:[=<>(\[{,+\-]|\\(?:leq|geq|le|ge|lt|gt|neq|ne|pm|times|div|cdot)(?![A-Za-z]))\s*$/
+    .test(prev.latex);
+}
+
 /** Repeating-decimal + 선분 + fence/⊥ splits (both modes); radicals SSML only. */
 function splitSpecials(latex, withRadicals) {
+  return splitSignTails(splitSpecialsRaw(latex, withRadicals));
+}
+
+function splitSpecialsRaw(latex, withRadicals) {
   const out = [];
   for (const seg of splitRepeating(latex)) {
     if (seg.latex === undefined) {
@@ -557,9 +658,11 @@ function splitSpans(text) {
 }
 
 async function main() {
-  const { files, combos, ssml, voice, altVoice, write, strict } = parseArgs(process.argv.slice(2));
+  const { files, combos, ssml: ssmlFlag, both, voice, altVoice, write, strict } =
+    parseArgs(process.argv.slice(2));
+  const modes = both ? [false, true] : [ssmlFlag];   // false = plain, true = SSML
   if (write) fs.mkdirSync(write, { recursive: true });
-  const writeStitched = (file, content) => {
+  const writeStitched = (file, content, ssml) => {
     if (!write) return;
     const base = path.basename(file).replace(/\.norm\.md$/, '');
     const dest = path.join(write, `${base}.stitched.${ssml ? 'ssml' : 'txt'}`);
@@ -582,8 +685,10 @@ async function main() {
     for (const part of doc.parts) {
       if (part.latex === undefined) continue;
       wanted.add(part.latex);
-      for (const seg of splitSpecials(part.latex, ssml)) {
-        if (seg.text === undefined) wanted.add(seg.root ?? seg.latex);
+      for (const ssml of modes) {
+        for (const seg of splitSpecials(part.latex, ssml)) {
+          if (seg.text === undefined) wanted.add(seg.root ?? seg.latex);
+        }
       }
     }
   }
@@ -602,171 +707,174 @@ async function main() {
     }
   }
 
-  // speech.get(latex).get('domain/style') -> string | {error}
-  const speech = new Map([...mathml.keys()].map((l) => [l, new Map()]));
-  for (const { domain, style } of combos) {
-    await sre.setupEngine({
-      locale: 'ko', domain, style, modality: 'speech', markup: ssml ? 'ssml' : 'none',
-    });
-    await sre.engineReady();
-    for (const [latex, conv] of mathml) {
-      const key = `${domain}/${style}`;
-      if (conv.error) {
-        speech.get(latex).set(key, { error: `MathML conversion failed: ${conv.error}` });
-        continue;
-      }
-      try {
-        speech.get(latex).set(key, fixMisreads(sre.toSpeech(conv.mathml)));
-      } catch (err) {
-        speech.get(latex).set(key, { error: String(err) });
-      }
-    }
-  }
-
-  // The stitched view uses the FIRST combo's speech.
-  const stitchKey = `${combos[0].domain}/${combos[0].style}`;
-
   // Failure accounting (issue #11): a span that stitched as salvage or a
   // placeholder used to be one console line scrolling past while the run
   // still finished "successfully". Count per doc, summarize, and let
   // --strict turn any failure into a non-zero exit for wrapper scripts.
   const totals = { spans: 0, ok: 0, salvaged: 0, unsupported: 0, badXml: 0 };
 
-  for (const doc of docs) {
-    console.log();
-    console.log(HR);
-    console.log(doc.file);
-    console.log(HR);
-
-    const seen = new Set();
-    for (const part of doc.parts) {
-      if (part.latex === undefined || seen.has(part.latex)) continue;
-      seen.add(part.latex);
-      console.log(`  $${part.latex}$`);
-      for (const [key, out] of speech.get(part.latex)) {
-        const tag = key.padEnd(22);
-        if (typeof out === 'string') {
-          const flag = out.trim() ? '' : '  << EMPTY OUTPUT';
-          console.log(`    ${tag} ${out}${flag}`);
-        } else {
-          console.log(`    ${tag} !! ${out.error}`);
+  for (const ssml of modes) {
+    // speech.get(latex).get('domain/style') -> string | {error}
+    const speech = new Map([...mathml.keys()].map((l) => [l, new Map()]));
+    for (const { domain, style } of combos) {
+      await sre.setupEngine({
+        locale: 'ko', domain, style, modality: 'speech', markup: ssml ? 'ssml' : 'none',
+      });
+      await sre.engineReady();
+      for (const [latex, conv] of mathml) {
+        const key = `${domain}/${style}`;
+        if (conv.error) {
+          speech.get(latex).set(key, { error: `MathML conversion failed: ${conv.error}` });
+          continue;
+        }
+        try {
+          speech.get(latex).set(key, fixMisreads(sre.toSpeech(conv.mathml)));
+        } catch (err) {
+          speech.get(latex).set(key, { error: String(err) });
         }
       }
     }
 
-    // Render one span for the stitched view, recording how it went:
-    // ok (real speech) / salvaged (best-effort words) / unsupported (placeholder).
-    const stats = { spans: 0, ok: 0, salvaged: 0, unsupported: 0, badXml: 0 };
-    const renderSpan = (latex, escape) => {
-      stats.spans++;
-      // Segment path: repeating decimals speak as ready-made Korean text in
-      // BOTH modes (reading C, decided — see the #17 note above); a complex
-      // radicand switches to the alternate-gender voice (SSML only). Any
-      // segment without clean speech falls back to the whole-span path.
-      const segs = splitSpecials(latex, ssml);
-      if (segs.some((s) => s.text !== undefined || s.root !== undefined)) {
-        const rendered = [];
-        for (const seg of segs) {
-          if (seg.text !== undefined) {
-            rendered.push(` ${escape(seg.text)} `);
-            continue;
+    // The stitched view uses the FIRST combo's speech.
+    const stitchKey = `${combos[0].domain}/${combos[0].style}`;
+
+    for (const doc of docs) {
+      console.log();
+      console.log(HR);
+      console.log(doc.file);
+      console.log(HR);
+
+      const seen = new Set();
+      for (const part of doc.parts) {
+        if (part.latex === undefined || seen.has(part.latex)) continue;
+        seen.add(part.latex);
+        console.log(`  $${part.latex}$`);
+        for (const [key, out] of speech.get(part.latex)) {
+          const tag = key.padEnd(22);
+          if (typeof out === 'string') {
+            const flag = out.trim() ? '' : '  << EMPTY OUTPUT';
+            console.log(`    ${tag} ${out}${flag}`);
+          } else {
+            console.log(`    ${tag} !! ${out.error}`);
           }
-          let segOut = speech.get(seg.root ?? seg.latex)?.get(stitchKey);
-          if (typeof segOut !== 'string' || !segOut.trim()) {
-            rendered.length = 0;
-            break;
-          }
-          // A trailing fragment like "+1" is rendered on its own, so SRE reads
-          // its leading sign as UNARY — "루트 a 더하기 b 플러스 1" for
-          // \sqrt{a+b}+1. Continuing an expression, it is always binary.
-          if (seg.latex !== undefined && /^\s*[+-]/.test(seg.latex)) {
-            segOut = segOut.replace(/^((?:\s|<[^>]*>)*)플러스/, '$1더하기')
-                           .replace(/^((?:\s|<[^>]*>)*)마이너스/, '$1빼기');
-          }
-          // SRE picks the copula 는/은 for '=' from the fragment alone, so a
-          // reordering split can leave it disagreeing with what now precedes
-          // it ("...의 절댓값 는 5"). Re-pick it from the real 받침.
-          if (rendered.length) {
-            const prev = lastHangul(rendered.join(''));
-            if (prev) {
-              segOut = segOut.replace(/^((?:\s|<[^>]*>)*)(?:는|은)(?=\s)/,
-                                      (_m, pre) => pre + (hasJong(prev) ? '은' : '는'));
+        }
+      }
+
+      // Render one span for the stitched view, recording how it went:
+      // ok (real speech) / salvaged (best-effort words) / unsupported (placeholder).
+      const stats = { spans: 0, ok: 0, salvaged: 0, unsupported: 0, badXml: 0 };
+      const renderSpan = (latex, escape) => {
+        stats.spans++;
+        // Segment path: repeating decimals speak as ready-made Korean text in
+        // BOTH modes (reading C, decided — see the #17 note above); a complex
+        // radicand switches to the alternate-gender voice (SSML only). Any
+        // segment without clean speech falls back to the whole-span path.
+        const segs = splitSpecials(latex, ssml);
+        if (segs.some((s) => s.text !== undefined || s.root !== undefined)) {
+          const rendered = [];
+          for (const [si, seg] of segs.entries()) {
+            if (seg.text !== undefined) {
+              rendered.push(` ${escape(seg.text)} `);
+              continue;
             }
+            let segOut = speech.get(seg.root ?? seg.latex)?.get(stitchKey);
+            if (typeof segOut !== 'string' || !segOut.trim()) {
+              rendered.length = 0;
+              break;
+            }
+            // A trailing fragment like "+1" is rendered on its own, so SRE reads
+            // its leading sign as UNARY — "루트 a 더하기 b 플러스 1" for
+            // \sqrt{a+b}+1. Continuing an expression, it is binary; at the
+            // start, after a chain's comma or after '=' it is still a sign.
+            if (seg.latex !== undefined && /^\s*[+-]/.test(seg.latex) && endsOnOperand(segs[si - 1])) {
+              segOut = segOut.replace(/^((?:\s|<[^>]*>)*)플러스/, '$1더하기')
+                             .replace(/^((?:\s|<[^>]*>)*)마이너스/, '$1빼기');
+            }
+            // SRE picks the copula 는/은 for '=' from the fragment alone, so a
+            // reordering split can leave it disagreeing with what now precedes
+            // it ("...의 절댓값 는 5"). Re-pick it from the real 받침.
+            if (rendered.length) {
+              const jong = endsWithJong(rendered.join(''));
+              if (jong !== null) {
+                segOut = segOut.replace(/^((?:\s|<[^>]*>)*)(?:는|은)(?=\s)/,
+                                        (_m, pre) => pre + (jong ? '은' : '는'));
+              }
+            }
+            // \x01/\x02 mark the alt-voice region; Azure forbids a <voice>
+            // inside a <voice>, so the envelope assembly turns the markers
+            // into SIBLING voice elements instead of nesting them.
+            rendered.push(seg.root !== undefined
+              ? ` 루트 \x01${ssmlInner(segOut)}\x02 `
+              : ssml ? ` ${ssmlInner(segOut)} ` : ` ${segOut.trim()} `);
           }
-          // \x01/\x02 mark the alt-voice region; Azure forbids a <voice>
-          // inside a <voice>, so the envelope assembly turns the markers
-          // into SIBLING voice elements instead of nesting them.
-          rendered.push(seg.root !== undefined
-            ? ` 루트 \x01${ssmlInner(segOut)}\x02 `
-            : ssml ? ` ${ssmlInner(segOut)} ` : ` ${segOut.trim()} `);
+          if (rendered.length) {
+            stats.ok++;
+            return rendered.join('');
+          }
         }
-        if (rendered.length) {
+        const out = speech.get(latex).get(stitchKey);
+        if (typeof out === 'string' && out.trim()) {
           stats.ok++;
-          return rendered.join('');
+          return ssml ? ` ${ssmlInner(out)} ` : ` ${out.trim()} `;
         }
-      }
-      const out = speech.get(latex).get(stitchKey);
-      if (typeof out === 'string' && out.trim()) {
-        stats.ok++;
-        return ssml ? ` ${ssmlInner(out)} ` : ` ${out.trim()} `;
-      }
-      const saved = salvage(latex);
-      if (saved) {
-        stats.salvaged++;
-        return ` ${escape(saved)} `;
-      }
-      stats.unsupported++;
-      return ` [지원되지 않는 수식: ${escape(latex)}] `;
-    };
+        const saved = salvage(latex);
+        if (saved) {
+          stats.salvaged++;
+          return ` ${escape(saved)} `;
+        }
+        stats.unsupported++;
+        return ` [지원되지 않는 수식: ${escape(latex)}] `;
+      };
 
-    console.log(hr);
-    if (ssml) {
-      console.log(`STITCHED SSML (${stitchKey}, Azure envelope, voice=${voice}):`);
       console.log(hr);
-      const body = doc.parts
-        .map((part) =>
-          part.latex === undefined ? escapeXml(part.prose) : renderSpan(part.latex, escapeXml)
-        )
-        .join('')
-        .replace(/ +/g, ' ')
-        .trim()
-        // alt-voice markers -> sibling <voice> elements (nesting is rejected
-        // by Azure: "[voice] should not contain [voice]")
-        .replaceAll('\x01', `</voice><voice name="${altVoice}">`)
-        .replaceAll('\x02', `</voice><voice name="${voice}">`);
-      const doc_ssml = AZURE_SSML(voice, body)
-        .replace(/<voice name="[^"]*">\s*<\/voice>/g, ''); // drop empty runs
-      console.log(doc_ssml);
-      const xmlErr = checkWellFormed(doc_ssml);
-      if (xmlErr) {
-        stats.badXml++;
-        console.error(`  !! SSML NOT WELL-FORMED (${xmlErr}) — not writing this file`);
+      if (ssml) {
+        console.log(`STITCHED SSML (${stitchKey}, Azure envelope, voice=${voice}):`);
+        console.log(hr);
+        const body = doc.parts
+          .map((part) =>
+            part.latex === undefined ? escapeXml(part.prose) : renderSpan(part.latex, escapeXml)
+          )
+          .join('')
+          .replace(/ +/g, ' ')
+          .trim()
+          // alt-voice markers -> sibling <voice> elements (nesting is rejected
+          // by Azure: "[voice] should not contain [voice]")
+          .replaceAll('\x01', `</voice><voice name="${altVoice}">`)
+          .replaceAll('\x02', `</voice><voice name="${voice}">`);
+        const doc_ssml = AZURE_SSML(voice, body)
+          .replace(/<voice name="[^"]*">\s*<\/voice>/g, ''); // drop empty runs
+        console.log(doc_ssml);
+        const xmlErr = checkWellFormed(doc_ssml);
+        if (xmlErr) {
+          stats.badXml++;
+          console.error(`  !! SSML NOT WELL-FORMED (${xmlErr}) — not writing this file`);
+        } else {
+          writeStitched(doc.file, doc_ssml, ssml);
+        }
       } else {
-        writeStitched(doc.file, doc_ssml);
+        console.log(`STITCHED (${stitchKey}) — what a TTS voice would read:`);
+        console.log(hr);
+        const stitched = doc.parts
+          .map((part) =>
+            part.latex === undefined ? part.prose : renderSpan(part.latex, (s) => s)
+          )
+          .join('')
+          .replace(/ +/g, ' ')
+          .trim();
+        console.log(stitched);
+        writeStitched(doc.file, stitched, ssml);
       }
-    } else {
-      console.log(`STITCHED (${stitchKey}) — what a TTS voice would read:`);
-      console.log(hr);
-      const stitched = doc.parts
-        .map((part) =>
-          part.latex === undefined ? part.prose : renderSpan(part.latex, (s) => s)
-        )
-        .join('')
-        .replace(/ +/g, ' ')
-        .trim();
-      console.log(stitched);
-      writeStitched(doc.file, stitched);
-    }
 
-    // Same shape as stage 1's eval summary: one scannable line per doc.
-    const flags = [
-      stats.salvaged && `salvaged: ${stats.salvaged}`,
-      stats.unsupported && `UNSUPPORTED (placeholder in output): ${stats.unsupported}`,
-      stats.badXml && 'SSML MALFORMED',
-    ].filter(Boolean);
-    console.log(`SUMMARY: ${stats.spans} span(s), ok: ${stats.ok}` +
-      (flags.length ? `   ${flags.join('   ')}` : ''));
-    for (const k of Object.keys(totals)) totals[k] += stats[k];
+      // Same shape as stage 1's eval summary: one scannable line per doc.
+      const flags = [
+        stats.salvaged && `salvaged: ${stats.salvaged}`,
+        stats.unsupported && `UNSUPPORTED (placeholder in output): ${stats.unsupported}`,
+        stats.badXml && 'SSML MALFORMED',
+      ].filter(Boolean);
+      console.log(`${both && ssml ? '(ssml) ' : ''}SUMMARY: ${stats.spans} span(s), ok: ${stats.ok}` +
+        (flags.length ? `   ${flags.join('   ')}` : ''));
+      for (const k of Object.keys(totals)) totals[k] += stats[k];
+    }
   }
 
   const failures = totals.salvaged + totals.unsupported + totals.badXml;
@@ -779,7 +887,8 @@ async function main() {
 }
 
 module.exports = { SPAN, checkWellFormed, splitRadicals, splitRepeating, splitSegments,
-                   splitFences, splitChains, splitAbs, fixMisreads };
+                   splitFences, splitChains, splitAbs, splitSpecials, endsWithJong,
+                   fixMisreads };
 
 if (require.main === module) {
   main().catch((err) => {

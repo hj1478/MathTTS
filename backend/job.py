@@ -15,9 +15,10 @@ for running as a service rather than as a CLI:
     48 kbit/s mono) instead of tts_probe's WAV: about 1/8 the size, so it can
     be served from the job store and downloads faster (FINDINGS.md, 2026-10-19).
   - Stage 3 runs the plain and SSML speak.js passes at the same time instead
-    of one after the other. They write different files. When the plain pass
-    fails --strict, the SSML pass's output is discarded, so the result is the
-    same as run.py's, where the SSML pass would never have run.
+    of one after the other, each with only the clearspeak combo the stitched
+    output uses. They write different files. When the plain pass fails
+    --strict, the SSML pass's output is discarded, so the result is the same
+    as run.py's, where the SSML pass would never have run.
   - A stage-4 failure does not fail the job. The text stages are the result;
     audio carries its own status, and an exhausted quota is reported as
     "quota_reached" rather than as an error.
@@ -81,20 +82,28 @@ class JobError(Exception):
 
 
 def _speak(norm_path, out_dir, ssml):
-    """sre-probe/speak.js, exactly as run.py calls it (--strict, --voice, --write).
+    """sre-probe/speak.js as run.py calls it (--strict, --voice, --write).
+
+    Only the clearspeak combo: the stitched output uses the first combo, and
+    the default second one (mathspeak) only fills speak.js's console table.
 
     Returns (exit_code, SUMMARY lines). Exit 2 is the --strict failure: the
     files were still written, but something stitched as salvage/placeholder.
     """
-    cmd = ["node", str(SPEAK_JS), "--strict", "--voice", VOICE, "--write", str(out_dir)]
+    cmd = ["node", str(SPEAK_JS), "--strict", "--combos", "clearspeak/default",
+           "--voice", VOICE, "--write", str(out_dir)]
     if ssml:
         cmd.append("--ssml")
     cmd.append(str(norm_path))
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=SPEAK_TIMEOUT_S)
-    summary = [ln.strip() for ln in proc.stdout.splitlines() if ln.startswith("SUMMARY:")]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
+                              timeout=SPEAK_TIMEOUT_S)
+    except subprocess.TimeoutExpired as e:
+        raise JobError("speech_stage_failed", f"speak.js timed out after {SPEAK_TIMEOUT_S}s") from e
     if proc.returncode not in (0, 2):
         tail = (proc.stderr or proc.stdout).strip().splitlines()[-1:] or [""]
         raise JobError("speech_stage_failed", tail[0])
+    summary = [ln.strip() for ln in proc.stdout.splitlines() if ln.startswith("SUMMARY:")]
     return proc.returncode, summary
 
 
