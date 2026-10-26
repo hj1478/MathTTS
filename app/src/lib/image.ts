@@ -12,7 +12,8 @@ const MAX_SIDE = 2400; // plenty for OCR; keeps phone photos well under 5 MB
 export type PickProblem =
   | { kind: 'not_image'; name: string }
   | { kind: 'too_large'; size: number }
-  | { kind: 'denied' };
+  | { kind: 'denied' }
+  | { kind: 'no_camera' };
 
 export type PickResult = { picked: Picked } | { problem: PickProblem } | null;
 
@@ -49,6 +50,19 @@ function pickWebFile(camera: boolean): Promise<PickResult> {
     input.oncancel = () => resolve(null);
     input.click();
   });
+}
+
+/**
+ * Web on a desktop: the camera button opens WebCamera (a live preview), since
+ * desktop browsers ignore <input capture> and show the file dialog. Phones and
+ * tablets keep the input, which opens their own camera app.
+ */
+export function liveCameraOnWeb(): boolean {
+  return (
+    Platform.OS === 'web' &&
+    !!navigator.mediaDevices?.getUserMedia &&
+    !window.matchMedia('(pointer: coarse)').matches
+  );
 }
 
 export async function pickPhoto(source: 'camera' | 'library'): Promise<PickResult> {

@@ -6,10 +6,11 @@ import { Platform, View } from 'react-native';
 import { DropZone } from '@/components/DropZone';
 import { HistoryRow } from '@/components/HistoryRow';
 import { Icon } from '@/components/Icon';
+import { WebCamera } from '@/components/WebCamera';
 import { Banner, Button, Card, H2, Header, HeaderLink, Page, T } from '@/components/ui';
 import { warmup } from '@/lib/api';
 import { megabytes } from '@/lib/format';
-import { fromFile, pickPhoto, type PickProblem, type PickResult } from '@/lib/image';
+import { fromFile, pickPhoto, liveCameraOnWeb, type PickProblem, type PickResult } from '@/lib/image';
 import { listHistory, persistSession, session, type Reading } from '@/lib/store';
 import { font, useColors, useWide } from '@/lib/theme';
 import { useOnline } from '@/lib/useOnline';
@@ -34,7 +35,15 @@ function ProblemBanner({ p }: { p: Problem }) {
     case 'denied':
       return (
         <Banner tone="error" title="카메라를 쓸 수 없어요">
-          설정에서 카메라 권한을 켜 주세요. 갤러리에서 사진을 고를 수도 있어요.
+          {Platform.OS === 'web'
+            ? '브라우저에서 이 사이트의 카메라 권한을 허용해 주세요. 파일 선택으로 사진을 올릴 수도 있어요.'
+            : '설정에서 카메라 권한을 켜 주세요. 갤러리에서 사진을 고를 수도 있어요.'}
+        </Banner>
+      );
+    case 'no_camera':
+      return (
+        <Banner tone="error" title="카메라를 찾을 수 없어요">
+          이 기기에서 카메라를 찾지 못했어요. 파일 선택으로 사진을 올려 주세요.
         </Banner>
       );
     case 'server':
@@ -104,7 +113,16 @@ export default function Home() {
     persistSession();
     router.push('/crop');
   };
-  const pick = async (src: 'camera' | 'library') => take(await pickPhoto(src));
+  const [camera, setCamera] = useState(false);
+  const closeCamera = useCallback(() => setCamera(false), []);
+  const cameraProblem = useCallback((kind: 'denied' | 'no_camera') => {
+    setCamera(false);
+    setProblem({ kind });
+  }, []);
+  const pick = async (src: 'camera' | 'library') => {
+    if (src === 'camera' && liveCameraOnWeb()) return setCamera(true);
+    take(await pickPhoto(src));
+  };
 
   const showCaption = !!problem || wide;
   const buttons = (
@@ -221,6 +239,16 @@ export default function Home() {
           {pdfHint || <Tips />}
           <View style={{ marginTop: 'auto' }}>{recentList}</View>
         </Page>
+      )}
+      {camera && (
+        <WebCamera
+          onCapture={async (f) => {
+            setCamera(false);
+            take(await fromFile(f));
+          }}
+          onProblem={cameraProblem}
+          onClose={closeCamera}
+        />
       )}
     </View>
   );
