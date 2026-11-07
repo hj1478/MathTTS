@@ -86,7 +86,9 @@ class JobError(Exception):
 
 
 def _speak(norm_path, out_dir, ssml):
-    """sre-probe/speak.js as run.py calls it (--strict, --voice, --write).
+    """sre-probe/speak.js as run.py calls it (--strict, --voice, --write), plus
+    --casual: math is read as a person says it ("A 1", "x 마이너스 1 분의 x 플러스
+    1", "3 이상"), not spelled out (sre-probe/casual.js).
 
     Only the clearspeak combo: the stitched output uses the first combo, and
     the default second one (mathspeak) only fills speak.js's console table.
@@ -94,7 +96,7 @@ def _speak(norm_path, out_dir, ssml):
     Returns (exit_code, SUMMARY lines). Exit 2 is the --strict failure: the
     files were still written, but something stitched as salvage/placeholder.
     """
-    cmd = ["node", str(SPEAK_JS), "--strict", "--combos", "clearspeak/default",
+    cmd = ["node", str(SPEAK_JS), "--strict", "--casual", "--combos", "clearspeak/default",
            "--voice", VOICE, "--write", str(out_dir)]
     if ssml:
         cmd.append("--ssml")

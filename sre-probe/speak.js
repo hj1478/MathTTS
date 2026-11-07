@@ -20,6 +20,9 @@
  * view) and mathspeak/default (unambiguous register), per the index.js probe.
  * Only the FIRST combo reaches the stitched output; the rest are for the table.
  *
+ * --casual: read math as a person says it ("A 1", "x 마이너스 1 분의 x 플러스
+ * 1", "3 이상") instead of SRE's spelled-out form; the rules are in casual.js.
+ *
  * --both: the plain pass, then the --ssml pass, in one process (temml runs
  * once; the files written are the same as two separate runs). The SSML pass's
  * SUMMARY lines are prefixed "(ssml) ", and the exit status covers both.
@@ -55,6 +58,7 @@ const fs = require('fs');
 const path = require('path');
 const sre = require('speech-rule-engine');
 const temml = require('temml');
+const { casualLatex, casualSpeech } = require('./casual');
 
 // Same span grammar as normalize.py SPAN, restricted to the $-forms (this
 // stage consumes normalize.py output, which only ever emits $..$ / $$..$$).
@@ -81,6 +85,7 @@ function parseArgs(argv) {
   let write = null;
   let strict = false;
   let altVoice = null;
+  let casual = false;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--ssml') {
@@ -89,6 +94,8 @@ function parseArgs(argv) {
       both = true;
     } else if (a === '--strict') {
       strict = true;
+    } else if (a === '--casual') {
+      casual = true;
     } else if (a === '--voice') {
       voice = argv[++i] ?? voice;
     } else if (a === '--alt-voice') {
@@ -115,13 +122,13 @@ function parseArgs(argv) {
   }
   if (!files.length) {
     console.error(
-      'usage: node speak.js <file.norm.md ...> | --dir FOLDER [--combos d/s,d/s] [--ssml | --both] [--voice NAME] [--alt-voice NAME] [--write DIR] [--strict]'
+      'usage: node speak.js <file.norm.md ...> | --dir FOLDER [--combos d/s,d/s] [--ssml | --both] [--voice NAME] [--alt-voice NAME] [--write DIR] [--strict] [--casual]'
     );
     process.exit(1);
   }
   // radicand voice defaults to the opposite gender of the main voice
   altVoice ??= voice.includes('InJoon') ? 'ko-KR-SunHiNeural' : 'ko-KR-InJoonNeural';
-  return { files, combos, ssml, both, voice, altVoice, write, strict };
+  return { files, combos, ssml, both, voice, altVoice, write, strict, casual };
 }
 
 /* ----------------------------- SSML helpers ----------------------------- */
@@ -658,8 +665,10 @@ function splitSpans(text) {
 }
 
 async function main() {
-  const { files, combos, ssml: ssmlFlag, both, voice, altVoice, write, strict } =
+  const { files, combos, ssml: ssmlFlag, both, voice, altVoice, write, strict, casual } =
     parseArgs(process.argv.slice(2));
+  // --casual (casual.js): simplified LaTeX in, shortened phrases out
+  const spoken = casual ? casualSpeech : (s) => s;
   const modes = both ? [false, true] : [ssmlFlag];   // false = plain, true = SSML
   if (write) fs.mkdirSync(write, { recursive: true });
   const writeStitched = (file, content, ssml) => {
@@ -674,7 +683,9 @@ async function main() {
   // the (global) engine is set up once per combo instead of once per span.
   const docs = files.map((file) => {
     const text = fs.readFileSync(file, 'utf8').trim();
-    return { file, parts: splitSpans(text) };
+    const parts = splitSpans(text);
+    if (casual) for (const part of parts) if (part.latex !== undefined) part.latex = casualLatex(part.latex);
+    return { file, parts };
   });
 
   // Everything needing speech: each span whole, plus (SSML mode) its radical
@@ -809,13 +820,13 @@ async function main() {
           }
           if (rendered.length) {
             stats.ok++;
-            return rendered.join('');
+            return spoken(rendered.join(''));
           }
         }
         const out = speech.get(latex).get(stitchKey);
         if (typeof out === 'string' && out.trim()) {
           stats.ok++;
-          return ssml ? ` ${ssmlInner(out)} ` : ` ${out.trim()} `;
+          return spoken(ssml ? ` ${ssmlInner(out)} ` : ` ${out.trim()} `);
         }
         const saved = salvage(latex);
         if (saved) {

@@ -65,7 +65,7 @@ TODO
 | 1. OCR | `ocr_vl.py` | `*.png` → `output/*.md` | PaddleOCR-VL, locally on CPU: Korean prose + inline `$...$` LaTeX |
 | 1.5 Dots (opt-in) | `dot_check.py` | `*.md` → `*.dots.md` | `run.py --dots` only. Text-only LLM pass restoring 순환소수 dots the OCR dropped; writes beside the raw page, which stage 2 then prefers |
 | 2. Normalize | `normalize.py` | `*.md` → `*.norm.md` | Canonicalizes the OCR's inconsistent math (unicode, bare runs, stray `$`) into `$...$` LaTeX |
-| 3. Math → speech | `sre-probe/speak.js` | `*.norm.md` → `stitched/*.stitched.txt` / `.ssml` | temml → MathML → SRE (locale ko); stitches Korean speech back into the prose |
+| 3. Math → speech | `sre-probe/speak.js` | `*.norm.md` → `stitched/*.stitched.txt` / `.ssml` | temml → MathML → SRE (locale ko); stitches Korean speech back into the prose. `--casual` (what the service uses) reads it as a person would: "A 1", "x 마이너스 1 분의 x 플러스 1", "3 이상" (`sre-probe/casual.js`) |
 | 4. TTS | `tts_full.py` | `stitched/*` → `audio/*.wav` | Azure Neural TTS; plain and SSML versions per problem for A/B listening |
 
 The split exists because no single tool crosses the whole gap: the OCR emits
@@ -185,6 +185,13 @@ out of the math, and `^{2}` is canonicalized to `^2`. This is the one place
 보다 작거나 같다 가 모든 음의 정수 x 에 대하여 성립하고, 자연수 x 에 대하여
 성립하지 않는다고 할 때, 상수 k 의 값의 범위는 p 작거나 같다 k 작다 q
 (p, q는 상수)이다. 이때 p 제곱 더하기 9 q 제곱 의 값을 구하시오.
+```
+
+With `--casual`, which the web service uses, the same problem reads:
+
+```
+24. x 에 대한 일차부등식 3 괄호 열고 x 마이너스 k 괄호 닫고 는 2 x 플러스 5
+이하 가 모든 음의 정수 x 에 대하여 성립하고, …
 ```
 
 Had the span not been repaired at stage 2, "(p, q" would have been read as

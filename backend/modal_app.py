@@ -173,6 +173,7 @@ def _with_pipeline_source(image):
     return (
         image
         .add_local_file(REPO / "sre-probe" / "speak.js", "/root/sre-probe/speak.js")
+        .add_local_file(REPO / "sre-probe" / "casual.js", "/root/sre-probe/casual.js")
         .add_local_file(REPO / "normalize.py", "/root/normalize.py")
         .add_local_file(REPO / "ocr_vl.py", "/root/ocr_vl.py")
         .add_local_file(REPO / "tts_probe.py", "/root/tts_probe.py")

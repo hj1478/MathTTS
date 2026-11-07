@@ -803,3 +803,65 @@ and the 90 s idle tail: **≈ $0.024 (T4) vs $0.032 (L4)**.
 **Still open.** The 1.1 s Dict write outlier, and how often it happens. Polling
 on a fixed start-to-start interval would cut the ~0.8 s poll period to 0.5 s.
 That is client code, and the frontend does not exist yet.
+
+## 2026-11-07 — A casual reading of the math (`speak.js --casual`), now what the service speaks
+
+**Question.** SRE's Korean clearspeak is exact but reads like a screen reader
+spelling the notation out: "A 아래첨자 1", "분모가 x 빼기 1 이고 분자가 x 더하기
+1 인 분수", "x 는 3 보다 크거나 같다". Can the stitched speech sound like a
+teacher reading the problem aloud without becoming ambiguous?
+
+**What I did.** Probed 50 typical 중학교 expressions through SRE 5.0.0-rc.4
+(clearspeak/default, plain and SSML), and wrote rewrite rules in a new
+`sre-probe/casual.js`, applied by `speak.js --casual`. There are two layers:
+
+- On the LaTeX, before temml: a one-letter variable with a number or
+  one-letter subscript (`A_1`, `a_{n}`, `S_{10}`) is rewritten to a group
+  (`A{1}`), which SRE reads "A 1". Not after a backslash, so `\log_2` is untouched.
+- On each span's speech, after SRE (prose is never touched):
+
+| SRE | casual |
+|---|---|
+| 분모가 B 이고 분자가 A 인 분수 | B 분의 A |
+| 더하기 / 빼기 | 플러스 / 마이너스 |
+| 3 곱하기 괄호 열고 … | 3 괄호 열고 … |
+| 보다 크거나 같다 / 보다 작거나 같다 | 이상 / 이하 |
+| 0 과 같지 않다 | 0 이 아니다 |
+| 밑이 2 인 로그 의 8 | 로그 2 의 8 |
+| f 의 x, f 프라임 의 x | f x, f 프라임 x |
+| 1 콤마 2 콤마 3 | 1, 2, 3 (a pause) |
+
+The speech rules also run on SRE's SSML. A rule may swallow spaces and
+`<break/>` between words, but no other tag, so it can never drop a
+`</prosody>`. A rule that cannot match without crossing such a tag leaves the
+text as it was.
+
+**What happened.** On `output/` and `output_kma/` (15 pages), `--casual` gives
+the same `SUMMARY` counts as before (every span ok) in both modes, and no SSML
+came out malformed. One rule was wrong in its first version: dropping every
+"곱하기" before "괄호 열고" also dropped the written × in
+`(-1)^{n+1}\times(-1)^{n+2}` ("… 제곱 괄호 열고 …", which no longer says
+multiply). It now drops it only right after a number or a letter
+(`3(x-k)`, `2x(3x+1)`, `784(a-7)`). After "제곱" or "괄호 닫고" it stays.
+
+**Result.** Verified on text, not by ear: `sre-probe/casual.test.js` checks
+each rule on real SRE output in plain text and in SSML (well-formed, and
+saying the same words). Kept on purpose:
+
+- A compound subscript keeps 아래첨자: `a_{n+1}` → "a 아래첨자 n 플러스 1",
+  because "a n 플러스 1" would sound the same as `a_n + 1`.
+- Powers are unchanged ("a 의 n 제곱" is already how it is said).
+- Parentheses still say 열고/닫고: `(-2)^4` and `-2^4` must not sound the same.
+
+**Changed as a result.** `backend/job.py` runs speak.js with `--casual`, so the
+service's spoken text and audio use it. `backend/modal_app.py` ships
+`casual.js` to the worker. Without the flag, speak.js gives the old reading.
+
+**Still open.**
+
+- No A/B listening test on Azure yet.
+- 플러스/마이너스 is the 중학교 classroom habit. 초등 students may expect
+  더하기/빼기, and that would be a one-line switch.
+- "곱하기 괄호" after a letter assumes the × was implied. A written
+  `a \times (b+c)` loses its 곱하기 too. That is rare in Korean print, but not
+  impossible.

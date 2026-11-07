@@ -31,6 +31,7 @@ def test_speak_uses_only_the_stitched_combo_and_utf8(tmp_path, monkeypatch):
         0, ["SUMMARY: 1 span(s), ok: 1"])
     assert seen["cmd"][seen["cmd"].index("--combos") + 1] == "clearspeak/default"
     assert "--ssml" in seen["cmd"] and seen["encoding"] == "utf-8"
+    assert "--casual" in seen["cmd"]
 
 
 def test_speak_real_node_run(tmp_path):
