@@ -46,13 +46,17 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import normalize                 # noqa: E402  (needs ROOT on sys.path)
-from backend import limits       # noqa: E402
+from backend import limits, problems  # noqa: E402
 
 SPEAK_JS = ROOT / "sre-probe" / "speak.js"
 VOICE = "ko-KR-SunHiNeural"      # run.py's default
 AUDIO_NAME = "audio.mp3"
 AUDIO_MEDIA_TYPE = "audio/mpeg"
 SPEAK_TIMEOUT_S = 120
+# A page of numbered problems: how many problems run speak.js at once (two node
+# processes each), and how many Azure calls run at once.
+PARALLEL_PROBLEMS = 4
+PARALLEL_TTS = 3
 
 # Korean messages travel with the machine-readable codes so every client
 # shows the same wording; docs/API.md lists them all.
@@ -134,6 +138,68 @@ def _synthesize(ssml_text, audio_path):
     return ("quota_reached" if limits.is_quota_error(detail) else "failed"), detail
 
 
+def _speech(norm_path, stitch_dir):
+    """Stage 3 on one .norm.md -> (spoken text, ssml or None, strict_ok, SUMMARY lines)."""
+    base = norm_path.name.removesuffix(".norm.md")
+    txt_path = stitch_dir / f"{base}.stitched.txt"
+    ssml_path = stitch_dir / f"{base}.stitched.ssml"
+    for p in (txt_path, ssml_path):
+        p.unlink(missing_ok=True)
+    with ThreadPoolExecutor(2) as pool:  # both at once; see the module docstring
+        plain = pool.submit(_speak, norm_path, stitch_dir, ssml=False)
+        with_ssml = pool.submit(_speak, norm_path, stitch_dir, ssml=True)
+        code, summary = plain.result()
+        strict_ok = code == 0
+        if strict_ok:
+            ssml_code, ssml_summary = with_ssml.result()
+            strict_ok = ssml_code == 0 and ssml_path.exists()
+            summary += [f"(ssml) {s}" for s in ssml_summary]
+        else:  # run.py stops here on a --strict failure: no SSML pass, no SSML output
+            with_ssml.exception()  # wait for it; its result or error is discarded
+    if not strict_ok and code != 0:
+        ssml_path.unlink(missing_ok=True)
+    if not txt_path.exists():
+        raise JobError("speech_stage_failed", "speak.js wrote no text output")
+    spoken = txt_path.read_text(encoding="utf-8").strip()
+    ssml = ssml_path.read_text(encoding="utf-8").strip() if ssml_path.exists() else None
+    return spoken, ssml, strict_ok, summary
+
+
+def problem_audio_name(i):
+    """The MP3 of problem i (1-based) in the job folder."""
+    return f"audio_{i}.mp3"
+
+
+def _synthesize_problems(items, workdir):
+    """Stage 4 per problem -> [(audio status, detail)], in order. A problem whose
+    speech failed --strict is skipped, as a whole page would be."""
+    def one(i, p):
+        sp = p["speech"]
+        if not sp["strict_ok"] or not sp["ssml"]:
+            return "skipped", "speak.js --strict failed"
+        return _synthesize(sp["ssml"], Path(workdir) / problem_audio_name(i))
+    with ThreadPoolExecutor(PARALLEL_TTS) as pool:
+        return list(pool.map(one, range(1, len(items) + 1), items))
+
+
+# When not every problem has audio, the page's status is the most telling one.
+_PAGE_STATUS_ORDER = ("quota_reached", "failed", "skipped")
+
+
+def _whole_page(problem_audio, workdir, audio_path):
+    """The whole page's audio from its problems': their MP3s back to back when
+    every problem has one (MP3 frames concatenate), else the most telling status."""
+    statuses = [st for st, _ in problem_audio]
+    if all(st == "ready" for st in statuses):
+        with open(audio_path, "wb") as out:
+            for i in range(1, len(statuses) + 1):
+                out.write((Path(workdir) / problem_audio_name(i)).read_bytes())
+        return "ready", f"{len(statuses)} problems"
+    status = next(st for st in _PAGE_STATUS_ORDER if st in statuses)
+    return status, "; ".join(f"{i}: {st} {d}" for i, (st, d) in enumerate(problem_audio, 1)
+                             if st != "ready")
+
+
 def run_job(image, workdir, device, tts=True, on_stage=lambda stage: None, ocr=None,
             on_output=lambda key, value: None):
     """image -> dict of every stage's output. Raises JobError if a text stage fails.
@@ -146,8 +212,13 @@ def run_job(image, workdir, device, tts=True, on_stage=lambda stage: None, ocr=N
     (backend/ocr_proc.py). The original exception is the JobError's __cause__.
 
     `on_output(key, value)` is called as soon as each entry of the result's
-    "stages" is ready ("ocr", "normalized", "math_spans", "speech"), so a
-    caller can show the text before the audio is made.
+    "stages" is ready ("ocr", "normalized", "math_spans", "problems",
+    "speech"), so a caller can show the text before the audio is made.
+
+    A page with two or more numbered problems also gets stages["problems"]
+    (each with its boxes, text and speech) and audio["problems"] (one status
+    per problem; problem i's MP3 is problem_audio_name(i)). The page's own
+    audio.mp3 is then their MP3s back to back.
     """
     import ocr_vl
 
@@ -193,61 +264,81 @@ def run_job(image, workdir, device, tts=True, on_stage=lambda stage: None, ocr=N
     on_output("math_spans", stages["math_spans"])
 
     # --- stage 3: Korean math speech (plain, then SSML — run.py's order) ---
+    # A page with several numbered problems is read one problem at a time
+    # (backend/problems.py), each with its own speech, guard and audio, so the
+    # client can play and highlight them one by one.
+    parts = problems.split_dir(ocr_dir)
     on_stage("speech")
     t = time.monotonic()
-    base = norm_path.name.removesuffix(".norm.md")
-    txt_path = stitch_dir / f"{base}.stitched.txt"
-    ssml_path = stitch_dir / f"{base}.stitched.ssml"
-    for p in (txt_path, ssml_path):
-        p.unlink(missing_ok=True)
-    with ThreadPoolExecutor(2) as pool:  # both at once; see the module docstring
-        plain = pool.submit(_speak, norm_path, stitch_dir, ssml=False)
-        with_ssml = pool.submit(_speak, norm_path, stitch_dir, ssml=True)
-        code, summary = plain.result()
-        strict_ok = code == 0
-        if strict_ok:
-            ssml_code, ssml_summary = with_ssml.result()
-            strict_ok = ssml_code == 0 and ssml_path.exists()
-            summary += [f"(ssml) {s}" for s in ssml_summary]
-        else:  # run.py stops here on a --strict failure: no SSML pass, no SSML output
-            with_ssml.exception()  # wait for it; its result or error is discarded
-    if not strict_ok and code != 0:
-        ssml_path.unlink(missing_ok=True)
+    if parts:
+        for i, part in enumerate(parts, 1):
+            part["normalized"] = normalize.normalize_math(part["text"])
+            part["norm_path"] = ocr_dir / f"problem{i}.norm.md"
+            part["norm_path"].write_text(part["normalized"], encoding="utf-8")
+        def speak_part(part):
+            # one problem speak.js can't read loses its audio, not the whole page
+            try:
+                return _speech(part["norm_path"], stitch_dir)
+            except JobError as e:
+                return "", None, False, [f"speech_stage_failed: {e.detail}"]
+        with ThreadPoolExecutor(PARALLEL_PROBLEMS) as pool:
+            spoken_parts = list(pool.map(speak_part, parts))
+        stages["problems"] = [{
+            "label": part["label"],
+            "boxes": part["boxes"],
+            "normalized": {"text": part["normalized"]},
+            "speech": {"text": text, "ssml": ssml, "strict_ok": ok, "summary": summary},
+        } for part, (text, ssml, ok, summary) in zip(parts, spoken_parts)]
+        stages["speech"] = {
+            "text": "\n\n".join(p["speech"]["text"] for p in stages["problems"]),
+            "ssml": None,  # one per problem, in stages.problems
+            "strict_ok": all(p["speech"]["strict_ok"] for p in stages["problems"]),
+            "summary": [f"[{p['label']}] {line}" for p in stages["problems"]
+                        for line in p["speech"]["summary"]],
+            "korean_present": korean,
+        }
+        on_output("problems", stages["problems"])
+    else:
+        spoken, ssml, strict_ok, summary = _speech(norm_path, stitch_dir)
+        stages["speech"] = {
+            "text": spoken,          # what the listener hears, as plain text
+            "ssml": ssml,            # what was sent to Azure (None if not produced)
+            "strict_ok": strict_ok,
+            "summary": summary,
+            "korean_present": korean,
+        }
     timings["speech"] = round(time.monotonic() - t, 2)
-    if not txt_path.exists():
-        raise JobError("speech_stage_failed", "speak.js wrote no text output")
-    spoken = txt_path.read_text(encoding="utf-8").strip()
-    ssml = ssml_path.read_text(encoding="utf-8").strip() if ssml_path.exists() else None
-    stages["speech"] = {
-        "text": spoken,          # what the listener hears, as plain text
-        "ssml": ssml,            # what was sent to Azure (None if not produced)
-        "strict_ok": strict_ok,
-        "summary": summary,
-        "korean_present": korean,
-    }
     on_output("speech", stages["speech"])
 
     # --- stage 4: Azure TTS ------------------------------------------------
     audio_path = workdir / AUDIO_NAME
+    problem_audio = None
     if not tts:
         audio_status, audio_detail = "not_requested", ""
-    elif not strict_ok or not ssml:
+    elif parts:
+        on_stage("tts")
+        t = time.monotonic()
+        problem_audio = _synthesize_problems(stages["problems"], workdir)
+        audio_status, audio_detail = _whole_page(problem_audio, workdir, audio_path)
+        timings["tts"] = round(time.monotonic() - t, 2)
+    elif not stages["speech"]["strict_ok"] or not stages["speech"]["ssml"]:
         audio_status, audio_detail = "skipped", "speak.js --strict failed"
     else:
         on_stage("tts")
         t = time.monotonic()
-        audio_status, audio_detail = _synthesize(ssml, audio_path)
+        audio_status, audio_detail = _synthesize(stages["speech"]["ssml"], audio_path)
         timings["tts"] = round(time.monotonic() - t, 2)
 
-    return {
-        "stages": stages,
-        "audio": {
-            "status": audio_status,
-            "message": AUDIO_MESSAGES[audio_status],
-            "_detail": audio_detail,     # server log only; stripped before returning
-        },
-        "timings_s": timings,
+    audio = {
+        "status": audio_status,
+        "message": AUDIO_MESSAGES[audio_status],
+        "_detail": audio_detail,     # server log only; stripped before returning
     }
+    if problem_audio is not None:
+        audio["problems"] = [{"status": st, "message": AUDIO_MESSAGES[st], "_detail": d}
+                             for st, d in problem_audio]
+
+    return {"stages": stages, "audio": audio, "timings_s": timings}
 
 
 def main():

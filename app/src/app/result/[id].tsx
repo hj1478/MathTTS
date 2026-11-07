@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '@/components/Icon';
 import { MathText } from '@/components/MathText';
 import { Player, Spoken, type ViewRef } from '@/components/Player';
+import { ProblemNav, ProblemPhoto } from '@/components/Problems';
 import { Banner, Button, Card, H2, Header, HeaderLink, Page, PROTOTYPE_NOTE, T } from '@/components/ui';
 import { when } from '@/lib/format';
 import { ApiError, getJob } from '@/lib/api';
@@ -27,7 +28,7 @@ import {
 } from '@/lib/store';
 import { useColors, useWide } from '@/lib/theme';
 
-function NoAudio({ r, onRetry }: { r: Reading; onRetry: () => void }) {
+function NoAudio({ r, onRetry }: { r: Pick<Reading, 'audioStatus'>; onRetry: () => void }) {
   const copy = {
     quota_reached: [
       '지금은 음성을 들을 수 없어요',
@@ -86,6 +87,8 @@ export default function Result() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [speed, setSpeed] = useState(1);
   const [zoom, setZoom] = useState(false);
+  const [cur, setCur] = useState(0); // the problem shown, on a page of several
+  const playNext = useRef(false); // play once the picked problem's audio has loaded
   const playRef = useRef<ViewRef>(null);
 
   useEffect(() => {
@@ -113,13 +116,37 @@ export default function Result() {
     loadSpeed().then(setSpeed);
   }, [id, tries]);
 
-  const hasAudio = !!r && r.audioStatus === 'ready' && !!r.audioUrl;
-  const player = useAudioPlayer(hasAudio ? r!.audioUrl : null, { updateInterval: 250 });
+  // A page of several problems is played and shown one problem at a time.
+  const problems = r?.problems && r.problems.length > 1 ? r.problems : null;
+  const view = problems ? problems[Math.min(cur, problems.length - 1)]! : r;
+  const hasAudio = !!view && view.audioStatus === 'ready' && !!view.audioUrl;
+  const player = useAudioPlayer(hasAudio ? view!.audioUrl : null, { updateInterval: 250 });
   const status = useAudioPlayerStatus(player);
+  const finished = !!status.duration && status.currentTime >= status.duration - 0.25 && !status.playing;
 
   useEffect(() => {
     player.setPlaybackRate(speed, 'high');
   }, [player, speed, status.isLoaded]);
+
+  useEffect(() => {
+    if (playNext.current && status.isLoaded) {
+      playNext.current = false;
+      player.play();
+    }
+  }, [player, status.isLoaded]);
+
+  const pick = (i: number) => {
+    if (!problems || i < 0 || i >= problems.length) return;
+    if (i === cur) {
+      player.seekTo(0);
+      player.play();
+      return;
+    }
+    playNext.current = true; // the user asked for it, so it may start without a press on 재생
+    setCur(i);
+    if (Platform.OS !== 'web')
+      AccessibilityInfo.announceForAccessibility(`${problems[i]!.label}번 문제, ${problems.length}문제 중 ${i + 1}번째`);
+  };
 
   // "문제를 다 읽었어요. 재생 버튼", then focus play. No autoplay: it would talk over the screen reader.
   useEffect(() => {
@@ -203,7 +230,7 @@ export default function Result() {
   const listen = hasAudio ? (
     <Player ref={playRef} player={player} status={status} speed={speed} onSpeed={pickSpeed} />
   ) : (
-    <NoAudio r={r} onRetry={again} />
+    <NoAudio r={view!} onRetry={again} />
   );
 
   const note = <Banner tone="note">{PROTOTYPE_NOTE}</Banner>;
@@ -223,13 +250,13 @@ export default function Result() {
           </T>
         )}
       </View>
-      <Spoken text={r.spokenText} time={status.currentTime} duration={status.duration} big={wide} />
+      <Spoken text={view!.spokenText} time={status.currentTime} duration={status.duration} big={wide} />
     </Card>
   );
 
   const compare = (
     <Card style={{ borderRadius: 20 }}>
-      {r.imageUri ? (
+      {r.imageUri && !problems ? (
         <>
           <View style={{ gap: 4 }}>
             <H2>사진과 비교하기</H2>
@@ -259,12 +286,30 @@ export default function Result() {
         <T v="section" role="heading" aria-level={3}>
           읽은 문제
         </T>
-        <MathText text={r.normalizedText} label={r.spokenText} big={wide} />
+        <MathText text={view!.normalizedText} label={view!.spokenText} big={wide} />
         <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
           <T muted>사진과 다른가요?</T>
           <Button kind="tertiary" label={wide ? '다른 사진 올리기' : '다시 찍기'} onPress={() => router.replace('/')} />
         </View>
       </View>
+    </Card>
+  );
+
+  const aspect = r.imageWidth && r.imageHeight ? r.imageWidth / r.imageHeight : 0.75;
+  const nav = problems && (
+    <Card style={{ borderRadius: 20 }}>
+      <ProblemNav problems={problems} cur={cur} onPick={pick} finished={finished} />
+      {r.imageUri ? (
+        <View style={{ gap: 8 }}>
+          <ProblemPhoto uri={r.imageUri} aspect={aspect} problems={problems} cur={cur} onPick={pick} maxHeight={wide ? 640 : 440} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <T v="caption" muted>
+              네모를 누르면 그 문제를 들려줘요.
+            </T>
+            <Button kind="tertiary" icon="expand" label="크게 보기" onPress={() => setZoom(true)} />
+          </View>
+        </View>
+      ) : null}
     </Card>
   );
 
@@ -308,6 +353,7 @@ export default function Result() {
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 24, alignItems: 'flex-start' }}>
             <View style={{ flexGrow: 999, flexShrink: 1, flexBasis: 560, gap: 24 }}>
               {saveProblem}
+              {nav}
               {listen}
               {spoken}
             </View>
@@ -320,6 +366,7 @@ export default function Result() {
       ) : (
         <Page footer={actions}>
           {saveProblem}
+          {nav}
           {listen}
           {note}
           {spoken}
@@ -339,7 +386,11 @@ export default function Result() {
               <Icon name="close" size={28} color="#FFFFFF" />
             </Pressable>
           </View>
-          <Image source={{ uri: r.imageUri }} resizeMode="contain" style={{ flex: 1 }} accessibilityLabel="원본 사진" />
+          {problems ? (
+            <ProblemPhoto uri={r.imageUri} aspect={aspect} problems={problems} cur={cur} onPick={pick} fill />
+          ) : (
+            <Image source={{ uri: r.imageUri }} resizeMode="contain" style={{ flex: 1 }} accessibilityLabel="원본 사진" />
+          )}
         </View>
       </Modal>
     </View>

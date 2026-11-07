@@ -24,6 +24,7 @@ State:
                           (worker only; kept for debugging, never read by the web)
   Dict   "mathtts-jobs"   job:<id> -> status record (what GET /jobs returns)
                           audio:<id> -> {"data": mp3 bytes, "created"} (GET /audio)
+                          audio:<id>:<n> -> the same for problem n of a page (GET /audio/<id>/<n>)
                           rl:<ip>|<hour>|<n> -> rate-limit slots (see limits.py)
 
 Checked against the Modal Python SDK 1.6.2 (2026-10). Parameter names that
@@ -178,6 +179,7 @@ def _with_pipeline_source(image):
         .add_local_file(REPO / "backend" / "job.py", "/root/backend/job.py")
         .add_local_file(REPO / "backend" / "limits.py", "/root/backend/limits.py")
         .add_local_file(REPO / "backend" / "ocr_proc.py", "/root/backend/ocr_proc.py")
+        .add_local_file(REPO / "backend" / "problems.py", "/root/backend/problems.py")
         .add_local_file(REPO / WARMUP_IMAGE, f"/root/{WARMUP_IMAGE}")
     )
 
@@ -197,8 +199,9 @@ def _key(job_id):
     return f"job:{job_id}"
 
 
-def _audio_key(job_id):
-    return f"audio:{job_id}"
+def _audio_key(job_id, problem=None):
+    # problem: 1-based, for one problem's MP3 on a page of several
+    return f"audio:{job_id}" if problem is None else f"audio:{job_id}:{problem}"
 
 
 def _call_key(job_id):
@@ -376,6 +379,13 @@ class Worker:
             return False
 
         detail = result["audio"].pop("_detail", "")
+        for i, pa in enumerate(result["audio"].get("problems") or [], 1):
+            pdetail = pa.pop("_detail", "")
+            if pa["status"] == "ready":
+                data = (workdir / job.problem_audio_name(i)).read_bytes()
+                store.put(_audio_key(job_id, i), {"data": data, "created": rec["created"]})
+            else:
+                print(f"[job {job_id}] problem {i} audio {pa['status']}: {pdetail}")
         if result["audio"]["status"] == "ready":
             # in the Dict, not on the volume: no commit/reload between the worker
             # and GET /audio (FINDINGS.md, 2026-10-19). Written before "done".
@@ -629,12 +639,19 @@ def web():
         if stages:  # each stage's output as soon as it exists, before the audio
             body["stages"] = stages
         if result:
-            audio = dict(result["audio"])
-            url = request.url_for("get_audio", job_id=job_id)
             proto = request.headers.get("x-forwarded-proto")
-            if proto:
-                url = url.replace(scheme=proto)
-            audio["url"] = str(url) if audio["status"] == "ready" else None
+
+            def audio_url(name, **params):
+                url = request.url_for(name, job_id=job_id, **params)
+                return str(url.replace(scheme=proto) if proto else url)
+
+            audio = dict(result["audio"])
+            audio["url"] = audio_url("get_audio") if audio["status"] == "ready" else None
+            if "problems" in audio:
+                audio["problems"] = [
+                    {**pa, "url": audio_url("get_problem_audio", n=str(i))
+                     if pa["status"] == "ready" else None}
+                    for i, pa in enumerate(audio["problems"], 1)]
             body.update(audio=audio, timings_s=result["timings_s"])
         elif status == "failed":
             body["error"] = rec.get("error")
@@ -650,6 +667,16 @@ def web():
             return error(404, "not_found", "음성 파일이 없습니다. 24시간이 지나 삭제되었을 수 있습니다.")
         return Response(audio["data"], media_type="audio/mpeg", headers={
             "Content-Disposition": f'attachment; filename="mathtts-{job_id}.mp3"'})
+
+    @api.get("/audio/{job_id}/{n}", name="get_problem_audio")
+    async def get_problem_audio(job_id: str, n: str):
+        if not job_id.isalnum() or not n.isdigit():
+            return error(404, "not_found", "음성 파일이 없습니다.")
+        audio = await store.get.aio(_audio_key(job_id, int(n)))
+        if audio is None:
+            return error(404, "not_found", "음성 파일이 없습니다. 24시간이 지나 삭제되었을 수 있습니다.")
+        return Response(audio["data"], media_type="audio/mpeg", headers={
+            "Content-Disposition": f'attachment; filename="mathtts-{job_id}-{n}.mp3"'})
 
     return api
 
@@ -689,7 +716,8 @@ def cleanup():
     # An audio entry's "created" is its job's, so the job record dates it, and
     # the MP3 bytes aren't downloaded just to read a timestamp. Audio whose job
     # record is already gone is past retention too.
-    stale += [key for key in audio if created.get(key[6:], 0) < cutoff]
+    # audio:<id> and audio:<id>:<problem>
+    stale += [key for key in audio if created.get(key.split(":")[1], 0) < cutoff]
     for key in stale:
         store.pop(key, None)
     print(f"[cleanup] removed {removed} job folder(s), {len(stale)} record(s)")

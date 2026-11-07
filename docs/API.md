@@ -225,6 +225,39 @@ stages are the result.
 | `skipped` | `null` | `strict_ok` is `false`, so Azure was not asked to read a placeholder aloud |
 | `failed` | `null` | Azure failed for another reason, after one retry |
 
+### Pages with several problems
+
+When the photo holds two or more numbered problems ("1.", "2)", "[3]",
+"문제 4"), each one is read separately (`backend/problems.py`), so a client can
+highlight and play them one at a time. Such a job also has
+`stages.problems` (added just before `stages.speech`) and `audio.problems`:
+
+```json
+"stages": { "problems": [
+  { "label": "27",
+    "boxes": [[0.0672, 0.0446, 0.4698, 0.1323]],
+    "normalized": { "text": "27. 다음 조건을 …" },
+    "speech": { "text": "27. 다음 조건을 …", "ssml": "<speak …>", "strict_ok": true, "summary": [] } },
+  …
+] },
+"audio": { "status": "ready", "message": "…", "url": "…/audio/<id>",
+  "problems": [ { "status": "ready", "message": "…", "url": "…/audio/<id>/1" }, … ] }
+```
+
+- `boxes` are where the problem is on the uploaded image, as fractions of its
+  width and height: `[x0, y0, x1, y1]`, one rectangle per column the problem
+  spans (a figure or table under it is included).
+- Each problem has its own `--strict` guard and audio status: one formula
+  speak.js can't read skips that problem's audio only.
+- `audio.problems[i]` belongs to `stages.problems[i]`; its MP3 is
+  `GET /audio/{id}/{i+1}`.
+- The page's own `stages.speech.text` is the problems' texts joined, and its
+  `ssml` is `null`. The page `audio` is every problem's MP3 back to back when
+  all are `ready`; otherwise its status is the first of `quota_reached`,
+  `failed`, `skipped` found among the problems, and `url` is `null`.
+- A photo with zero or one numbered problem has neither field and works as
+  described above.
+
 `timings_s` holds server-side seconds per stage. `tts` is absent when stage 4
 did not run.
 
@@ -261,6 +294,11 @@ mono, 48 kbit/s (about 6 KB per second of speech).
 
 **Errors:** `404 not_found` if the job has no audio (`audio.status` is not
 `ready`), the id is unknown, or the file is older than 24 hours.
+
+## `GET /audio/{id}/{n}` — one problem's audio (MP3)
+
+Problem `n` (1-based) of a page with several problems; the URL is
+`audio.problems[n-1].url`. Same format and errors as `GET /audio/{id}`.
 
 ---
 

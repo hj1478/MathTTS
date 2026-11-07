@@ -19,7 +19,11 @@ _AUDIO = {"ready": "done", "skipped": "skipped", "not_requested": "skipped",
 def _tts_skipped(stages):
     # job.run_job does not call Azure when speak.js --strict failed
     speech = stages.get("speech")
-    return speech is not None and not (speech.get("strict_ok") and speech.get("ssml"))
+    if speech is None:
+        return False
+    # a page of problems: Azure is called for each problem that passed
+    speeches = [p["speech"] for p in stages.get("problems") or []] or [speech]
+    return not any(sp.get("strict_ok") and sp.get("ssml") for sp in speeches)
 
 
 def stage_status(status, stages, audio_status=None):

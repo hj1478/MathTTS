@@ -19,22 +19,31 @@ export async function keepFiles(r: Reading): Promise<Reading> {
   } catch {
     // Keep the cache URI; it still works until the OS clears the cache.
   }
-  if (r.audioUrl?.startsWith('http')) {
-    try {
-      const mp3 = new File(dir, 'audio.mp3');
-      if (!mp3.exists) {
-        // Android writes straight into the target and can leave half a file
-        // if the download breaks; only a finished download gets the real name.
-        const part = new File(dir, 'audio.part');
-        await File.downloadFileAsync(r.audioUrl, part, { idempotent: true });
-        await part.move(mp3, { overwrite: true });
-      }
-      out.audioUrl = mp3.uri;
-    } catch {
-      // Keep the remote URL; it is served for 24 h.
-    }
+  out.audioUrl = await keepAudio(dir, 'audio', r.audioUrl);
+  if (r.problems) {
+    out.problems = [];
+    for (const [i, p] of r.problems.entries())
+      out.problems.push({ ...p, audioUrl: await keepAudio(dir, `audio-${i + 1}`, p.audioUrl) });
   }
   return out;
+}
+
+/** The on-device copy of a remote MP3, or `url` unchanged if it can't be made. */
+async function keepAudio(dir: Directory, name: string, url: string | null): Promise<string | null> {
+  if (!url?.startsWith('http')) return url;
+  try {
+    const mp3 = new File(dir, name + '.mp3');
+    if (!mp3.exists) {
+      // Android writes straight into the target and can leave half a file
+      // if the download breaks; only a finished download gets the real name.
+      const part = new File(dir, name + '.part');
+      await File.downloadFileAsync(url, part, { idempotent: true });
+      await part.move(mp3, { overwrite: true });
+    }
+    return mp3.uri;
+  } catch {
+    return url; // the remote URL is served for 24 h
+  }
 }
 
 export function dropFiles(r: Reading): void {

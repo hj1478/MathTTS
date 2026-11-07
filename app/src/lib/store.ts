@@ -14,6 +14,18 @@ export interface Picked {
   size?: number;
 }
 
+/** One problem of a page with several: where it is on the photo, and its own audio. */
+export interface Problem {
+  label: string;
+  boxes: [number, number, number, number][]; // fractions of the photo: x0, y0, x1, y1
+  normalizedText: string;
+  spokenText: string;
+  strictOk: boolean;
+  audioStatus: AudioStatus | 'expired';
+  audioMessage: string;
+  audioUrl: string | null;
+}
+
 /** What one finished job leaves behind, shown by the result screen. */
 export interface Reading {
   id: string;
@@ -28,6 +40,7 @@ export interface Reading {
   audioStatus: AudioStatus | 'expired';
   audioMessage: string;
   audioUrl: string | null;
+  problems?: Problem[]; // a page of numbered problems, read one at a time
 }
 
 // Module state for the current flow: home → crop → processing → result.
@@ -56,6 +69,19 @@ export function readingFromJob(job: Job, upload: Picked | null): Reading {
     audioStatus: job.audio?.status ?? 'failed',
     audioMessage: job.audio?.message ?? '',
     audioUrl: job.audio?.url ?? null,
+    problems: s.problems?.map((p, i) => {
+      const a = job.audio?.problems?.[i];
+      return {
+        label: p.label,
+        boxes: p.boxes,
+        normalizedText: p.normalized.text,
+        spokenText: p.speech.text,
+        strictOk: p.speech.strict_ok,
+        audioStatus: a?.status ?? 'failed',
+        audioMessage: a?.message ?? '',
+        audioUrl: a?.url ?? null,
+      };
+    }),
   };
 }
 
@@ -151,9 +177,10 @@ const THUMB_SIDE = 800; // web history keeps a smaller copy of the photo, still 
 
 /** A remote MP3 the server has already deleted can't play; say so instead. */
 export function withExpiry(r: Reading): Reading {
-  return r.audioUrl?.startsWith('http') && Date.now() - r.createdAt > SERVER_RETENTION_MS
-    ? { ...r, audioStatus: 'expired', audioUrl: null }
-    : r;
+  if (Date.now() - r.createdAt <= SERVER_RETENTION_MS) return r;
+  const expire = <T extends { audioUrl: string | null; audioStatus: Reading['audioStatus'] }>(x: T): T =>
+    x.audioUrl?.startsWith('http') ? { ...x, audioStatus: 'expired', audioUrl: null } : x;
+  return { ...expire(r), problems: r.problems?.map(expire) };
 }
 
 // The last parse, reused while the stored text is unchanged (the home screen

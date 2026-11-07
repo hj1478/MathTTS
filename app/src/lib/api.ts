@@ -15,6 +15,20 @@ export interface MathSpan {
   display: boolean;
 }
 
+/** One numbered problem of a page with several (docs/API.md, Problems). */
+export interface JobProblem {
+  label: string; // the printed number, e.g. "3"
+  boxes: [number, number, number, number][]; // x0, y0, x1, y1 as fractions of the photo
+  normalized: { text: string };
+  speech: { text: string; ssml: string | null; strict_ok: boolean; summary: string[] };
+}
+
+export interface ProblemAudio {
+  status: AudioStatus;
+  message: string;
+  url: string | null;
+}
+
 export interface Job {
   id: string;
   status: 'queued' | 'running' | 'done' | 'failed';
@@ -33,8 +47,9 @@ export interface Job {
       summary: string[];
       korean_present: boolean;
     };
+    problems?: JobProblem[]; // only for a page with two or more numbered problems
   };
-  audio?: { status: AudioStatus; message: string; url: string | null };
+  audio?: { status: AudioStatus; message: string; url: string | null; problems?: ProblemAudio[] };
   timings_s?: Partial<Record<StageName, number>>;
   error?: { code: string; message: string };
 }
