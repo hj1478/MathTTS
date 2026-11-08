@@ -852,6 +852,13 @@ saying the same words). Kept on purpose:
   because "a n 플러스 1" would sound the same as `a_n + 1`.
 - Powers are unchanged ("a 의 n 제곱" is already how it is said).
 - Parentheses still say 열고/닫고: `(-2)^4` and `-2^4` must not sound the same.
+- A written × keeps 곱하기 after "제곱" or "괄호 닫고": `(-1)^n \times (-1)^m`.
+- A fraction inside a fraction keeps the long 분모가/분자가 form, so the parts
+  stay clear.
+- Readings that were already short are untouched: "루트 x", "절댓값 x",
+  "2 분의 1".
+- Everything else in the pipeline is the same: OCR, normalization, the voice
+  and the `--strict` guard. Only the wording of the math changes.
 
 **Changed as a result.** `backend/job.py` runs speak.js with `--casual`, so the
 service's spoken text and audio use it. `backend/modal_app.py` ships
