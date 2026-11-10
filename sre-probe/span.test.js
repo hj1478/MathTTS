@@ -106,15 +106,25 @@ test('splitSegments reads \\overline over letters as 선분, decimals unaffected
 
 test('fixMisreads clears the remaining #20 geometry misreads', () => {
   assert.strictEqual(fixMisreads('흰색 상향 삼각형 A B C'), '삼각형 A B C');
-  assert.strictEqual(fixMisreads('삼각형 A B C 물결표 삼각형 D E F'),
+  assert.strictEqual(fixMisreads('삼각형 A B C 역 물결표 삼각형 D E F'),
     '삼각형 A B C 닮음이다 삼각형 D E F');
   assert.strictEqual(fixMisreads('싸인 A 더하기 코싸인 B'), '사인 A 더하기 코사인 B');
 });
 
-test('fixMisreads rewrites only a BINARY 물결표, never the \\tilde accent', () => {
-  assert.strictEqual(fixMisreads('삼각형 A B C 물결표 삼각형 D E F'),
-    '삼각형 A B C 닮음이다 삼각형 D E F');
-  assert.strictEqual(fixMisreads('x 물결표'), 'x 물결표');   // \tilde{x}, not 닮음
+test('only ∽ (\\sim, read via \\backsim) becomes 닮음이다, never the \\tilde accent', async () => {
+  // a plain 물결표 is \tilde, even between operands: \tilde{x}+1 is "x 물결표 더하기 1"
+  assert.strictEqual(fixMisreads('x 물결표 더하기 1'), 'x 물결표 더하기 1');
+  assert.strictEqual(fixMisreads('x 물결표'), 'x 물결표');
+  const run = (md) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sim-'));
+    const f = path.join(dir, 'in.md');
+    fs.writeFileSync(f, md);
+    return execFileSync('node', [path.join(__dirname, 'speak.js'), '--combos', 'clearspeak/default', f],
+                        { encoding: 'utf8' });
+  };
+  const out = run('$\\triangle ABC \\sim \\triangle DEF$ 이고 $\\tilde{x}+1$');
+  assert.match(out, /삼각형 A B C 닮음이다 삼각형 D E F/);
+  assert.match(out, /x 물결표 더하기 1/);
 });
 
 test('splitFences speaks a numeric tuple/interval and orders ⊥ with particles', () => {

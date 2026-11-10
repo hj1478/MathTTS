@@ -42,3 +42,26 @@ def test_speak_real_node_run(tmp_path):
     assert code == 0 and summary == ["SUMMARY: 1 span(s), ok: 1"]
     text = (tmp_path / "out" / "q.stitched.txt").read_text(encoding="utf-8")
     assert "마이너스 2 는 x 보다 작다" in text
+
+
+def test_formal_reading_leaves_casual_out(tmp_path, monkeypatch):
+    seen = []
+
+    def run(cmd, **kw):
+        seen.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+    monkeypatch.setattr(job.subprocess, "run", run)
+    job._speak(tmp_path / "q.norm.md", tmp_path, ssml=False, casual=False)
+    assert "--casual" not in seen[0] and "--strict" in seen[0]
+
+
+def test_single_problem_has_both_readings(tmp_path):
+    """Real speak.js: the two readings differ, and each has its SSML."""
+    norm = tmp_path / "q.norm.md"
+    norm.write_text("$x \\ge 3$ 일 때 $\\frac{x+1}{x-1}$ 의 값", encoding="utf-8")
+    spoken, formal = job._both_readings(norm, tmp_path / "stitched", tmp_path / "stitched_formal")
+    entry = job._speech_entry(spoken, formal)
+    assert entry["strict_ok"] and entry["formal"]["strict_ok"]
+    assert entry["text"] != entry["formal"]["text"]
+    assert "3 이상" in entry["text"]
+    assert entry["ssml"] and entry["formal"]["ssml"]

@@ -1,13 +1,13 @@
 // Audio player card (Components.dc.html §2) and the "읽어 주는 문장" highlight.
 import type { AudioPlayer, AudioStatus } from 'expo-audio';
-import { forwardRef, useMemo } from 'react';
+import { forwardRef, useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { mmss, phrases } from '@/lib/format';
 import { font, useColors } from '@/lib/theme';
 import { Icon, type IconName } from './Icon';
 import { SeekBar } from './SeekBar';
-import { H2 } from './ui';
+import { Button, H2 } from './ui';
 
 export const SPEEDS = [0.75, 1, 1.25];
 
@@ -78,15 +78,19 @@ export const Player = forwardRef<
   {
     player: AudioPlayer;
     status: AudioStatus;
+    duration: number; // seconds; the screen's own figure when the player reports none
+    loading?: boolean; // the MP3 is still downloading
+    onPlayWhenLoaded?: () => void; // 재생 pressed while loading
     speed: number;
     onSpeed: (v: number) => void;
   }
->(function Player({ player, status, speed, onSpeed }, playRef) {
+>(function Player({ player, status, duration, loading, onPlayWhenLoaded, speed, onSpeed }, playRef) {
   const c = useColors();
-  const dur = status.duration || 0;
-  const t = status.currentTime || 0;
+  const dur = duration || 0;
+  const t = Math.min(status.currentTime || 0, dur || Infinity);
   const playing = status.playing;
   const toggle = () => {
+    if (loading) return onPlayWhenLoaded?.();
     if (playing) return player.pause();
     if (dur && t >= dur - 0.05) player.seekTo(0);
     player.play();
@@ -101,7 +105,7 @@ export const Player = forwardRef<
           <H2 v="heading">문제 듣기</H2>
         </View>
         <Text style={{ fontFamily: font.medium, fontSize: 17, lineHeight: 24, color: c.text2, fontVariant: ['tabular-nums'] }}>
-          {mmss(t)} / {mmss(dur)}
+          {loading ? '불러오는 중…' : `${mmss(t)} / ${mmss(dur)}`}
         </Text>
       </View>
       <SeekBar
@@ -117,100 +121,184 @@ export const Player = forwardRef<
           icon="restart"
           label="처음부터"
           onPress={() => {
+            if (loading) return onPlayWhenLoaded?.();
             player.seekTo(0);
             player.play();
           }}
         />
       </View>
-      <View role="group" aria-labelledby="speed-l" style={{ gap: 8 }}>
-        <Text nativeID="speed-l" style={{ fontFamily: font.semibold, fontSize: 15, lineHeight: 22, color: c.text2 }}>
-          읽는 속도
-        </Text>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          {SPEEDS.map((v) => {
-            const on = v === speed;
-            return (
-              <Pressable
-                key={v}
-                role="button"
-                aria-pressed={on}
-                accessibilityState={{ selected: on }}
-                accessibilityLabel={v + '배속'}
-                onPress={() => onSpeed(v)}
-                style={(s) => ({
-                  flex: 1,
-                  minHeight: 52,
-                  borderRadius: 12,
-                  borderWidth: 2,
-                  flexDirection: 'row',
-                  gap: 6,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderColor: on ? c.primary : c.borderStrong,
-                  backgroundColor: on ? c.primarySoft : c.surface,
-                  ...((s as { focused?: boolean }).focused
-                    ? { outlineColor: c.focus, outlineWidth: 3, outlineStyle: 'solid', outlineOffset: 3 }
-                    : {}),
-                })}
-              >
-                {on && <Icon name="check" size={18} color={c.onPrimarySoft} strokeWidth={2.6} />}
-                <Text
-                  style={{
-                    fontFamily: on ? font.bold : font.semibold,
-                    fontSize: 17,
-                    color: on ? c.onPrimarySoft : c.text,
-                  }}
-                >
-                  {v}x
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
+      <Choice
+        id="speed-l"
+        title="읽는 속도"
+        value={speed}
+        onPick={onSpeed}
+        options={SPEEDS.map((v) => ({ value: v, text: v + 'x', label: v + '배속' }))}
+      />
     </View>
   );
 });
 
+/** A row of buttons of which one is on (읽는 속도, 읽는 방식). */
+export function Choice<V extends string | number>({
+  id,
+  title,
+  value,
+  options,
+  onPick,
+}: {
+  id: string; // of the title, which names the group
+  title: string;
+  value: V;
+  options: { value: V; text: string; label?: string }[];
+  onPick: (v: V) => void;
+}) {
+  const c = useColors();
+  return (
+    <View role="group" aria-labelledby={id} style={{ gap: 8 }}>
+      <Text nativeID={id} style={{ fontFamily: font.semibold, fontSize: 15, lineHeight: 22, color: c.text2 }}>
+        {title}
+      </Text>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        {options.map((o) => {
+          const on = o.value === value;
+          return (
+            <Pressable
+              key={String(o.value)}
+              role="button"
+              aria-pressed={on}
+              accessibilityState={{ selected: on }}
+              accessibilityLabel={o.label ?? o.text}
+              onPress={() => onPick(o.value)}
+              style={(s) => ({
+                flex: 1,
+                minHeight: 52,
+                paddingHorizontal: 8,
+                borderRadius: 12,
+                borderWidth: 2,
+                flexDirection: 'row',
+                gap: 6,
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderColor: on ? c.primary : c.borderStrong,
+                backgroundColor: on ? c.primarySoft : c.surface,
+                ...((s as { focused?: boolean }).focused
+                  ? { outlineColor: c.focus, outlineWidth: 3, outlineStyle: 'solid', outlineOffset: 3 }
+                  : {}),
+              })}
+            >
+              {on && <Icon name="check" size={18} color={c.onPrimarySoft} strokeWidth={2.6} />}
+              <Text
+                style={{
+                  fontFamily: on ? font.bold : font.semibold,
+                  fontSize: 17,
+                  color: on ? c.onPrimarySoft : c.text,
+                }}
+              >
+                {o.text}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+// A phone shows this much of a long sentence at a time (the part being read).
+const SHORT_CHARS = 70;
+
 /**
  * The spoken sentence with the phrase being read marked. Visual only: no live
  * region, so it never talks over a screen reader (Tokens.dc.html §5).
+ *
+ * `compact` (a phone): a long sentence shows only the part being read, about
+ * three lines, with 전체 문장 보기 to open the rest.
  */
-export function Spoken({ text, time, duration, big }: { text: string; time?: number; duration?: number; big?: boolean }) {
+export function Spoken({
+  text,
+  time,
+  duration,
+  big,
+  compact,
+}: {
+  text: string;
+  time?: number;
+  duration?: number;
+  big?: boolean;
+  compact?: boolean;
+}) {
   const c = useColors();
+  const [open, setOpen] = useState(false);
   // speak.js passes markdown through (headings, bold); it isn't read aloud, so don't show it.
   const clean = useMemo(() => text.replace(/^#+\s*/gm, '').replace(/\*\*/g, ''), [text]);
   const segs = useMemo(() => phrases(clean, duration || 0), [clean, duration]);
+  // The sentence in parts of about SHORT_CHARS: [first phrase, one past the last].
+  const parts = useMemo(() => {
+    const out: [number, number][] = [];
+    let from = 0;
+    let n = 0;
+    segs.forEach((s, i) => {
+      n += s.text.length + 1;
+      if (n >= SHORT_CHARS || i === segs.length - 1) {
+        out.push([from, i + 1]);
+        from = i + 1;
+        n = 0;
+      }
+    });
+    return out;
+  }, [segs]);
   let cur = -1;
   if (duration && time != null && time > 0) segs.forEach((s, i) => time >= s.start && (cur = i));
+  const long = !!compact && parts.length > 1;
+  const short = long && !open;
+  const [from, to] = short ? (parts.find(([, end]) => cur < end) ?? parts[0]!) : [0, segs.length];
   return (
-    <Text
-      style={{
-        fontFamily: font.medium,
-        fontSize: big ? 22 : 20,
-        lineHeight: big ? 42 : 38,
-        color: c.text,
-      }}
-    >
-      {segs.map((s, i) => (
-        <Text key={i}>
-          {i > 0 ? ' ' : ''}
-          <Text
-            style={
-              i === cur
-                ? {
-                    backgroundColor: c.hlBg,
-                    color: c.hlText,
-                    textDecorationLine: 'underline',
-                    textDecorationColor: c.hlLine,
-                  }
-                : undefined
-            }
-          >
-            {s.text}
-          </Text>
-        </Text>
-      ))}
-    </Text>
+    <View style={{ gap: 4 }}>
+      <Text
+        // a screen reader gets the whole sentence, whatever part is showing
+        accessibilityLabel={short ? clean : undefined}
+        style={{
+          fontFamily: font.medium,
+          fontSize: big ? 22 : compact ? 18 : 20,
+          lineHeight: big ? 42 : compact ? 32 : 38,
+          color: c.text,
+        }}
+      >
+        {from > 0 && <Text style={{ color: c.text2 }}>… </Text>}
+        {segs.slice(from, to).map((s, k) => {
+          const i = from + k;
+          return (
+            <Text key={i}>
+              {k > 0 ? ' ' : ''}
+              <Text
+                style={
+                  i === cur
+                    ? {
+                        backgroundColor: c.hlBg,
+                        color: c.hlText,
+                        textDecorationLine: 'underline',
+                        textDecorationColor: c.hlLine,
+                      }
+                    : undefined
+                }
+              >
+                {s.text}
+              </Text>
+            </Text>
+          );
+        })}
+        {to < segs.length && <Text style={{ color: c.text2 }}> …</Text>}
+      </Text>
+      {long && (
+        <View style={{ alignSelf: 'flex-start', marginLeft: -8 }}>
+          <Button
+            kind="tertiary"
+            label={open ? '접기' : '전체 문장 보기'}
+            aria-expanded={open}
+            onPress={() => setOpen(!open)}
+          />
+        </View>
+      )}
+    </View>
   );
 }

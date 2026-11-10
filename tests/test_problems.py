@@ -165,3 +165,121 @@ def test_run_job_reads_each_problem(tmp_path):
     assert all(p["speech"]["text"] for p in parts)
     assert r["stages"]["speech"]["text"].startswith(parts[0]["speech"]["text"])
     assert seen.index("problems") < seen.index("speech")
+
+
+# --- found in review, 2026-11-09 ---------------------------------------------
+
+def test_intro_and_problem_1_in_one_block_are_cut():
+    res = page(
+        block("text", [0, 0, 400, 300], "[1~2] 다음을 읽고 물음에 답하시오.\n1. 첫 문제\n2. 둘째 문제", 1),
+        block("text", [0, 400, 400, 500], "3. 셋째", 2),
+    )
+    got = problems.split(res)
+    assert [p["label"] for p in got] == ["1", "2", "3"]
+    assert got[0]["text"] == "[1~2] 다음을 읽고 물음에 답하시오.\n\n1. 첫 문제"
+
+
+def test_sub_items_written_differently_are_not_problems():
+    # the page numbers its problems "1." "2.": "3)" and "3번" are inside problem 1
+    res = page(
+        block("text", [0, 0, 400, 100], "1. 첫 문제", 1),
+        block("text", [0, 100, 400, 200], "1) 가 2) 나", 2),
+        block("text", [0, 200, 400, 300], "3) 다", 3),
+        block("text", [0, 300, 400, 400], "3번 학생의 점수는?", 4),
+        block("text", [0, 500, 400, 600], "2. 둘째 문제", 5),
+    )
+    got = problems.split(res)
+    assert [p["label"] for p in got] == ["1", "2"]
+    assert "3) 다" in got[0]["text"] and "3번 학생" in got[0]["text"]
+
+
+def _fake_page(monkeypatch, tmp_path, speech, synth=None):
+    """run_job on a two-problem page with OCR and _speech faked."""
+    def fake_ocr(img, out_dir, device):
+        out_dir = Path(out_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        res = page(block("text", [0, 0, 400, 100], "1. 가 $x$", 1),
+                   block("text", [0, 200, 400, 300], "2. 나 $y$", 2))
+        (out_dir / "upload_res.json").write_text(json.dumps(res), encoding="utf-8")
+        md = out_dir / "upload.md"
+        md.write_text("1. 가 $x$\n\n2. 나 $y$", encoding="utf-8")
+        return md.read_text(encoding="utf-8"), str(md)
+    monkeypatch.setattr(job, "_speech", speech)
+    monkeypatch.setattr(job, "_synthesize",
+                        synth or (lambda ssml, path: (path.write_bytes(b"MP3"), ("ready", ""))[1]))
+    stages = []
+    r = job.run_job(Path("upload.jpg"), tmp_path, "cpu", tts=True, ocr=fake_ocr,
+                    on_stage=stages.append)
+    return r, stages
+
+
+def test_every_problem_crashing_fails_the_job(tmp_path, monkeypatch):
+    def crash(norm_path, stitch_dir):
+        raise job.JobError("speech_stage_failed", "speak.js exited 1")
+    with pytest.raises(job.JobError) as e:
+        _fake_page(monkeypatch, tmp_path, crash)
+    assert e.value.code == "speech_stage_failed"
+
+
+def test_one_crashed_problem_says_failed_not_unreadable_formula(tmp_path, monkeypatch):
+    def speech(norm_path, stitch_dir):
+        if norm_path.name == "problem1.norm.md":
+            raise job.JobError("speech_stage_failed", "speak.js exited 1")
+        return "y", "<speak/>", True, []
+    r, _ = _fake_page(monkeypatch, tmp_path, speech)
+    assert [p["status"] for p in r["audio"]["problems"]] == ["failed", "ready"]
+    assert r["audio"]["status"] == "failed"
+    assert "_crashed" not in r["stages"]["problems"][0]
+
+
+def test_no_readable_problem_does_not_start_tts(tmp_path, monkeypatch):
+    r, stages = _fake_page(monkeypatch, tmp_path, lambda n, s: ("x", None, False, []))
+    assert "tts" not in stages and "tts" not in r["timings_s"]
+    assert [p["status"] for p in r["audio"]["problems"]] == ["skipped", "skipped"]
+    assert r["audio"]["status"] == "skipped"
+
+
+# --- the formal reading (speak.js without --casual), 2026-11-10 ----------------
+
+def _two_readings(norm_path, stitch_dir, casual=True):
+    name = "쉽게" if casual else "정확하게"
+    return f"{name} {norm_path.name}", f"<speak>{name}</speak>", True, []
+
+
+def test_each_problem_gets_a_formal_reading_but_no_formal_mp3(tmp_path, monkeypatch):
+    asked = []
+
+    def synth(ssml, path):
+        asked.append(ssml)
+        path.write_bytes(b"MP3")
+        return "ready", ""
+    r, _ = _fake_page(monkeypatch, tmp_path, _two_readings, synth)
+    for i, (p, a) in enumerate(zip(r["stages"]["problems"], r["audio"]["problems"]), 1):
+        assert p["speech"]["text"].startswith("쉽게")
+        assert p["speech"]["formal"]["text"] == f"정확하게 problem{i}.norm.md"
+        assert a["status"] == "ready" and "formal" not in a
+    assert r["stages"]["speech"]["formal"]["text"].count("정확하게") == 2
+    # Azure is asked for the casual reading only; the formal one waits for its button
+    assert asked == ["<speak>쉽게</speak>"] * 2
+
+
+def test_a_formal_reading_that_fails_is_left_out(tmp_path, monkeypatch):
+    def speech(norm_path, stitch_dir, casual=True):
+        if not casual:
+            raise job.JobError("speech_stage_failed", "speak.js exited 1")
+        return "y", "<speak/>", True, []
+    r, _ = _fake_page(monkeypatch, tmp_path, speech)
+    assert [p["status"] for p in r["audio"]["problems"]] == ["ready", "ready"]
+    assert all("formal" not in p["speech"] for p in r["stages"]["problems"])
+    assert "formal" not in r["stages"]["speech"]
+
+
+def test_formal_audio_on_request(monkeypatch):
+    def synth(ssml, path):
+        path.write_bytes(b"MP3 " + ssml.encode())
+        return "ready", ""
+    monkeypatch.setattr(job, "_synthesize", synth)
+    assert job.formal_audio("<speak/>") == ("ready", "", b"MP3 <speak/>")
+    assert job.formal_audio(None)[0] == "skipped"
+    monkeypatch.setattr(job, "_synthesize", lambda ssml, path: ("quota_reached", "429"))
+    assert job.formal_audio("<speak/>") == ("quota_reached", "429", None)

@@ -593,10 +593,11 @@ function checkWellFormed(xml) {
  *    puts the exponent FIRST (제곱센티미터). normalize.py wraps every metric
  *    unit in \mathrm{}, so this reaches all of them (issue #20, ⚠ list).
  *  - "흰색 상향 삼각형" is the Unicode name of △ leaking through; the word is
- *    just 삼각형. "물결표" is the same for ∽ — in this pipeline a BINARY \sim
- *    only ever comes from 닮음 notation, so it reads 닮음이다 (both #20, ❌ list).
- *    Spaces on both sides are required so the accent \tilde{x}, which SRE also
- *    renders "x 물결표", is not turned into "x 닮음이다".
+ *    just 삼각형. ∽ is read "역 물결표"; in this pipeline it only ever means
+ *    닮음, so it reads 닮음이다 (both #20, ❌ list). normalize.py writes ∽ as
+ *    \sim, which SRE reads "물결표" exactly like the accent \tilde{x} ("x 물결표
+ *    더하기 1"), so similarLatex() turns \sim into \backsim before SRE and only
+ *    "역 물결표" becomes 닮음이다.
  *  - SRE spells the trig functions 싸인/코싸인; textbooks write 사인/코사인.
  *  - a ratio colon is read "콜론"; 비례식 is spoken "대" — 3:4 is "삼 대 사", not
  *    "삼 콜론 사" (issue #20, ❌ list). Chains fall out for free: the matches
@@ -604,13 +605,17 @@ function checkWellFormed(xml) {
  *    고등학교 set-builder notation would also be caught, but none reaches this
  *    pipeline — every ':' in 초·중 print is a ratio.
  */
+// \sim is the 닮음 sign here (see the note above): give it its own symbol, ∽,
+// so its reading cannot be confused with the \tilde accent.
+const similarLatex = (latex) => latex.replace(/\\sim(?![A-Za-z])/g, '\\backsim ');
+
 const UNIT_POWER = /(센티미터|밀리미터|킬로미터|미터) (세제곱|제곱)/g;
 
 function fixMisreads(speech) {
   return speech
     .replace(/흰색 정사각형/g, '네모')
     .replace(/흰색 상향 삼각형/g, '삼각형')   // Unicode character name leaking
-    .replace(/ 물결표 /g, ' 닮음이다 ')        // ∽ only BETWEEN operands (see note)
+    .replace(/역 물결표/g, '닮음이다')         // ∽ (see note); a plain 물결표 is \tilde
     .replace(/코싸인/g, '코사인')              // textbook spelling (#20)
     .replace(/싸인/g, '사인')
     .replace(UNIT_POWER, '$2$1')
@@ -684,7 +689,11 @@ async function main() {
   const docs = files.map((file) => {
     const text = fs.readFileSync(file, 'utf8').trim();
     const parts = splitSpans(text);
-    if (casual) for (const part of parts) if (part.latex !== undefined) part.latex = casualLatex(part.latex);
+    for (const part of parts) {
+      if (part.latex === undefined) continue;
+      part.latex = similarLatex(part.latex);
+      if (casual) part.latex = casualLatex(part.latex);
+    }
     return { file, parts };
   });
 
@@ -820,13 +829,16 @@ async function main() {
           }
           if (rendered.length) {
             stats.ok++;
-            return spoken(rendered.join(''));
+            // a 곱하기 put in by splitAbs is a real product: casual must keep it
+            const keepTimes = /\\(?:times|cdot)/.test(latex) || segs.some((s) => s.text === '곱하기');
+            return spoken(rendered.join(''), { keepTimes });
           }
         }
         const out = speech.get(latex).get(stitchKey);
         if (typeof out === 'string' && out.trim()) {
           stats.ok++;
-          return spoken(ssml ? ` ${ssmlInner(out)} ` : ` ${out.trim()} `);
+          return spoken(ssml ? ` ${ssmlInner(out)} ` : ` ${out.trim()} `,
+                        { keepTimes: /\\(?:times|cdot)/.test(latex) });
         }
         const saved = salvage(latex);
         if (saved) {

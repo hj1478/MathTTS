@@ -10,7 +10,8 @@ import { Steps, type StepState } from '@/components/Steps';
 import { Banner, Button, Card, H1, H2, Header, Page, T } from '@/components/ui';
 import { ApiError, getJob, submitJob, type Job, type StageState } from '@/lib/api';
 import { elapsed } from '@/lib/format';
-import { pickPhoto } from '@/lib/image';
+import { WebCamera } from '@/components/WebCamera';
+import { fromFile, liveCameraOnWeb, pickPhoto, type PickProblem, type PickResult } from '@/lib/image';
 import { persistSession, readingFromJob, session } from '@/lib/store';
 import { font, useColors } from '@/lib/theme';
 
@@ -66,6 +67,8 @@ export default function Processing() {
   const [now, setNow] = useState(Date.now());
   const [netDown, setNetDown] = useState(false);
   const alive = useRef(true);
+  const [camera, setCamera] = useState(false); // desktop web: the live camera, as on the home screen
+  const [pickProblem, setPickProblem] = useState<PickProblem | null>(null);
 
   useEffect(() => {
     if (!upload && !resumeId) router.replace('/');
@@ -85,9 +88,12 @@ export default function Processing() {
     // When it started, for the 10-minute cutoff. A resumed job from another
     // device takes it from the server's created_at on the first answer.
     let t0 = resume ? (own && session.job ? session.job.startedAt : 0) : Date.now();
+    // Until the server answers, count from opening the screen, so a server that
+    // never answers still reaches the cutoff.
+    const opened = Date.now();
     // On its own timer, so a request that never settles can't hold off the cutoff.
     const giveUp = setInterval(() => {
-      if (stop || !t0 || (Date.now() - t0) / 1000 <= GIVE_UP_S) return;
+      if (stop || (Date.now() - (t0 || opened)) / 1000 <= GIVE_UP_S) return;
       stop = true;
       clearTimeout(timer);
       setPhase({ k: 'timeout' });
@@ -192,13 +198,17 @@ export default function Processing() {
     setPhase({ k: 'submitting' });
     setAttempt((a) => a + 1);
   };
-  const repick = async (src: 'camera' | 'library') => {
-    const r = await pickPhoto(src);
+  const took = (r: PickResult) => {
     if (!r) return;
-    if ('problem' in r) return router.replace('/');
+    if ('problem' in r) return setPickProblem(r.problem);
     session.picked = r.picked;
     persistSession();
     router.replace('/crop');
+  };
+  const repick = async (src: 'camera' | 'library') => {
+    setPickProblem(null);
+    if (src === 'camera' && liveCameraOnWeb()) return setCamera(true);
+    took(await pickPhoto(src));
   };
 
   if (!upload && !resumeId) return null;
@@ -259,10 +269,28 @@ export default function Processing() {
             ))}
           </View>
         </Card>
+        {pickProblem && (
+          <Banner tone="error" title={PICK_PROBLEM[pickProblem.kind]}>
+            {pickProblem.kind === 'too_large' ? '5 MB 이하인 사진을 골라 주세요.' : '갤러리에서 사진을 고를 수도 있어요.'}
+          </Banner>
+        )}
         <View style={{ gap: 12, marginTop: 'auto' }}>
           <Button kind="primary" icon="camera" label="다시 찍기" onPress={() => repick('camera')} />
           <Button kind="secondary" icon="gallery" label="갤러리에서 선택" onPress={() => repick('library')} />
         </View>
+        {camera && (
+          <WebCamera
+            onCapture={async (f) => {
+              setCamera(false);
+              took(await fromFile(f));
+            }}
+            onProblem={(kind) => {
+              setCamera(false);
+              setPickProblem({ kind });
+            }}
+            onClose={() => setCamera(false)}
+          />
+        )}
       </Shell>
     );
   }
@@ -326,6 +354,13 @@ export default function Processing() {
     </Shell>
   );
 }
+
+const PICK_PROBLEM: Record<PickProblem['kind'], string> = {
+  not_image: '사진 파일만 올릴 수 있어요',
+  too_large: '사진이 너무 커요',
+  denied: '카메라를 쓸 수 없어요',
+  no_camera: '카메라를 찾을 수 없어요',
+};
 
 const STEP_NAMES_SHORT = ['업로드', '문제 읽기', '수식 해석', '음성 만들기'];
 

@@ -869,6 +869,86 @@ service's spoken text and audio use it. `backend/modal_app.py` ships
 - No A/B listening test on Azure yet.
 - 플러스/마이너스 is the 중학교 classroom habit. 초등 students may expect
   더하기/빼기, and that would be a one-line switch.
-- "곱하기 괄호" after a letter assumes the × was implied. A written
-  `a \times (b+c)` loses its 곱하기 too. That is rare in Korean print, but not
-  impossible.
+- ~~"곱하기 괄호" after a letter assumes the × was implied. A written
+  `a \times (b+c)` loses its 곱하기 too.~~ Fixed 2026-11-09 (next entry).
+
+## 2026-11-09 — Bug review of the pipeline and the app: what was found, what was fixed
+
+**Question.** After the per-problem reading and `--casual` went live, what is
+broken? Three reviews ran side by side (backend, speech step, app), each
+reproducing what it reported. The worst bugs changed what a student hears.
+
+**Speech (`sre-probe/`), all reproduced, all fixed:**
+
+| Input | Before | After |
+|---|---|---|
+| `x^{n+1}` | x n 플러스 1 제곱 (sounds like x·n+1 squared) | x 의 n 플러스 1 제곱 |
+| `2 \times (3+4)` | 2 괄호 열고 3 플러스 4 괄호 닫고 | 2 곱하기 괄호 열고 … |
+| `2\|(x-1)(x+2)\|` | 2 괄호 열고 … 의 절댓값 (sounds like \|2(x−1)(x+2)\|) | 2 곱하기 괄호 열고 … |
+| `\log_a x` | plain "로그 a x", SSML "밑이 a 인 로그 의 x" | 로그 a 의 x, in both |
+| `\tilde{x}+1` | x 닮음이다 플러스 1 | x 물결표 플러스 1 |
+| `a_1'` | a 1 피트 (feet) | a 아래첨자 1 프라임 |
+| `\mathrm{A_1}` | 암페어 곱하기 1 | 암페어 아래첨자 1 |
+| `\frac{x+1}{x-1} = 3` | … 플러스 1 는 3 | … 플러스 1 은 3 |
+
+How:
+- "f 의 x → f x" no longer applies when a 제곱 follows before the argument
+  ends (는, 이고, 콤마, …). SRE reads a power "x 의 EXP 제곱" and f(x)
+  "f 의 x", so only the later 제곱 tells them apart. `f(x)+x^2` now keeps its
+  의 ("f 의 x 플러스 x 제곱"): longer, but never wrong.
+- SRE says 곱하기 for a written × and for implied multiplication alike, so
+  the speech alone cannot tell them apart. speak.js now passes
+  `keepTimes` for a span with `\times`/`\cdot`, or with a 곱하기 it put in
+  itself (splitAbs), and casual keeps every 곱하기 there.
+- ∽: normalize.py writes it `\sim`, which SRE reads "물결표", the same as the
+  `\tilde` accent. speak.js now turns `\sim` into `\backsim` ("역 물결표") and
+  only that becomes 닮음이다. This applies with or without `--casual`.
+- `casualLatex` skips a subscript before a prime and anything inside
+  `\mathrm{}`/`\text{}`; the fraction rewrite re-picks 은/는 from the
+  numerator's last sound.
+
+Every case is in `casual.test.js` / `span.test.js` (83 pass). On all saved
+`output/` and `output_kma/` pages the stitched casual speech is byte-identical
+before and after, so the fixes changed nothing else.
+
+**Backend, all fixed with tests in `tests/test_problems.py`:**
+- An intro line and "1." in one OCR block ("[1~2] 다음을 읽고…\n1. …") merged
+  problems 1 and 2 under the label "2". The block is now cut there too.
+- A sub-item numbered higher than its problem ("3)" or "3번 학생" inside
+  problem 1) started a fake problem and swallowed the real problem 2. Every
+  problem must now be labelled the way the first one is ("1." page → "N.").
+- A page where speak.js crashed on every problem was reported `done`, with
+  the "인식할 수 없는 수식" message. It now fails with `speech_stage_failed`;
+  a single crashed problem's audio is `failed`, not `skipped`.
+- With no readable problem, stage 4 no longer "starts" (no `tts` stage, no
+  `timings_s.tts`), matching the single-page path and docs/API.md.
+- `GET /audio/{id}/²` was a 500 (`"²".isdigit()` is true); now a 404.
+- An error while storing the MP3s now records `internal_error` instead of
+  leaving the job `running` until it reads as `worker_lost`.
+- Cleanup could delete audio of a job created while it was listing keys; a
+  missing job record is now looked up again before its audio is dropped.
+
+**App, fixed (type check passes; not yet tried by hand on a phone):**
+- Native: un-saving and re-saving a saved reading deleted its photo and MP3
+  for good. Un-save now keeps the files (as history's 되돌리기 does), and a
+  local MP3 that is gone is stored as `expired`, never as `ready`.
+- Moving to another problem kept the previous player's status (highlight,
+  `finished`), visibly so when the new problem had no audio.
+- The "문제를 다 읽었어요" announcement / focus jump re-fired on every problem
+  change; now once per reading.
+- Web "다시 읽기" on a saved reading re-sent the 800 px thumbnail; it now sends
+  the full photo when this device still has it.
+- A job opened by link never timed out if the server never answered.
+- "다시 찍기" on the "문제를 찾지 못했어요" screen lost the pick error and, on
+  desktop, opened a file dialog instead of the live camera.
+- A `failed` job opened by link said "결과를 찾을 수 없어요"; problem boxes
+  at the photo's edge were shifted up to 4 px.
+
+**Still open.**
+- Span grammar: a stray `$` (`$$x+1$ 이고 $y$`) or `\$5` reaches the speech
+  and `--strict` does not catch it. The grammar is shared with normalize.py
+  through `eval/fixtures/span_cases.json`, so it is a change on both sides.
+- `\cdot` is read "닷".
+- `f(x)^2` is "f 의 x 제곱" (SRE's own reading, ambiguous with f^x).
+- No listening test of the casual reading on Azure yet.
+

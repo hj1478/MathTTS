@@ -225,6 +225,38 @@ stages are the result.
 | `skipped` | `null` | `strict_ok` is `false`, so Azure was not asked to read a placeholder aloud |
 | `failed` | `null` | Azure failed for another reason, after one retry |
 
+### Two readings
+
+`stages.speech` is the casual reading (speak.js `--casual`: "3 이상", "x 마이너스
+1 분의 x 플러스 1"). When the formal reading (math spelled out, without
+`--casual`) could be made too, its text is added so a client can let the
+listener switch:
+
+```json
+"stages": { "speech": { "text": "…", "ssml": "…", "strict_ok": true, "summary": [],
+    "formal": { "text": "…", "ssml": "…", "strict_ok": true, "summary": [] } } }
+```
+
+- `formal` is an extra: it is absent when speak.js could not make it, and
+  that never fails the job. On a page with several problems each problem has
+  its own `speech.formal`; the page's is their texts joined.
+- The job does not send the formal reading to Azure. Its MP3 is made when a
+  listener asks for it:
+
+  `POST /jobs/{id}/formal-audio` (one problem), or
+  `POST /jobs/{id}/formal-audio?problem=N` (problem N, 1-based, of a page)
+
+  answers `{ "status", "message", "url" }` like an `audio` entry. `ready`:
+  the MP3 is at `url` (`GET /audio/{id}?style=formal`,
+  `GET /audio/{id}/{N}?style=formal`), kept as long as the job. Asking again
+  returns the stored MP3 without another Azure call. From then on
+  `GET /jobs/{id}` shows it as `audio.formal` (or `audio.problems[i].formal`).
+  `skipped`: the formal text has a placeholder; nothing is sent. `quota_reached`
+  / `failed`: nothing was stored, and it can be asked again.
+- Errors: `404` (unknown job, no formal reading, or the page itself on a page
+  of problems), `409 not_done`, `429` (30 requests an hour per IP, apart from
+  the job budget).
+
 ### Pages with several problems
 
 When the photo holds two or more numbered problems ("1.", "2)", "[3]",
@@ -248,7 +280,13 @@ highlight and play them one at a time. Such a job also has
   width and height: `[x0, y0, x1, y1]`, one rectangle per column the problem
   spans (a figure or table under it is included).
 - Each problem has its own `--strict` guard and audio status: one formula
-  speak.js can't read skips that problem's audio only.
+  speak.js can't read skips that problem's audio only (`skipped`). A problem
+  speak.js crashed on has empty speech and audio `failed`; if it crashed on
+  every problem, the job fails with `speech_stage_failed`, as for one problem.
+- When no problem can be read aloud, stage 4 does not run: `stage_status.tts`
+  is `skipped` and `timings_s.tts` is absent.
+- Every problem is labelled the way the first one is ("1." on a "1." page),
+  so a "3)" sub-item inside a problem is not a new problem.
 - `audio.problems[i]` belongs to `stages.problems[i]`; its MP3 is
   `GET /audio/{id}/{i+1}`.
 - The page's own `stages.speech.text` is the problems' texts joined, and its

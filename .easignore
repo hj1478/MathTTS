@@ -1,0 +1,26 @@
+# EAS Build upload filter. When this file exists EAS uses it instead of
+# .gitignore, so it must cover everything the build doesn't need.
+# Only the Expo app in app/ is built; skip the Python pipeline, data and tools.
+/*
+!/app
+
+# Within app/: same as app/.gitignore
+/app/node_modules/
+/app/.expo/
+/app/dist/
+/app/web-build/
+/app/expo-env.d.ts
+/app/.kotlin/
+/app/ios/
+/app/android/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.pem
+.env
+.env*.local
+.DS_Store
+*.tsbuildinfo
+.metro-health-check*

@@ -12,7 +12,9 @@ with a label, a bounding box and its text, in reading order. They are in the
 A block whose text starts with a problem number ("1.", "2)", "문제 3") opens a
 new problem, and the blocks after it belong to it until the next number. The
 number must go up, so a choice like "1)" inside problem 4 does not split it,
-and "1.23은" (a decimal) is not a number label.
+and "1.23은" (a decimal) is not a number label. Every problem on a page is
+numbered the same way as the first one, so once the page uses "1.", a "3)"
+sub-item or a "3번 학생" line inside a problem is not a new problem either.
 
 Pure, with no OCR or Modal import, so tests/test_problems.py can check it locally.
 """
@@ -27,18 +29,40 @@ SKIP_LABELS = {"header", "footer", "number", "footnote", "header_image", "footer
 # belong in its highlight.
 PICTURE_LABELS = {"image", "chart", "figure"}
 # "1." "12)" "[3]" "3번" "문제 4", but not "1.23" or "1.5배"
-NUMBER = re.compile(r"^\s*(?:\[\s*(\d{1,3})\s*\]|(\d{1,3})\s*(?:[.)．]|번)(?!\d)|문제\s*(\d{1,3}))")
+NUMBER = re.compile(r"^\s*(?:\[\s*(\d{1,3})\s*\]|(\d{1,3})\s*([.)．]|번)(?!\d)|문제\s*(\d{1,3}))")
 # A problem number jumps by at most this much: a larger jump is more likely a
 # number inside the text (a year, a page number) than the next problem.
 MAX_JUMP = 10
 
 
-def number_of(text):
-    """The problem number a block starts with, or None."""
+def _label(text):
+    """(number, style) of the problem label a text starts with, or (None, None).
+    The style is how it is written: "[]", ".", ")", "번" or "문제"."""
     m = NUMBER.match(text or "")
     if not m:
+        return None, None
+    bracket, plain, mark, word = m.groups()
+    if bracket:
+        return int(bracket), "[]"
+    if plain:
+        return int(plain), "." if mark == "．" else mark
+    return int(word), "문제"
+
+
+def number_of(text):
+    """The problem number a block starts with, or None."""
+    return _label(text)[0]
+
+
+def _opens(text, last, style):
+    """The label's (number, style) if text starts the next problem, else None:
+    the number goes up by at most MAX_JUMP and is written like the first one."""
+    n, st = _label(text)
+    if n is None or (style is not None and st != style):
         return None
-    return int(next(g for g in m.groups() if g))
+    if last is not None and not last < n <= last + MAX_JUMP:
+        return None
+    return n, st
 
 
 def _merge(boxes):
@@ -59,20 +83,21 @@ def _merge(boxes):
     return out
 
 
-def _pieces(b, after):
+def _pieces(b, after, style):
     """One block -> [(bbox, text)]: split where a line starts the next problem
     number. OCR sometimes runs the end of one problem and the start of the next
-    into one block; the box is cut at the same line, in proportion."""
+    into one block, or an intro ("[1~2] 다음을 읽고") and problem 1; the box is
+    cut at the same line, in proportion."""
     text = (b.get("block_content") or "").strip()
     bbox = b["block_bbox"]
     lines = text.split("\n")
     cuts, last = [0], after
     for i, line in enumerate(lines):
-        n = number_of(line)
-        if i and n is not None and last is not None and last < n <= last + MAX_JUMP:
-            cuts.append(i)
-        if n is not None and (last is None or last < n <= last + MAX_JUMP):
-            last = n
+        opened = _opens(line, last, style)
+        if opened:
+            if i:
+                cuts.append(i)
+            last, style = opened
     if len(cuts) == 1:
         return [(bbox, text)]
     x0, y0, x1, y1 = bbox
@@ -119,13 +144,13 @@ def split(res):
     # figures and tables come without a reading order: placed by position below
     loose = [b for b in blocks if b.get("block_order") is None]
     problems, lead = [], []  # lead: text before the first number
-    last = None
+    last = style = None
     for b in ordered:
-        for bbox, text in _pieces(b, last):
-            n = number_of(text)
-            if n is not None and (last is None or last < n <= last + MAX_JUMP):
-                problems.append({"label": str(n), "boxes": [bbox], "parts": [text]})
-                last = n
+        for bbox, text in _pieces(b, last, style):
+            opened = _opens(text, last, style)
+            if opened:
+                last, style = opened
+                problems.append({"label": str(last), "boxes": [bbox], "parts": [text]})
             elif b.get("block_label") == "paragraph_title":
                 continue  # a section heading ("서술형"), not problem text
             elif problems:

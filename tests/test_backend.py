@@ -5,6 +5,7 @@ No Modal or network needed; the web API in backend/modal_app.py is the caller.
 """
 import io
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -327,6 +328,88 @@ def test_running_past_the_job_timeout_is_lost_without_asking_modal(api, monkeypa
     _job(store, "a5", "running", modal_app.RUNNING_LOST_AFTER_S + 5)
     _call_outcome(monkeypatch, modal_app, GRPCError(Status.UNAVAILABLE, "unreachable"))
     assert client.get("/jobs/a5").json()["error"]["code"] == "worker_lost"
+
+
+def _done_page(store, formal_ok=True):
+    """A finished two-problem page; only problem 1 has a formal reading."""
+    ready = {"status": "ready", "message": "m"}
+    formal = {"text": "정확하게", "ssml": "<speak>f</speak>" if formal_ok else None,
+              "strict_ok": formal_ok, "summary": []}
+    store.d["job:abc123"] = {"status": "done", "created": time.time(), "result": {
+        "stages": {"speech": {"text": "쉽게"}, "problems": [
+            {"speech": {"text": "쉽게 1", "formal": formal}}, {"speech": {"text": "쉽게 2"}}]},
+        "audio": {**ready, "problems": [dict(ready), dict(ready)]},
+        "timings_s": {}}}
+    store.d["audio:abc123:1"] = {"data": b"one", "created": 0}
+
+
+def _fake_tts(monkeypatch, modal_app, result):
+    calls = []
+
+    def remote(ssml):
+        calls.append(ssml)
+        return result
+    monkeypatch.setattr(modal_app, "formal_tts", type("F", (), {"remote": _Aio(remote)})())
+    return calls
+
+
+def test_formal_audio_is_made_when_asked_and_only_once(api, monkeypatch):
+    client, store, modal_app = api
+    _done_page(store)
+    calls = _fake_tts(monkeypatch, modal_app, ("ready", "", b"formal"))
+    before = client.get("/jobs/abc123").json()["audio"]["problems"][0]
+    assert "formal" not in before and not calls            # nothing until the button
+    assert client.get("/audio/abc123/1?style=formal").status_code == 404
+
+    r = client.post("/jobs/abc123/formal-audio?problem=1")
+    assert r.status_code == 200 and r.json()["status"] == "ready"
+    assert r.json()["url"].endswith("/audio/abc123/1?style=formal")
+    assert calls == ["<speak>f</speak>"]
+    assert client.get("/audio/abc123/1?style=formal").content == b"formal"
+    assert client.get("/audio/abc123/1").content == b"one"
+    after = client.get("/jobs/abc123").json()["audio"]["problems"][0]
+    assert after["formal"]["url"] == r.json()["url"]
+
+    assert client.post("/jobs/abc123/formal-audio?problem=1").json()["status"] == "ready"
+    assert len(calls) == 1                                   # the stored MP3, no second Azure call
+
+
+def test_formal_audio_that_fails_is_not_recorded(api, monkeypatch):
+    client, store, modal_app = api
+    _done_page(store)
+    calls = _fake_tts(monkeypatch, modal_app, ("quota_reached", "429", None))
+    r = client.post("/jobs/abc123/formal-audio?problem=1")
+    assert r.status_code == 200 and r.json() == {
+        "status": "quota_reached", "message": modal_app.FORMAL_AUDIO_MESSAGES["quota_reached"],
+        "url": None}
+    assert "formal" not in client.get("/jobs/abc123").json()["audio"]["problems"][0]
+    client.post("/jobs/abc123/formal-audio?problem=1")
+    assert len(calls) == 2                                   # may be asked again
+
+
+def test_formal_audio_requests_that_never_reach_azure(api, monkeypatch):
+    client, store, modal_app = api
+    _done_page(store, formal_ok=False)
+    calls = _fake_tts(monkeypatch, modal_app, ("ready", "", b"x"))
+    assert client.post("/jobs/abc123/formal-audio?problem=1").json()["status"] == "skipped"
+    for path in ("/jobs/abc123/formal-audio?problem=2",     # no formal reading
+                 "/jobs/abc123/formal-audio?problem=3", "/jobs/abc123/formal-audio?problem=x",
+                 "/jobs/abc123/formal-audio",               # the page itself, on a page of problems
+                 "/jobs/nope/formal-audio"):
+        assert client.post(path).status_code == 404, path
+    store.d["job:run1"] = {"status": "running", "created": time.time()}
+    assert client.post("/jobs/run1/formal-audio").status_code == 409
+    assert not calls
+
+
+def test_formal_audio_has_its_own_hourly_budget(api, monkeypatch):
+    client, store, modal_app = api
+    _done_page(store)
+    _fake_tts(monkeypatch, modal_app, ("failed", "x", None))
+    codes = [client.post("/jobs/abc123/formal-audio?problem=1").status_code
+             for _ in range(modal_app.FORMAL_AUDIO_LIMIT_PER_HOUR + 1)]
+    assert codes[-1] == 429 and set(codes[:-1]) == {200}
+    assert _post_image(client).status_code == 202            # job slots are separate
 
 
 def test_ipv6_clients_share_a_budget_per_64(api, monkeypatch):

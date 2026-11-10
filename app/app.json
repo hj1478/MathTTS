@@ -51,6 +51,12 @@
     "scheme": "mathtts",
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "3230bfa5-257c-4326-a395-26e0206447b4"
+      }
+    },
+    "owner": "joshuah14782"
   }
 }

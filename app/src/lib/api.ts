@@ -15,18 +15,30 @@ export interface MathSpan {
   display: boolean;
 }
 
+/** The formal reading (math spelled out), when the backend made one (docs/API.md, Two readings). */
+export interface FormalSpeech {
+  text: string;
+  ssml: string | null;
+  strict_ok: boolean;
+  summary: string[];
+}
+
 /** One numbered problem of a page with several (docs/API.md, Problems). */
 export interface JobProblem {
   label: string; // the printed number, e.g. "3"
   boxes: [number, number, number, number][]; // x0, y0, x1, y1 as fractions of the photo
   normalized: { text: string };
-  speech: { text: string; ssml: string | null; strict_ok: boolean; summary: string[] };
+  speech: { text: string; ssml: string | null; strict_ok: boolean; summary: string[]; formal?: FormalSpeech };
 }
 
-export interface ProblemAudio {
+export interface AudioEntry {
   status: AudioStatus;
   message: string;
   url: string | null;
+}
+
+export interface ProblemAudio extends AudioEntry {
+  formal?: AudioEntry;
 }
 
 export interface Job {
@@ -46,10 +58,11 @@ export interface Job {
       strict_ok: boolean;
       summary: string[];
       korean_present: boolean;
+      formal?: FormalSpeech;
     };
     problems?: JobProblem[]; // only for a page with two or more numbered problems
   };
-  audio?: { status: AudioStatus; message: string; url: string | null; problems?: ProblemAudio[] };
+  audio?: ProblemAudio & { problems?: ProblemAudio[] };
   timings_s?: Partial<Record<StageName, number>>;
   error?: { code: string; message: string };
 }
@@ -72,6 +85,7 @@ const OFFLINE_MESSAGE = '연결이 끊겼어요. 사진은 그대로 있어요.'
 // read timeout), and the poll loop waits on it forever.
 const GET_TIMEOUT_MS = 10_000;
 const UPLOAD_TIMEOUT_MS = 60_000;
+const FORMAL_AUDIO_TIMEOUT_MS = 60_000; // a container start, then one Azure call
 
 async function call(path: string, init?: RequestInit, ms = GET_TIMEOUT_MS): Promise<any> {
   const ctl = new AbortController();
@@ -162,6 +176,16 @@ export async function submitJob(img: UploadImage): Promise<string> {
   const body = await call('/jobs', { method: 'POST', body: form }, UPLOAD_TIMEOUT_MS);
   markWarm(); // the job starts (or keeps) a worker
   return body.id as string;
+}
+
+/**
+ * Ask for the formal reading's MP3 (of problem `problem`, 1-based, on a page of
+ * several). The server sends it to Azure only now, and only the first time.
+ * A `status` other than `ready` means no MP3 was made this time.
+ */
+export async function requestFormalAudio(id: string, problem?: number): Promise<AudioEntry> {
+  const query = problem ? '?problem=' + problem : '';
+  return call(`/jobs/${id}/formal-audio${query}`, { method: 'POST' }, FORMAL_AUDIO_TIMEOUT_MS);
 }
 
 export async function getJob(id: string): Promise<Job> {

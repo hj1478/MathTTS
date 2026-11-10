@@ -8,23 +8,29 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/Icon';
 import { MathText } from '@/components/MathText';
-import { Player, Spoken, type ViewRef } from '@/components/Player';
+import { Choice, Player, Spoken, type ViewRef } from '@/components/Player';
 import { ProblemNav, ProblemPhoto } from '@/components/Problems';
 import { Banner, Button, Card, H2, Header, HeaderLink, Page, PROTOTYPE_NOTE, T } from '@/components/ui';
 import { when } from '@/lib/format';
-import { ApiError, getJob } from '@/lib/api';
+import { ApiError, getJob, requestFormalAudio } from '@/lib/api';
+import { useLocalAudio } from '@/lib/localAudio';
 import {
   getReading,
+  inStyle,
   isSaved,
   loadSpeed,
+  loadStyle,
   persistSession,
   readingFromJob,
   removeReading,
   saveReading,
   session,
   storeSpeed,
+  storeStyle,
   withExpiry,
+  withFormalAudio,
   type Reading,
+  type ReadingStyle,
 } from '@/lib/store';
 import { useColors, useWide } from '@/lib/theme';
 
@@ -51,6 +57,7 @@ function NoAudio({ r, onRetry }: { r: Pick<Reading, 'audioStatus'>; onRetry: () 
       '다시 읽기',
     ],
     ready: ['음성을 불러오지 못했어요', '아래 글로 확인해 주세요.', null],
+    not_made: ['아직 음성을 만들지 않았어요', '아래 글로 확인해 주세요.', null],
   }[r.audioStatus];
   return (
     <Banner
@@ -81,11 +88,16 @@ export default function Result() {
   });
   // Couldn't ask the server (offline, 5xx): not the same as "doesn't exist".
   const [unreachable, setUnreachable] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null); // the job ended without a result
   const [tries, setTries] = useState(0);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [speed, setSpeed] = useState(1);
+  const [style, setStyle] = useState<ReadingStyle>('casual'); // 쉽게 / 정확하게
+  // The formal reading's MP3 is made when its button is pressed, not before.
+  const [making, setMaking] = useState(false);
+  const [makeError, setMakeError] = useState<string | null>(null);
   const [zoom, setZoom] = useState(false);
   const [cur, setCur] = useState(0); // the problem shown, on a page of several
   const playNext = useRef(false); // play once the picked problem's audio has loaded
@@ -106,6 +118,7 @@ export default function Result() {
         }
         if (j.status === 'queued' || j.status === 'running')
           return router.replace({ pathname: '/processing', params: { job: id } });
+        if (j.status === 'failed') setFailed(j.error?.message ?? '같은 사진으로 다시 시도해 주세요.');
       } catch (e) {
         if (!(e instanceof ApiError && e.status === 404)) return setUnreachable(true);
         // unknown or expired
@@ -114,15 +127,31 @@ export default function Result() {
     });
     isSaved(id).then(setSaved);
     loadSpeed().then(setSpeed);
+    loadStyle().then(setStyle);
   }, [id, tries]);
 
   // A page of several problems is played and shown one problem at a time.
   const problems = r?.problems && r.problems.length > 1 ? r.problems : null;
-  const view = problems ? problems[Math.min(cur, problems.length - 1)]! : r;
+  const whole = problems ? problems[Math.min(cur, problems.length - 1)]! : r;
+  // In the chosen reading: its sentence and its MP3 (the casual one where there is no formal one).
+  const view = whole && inStyle(whole, style);
   const hasAudio = !!view && view.audioStatus === 'ready' && !!view.audioUrl;
-  const player = useAudioPlayer(hasAudio ? view!.audioUrl : null, { updateInterval: 250 });
-  const status = useAudioPlayerStatus(player);
-  const finished = !!status.duration && status.currentTime >= status.duration - 0.25 && !status.playing;
+  // Downloaded first, so its length is known (lib/localAudio); null until then.
+  const local = useLocalAudio(hasAudio ? view!.audioUrl : null);
+  const loading = hasAudio && !local.uri;
+  const player = useAudioPlayer(local.uri, { updateInterval: 250 });
+  const playerStatus = useAudioPlayerStatus(player);
+  // The status hook keeps the previous player's last status until the new one
+  // sends an update (a player with no source never does): until then, nothing has played.
+  const [seen, setSeen] = useState({ status: playerStatus, player });
+  if (seen.status !== playerStatus) setSeen({ status: playerStatus, player });
+  const status =
+    seen.player === player && hasAudio && !loading
+      ? playerStatus
+      : { ...playerStatus, isLoaded: false, playing: false, currentTime: 0, duration: 0, didJustFinish: false };
+  // Some players report no length (0, NaN, Infinity) for an MP3 without a length header.
+  const duration = Number.isFinite(status.duration) && status.duration > 0 ? status.duration : status.isLoaded ? local.seconds : 0;
+  const finished = !!duration && status.currentTime >= duration - 0.25 && !status.playing;
 
   useEffect(() => {
     player.setPlaybackRate(speed, 'high');
@@ -149,8 +178,11 @@ export default function Result() {
   };
 
   // "문제를 다 읽었어요. 재생 버튼", then focus play. No autoplay: it would talk over the screen reader.
+  // Once per reading: moving between problems (hasAudio may flip) must not repeat it.
+  const announced = useRef<string | null>(null);
   useEffect(() => {
-    if (!r) return;
+    if (!r || announced.current === r.id) return;
+    announced.current = r.id;
     const t = setTimeout(() => {
       if (Platform.OS === 'web') (playRef.current as unknown as HTMLElement | null)?.focus?.();
       else {
@@ -188,9 +220,15 @@ export default function Result() {
       <View style={{ flex: 1, backgroundColor: c.bg }}>
         <Header title="읽은 결과" back={{ label: '처음 화면으로', onPress: () => router.replace('/') }} />
         <Page>
-          <Banner tone="error" title="결과를 찾을 수 없어요">
-            기록에서 지워졌거나 다른 기기에서 저장한 결과예요.
-          </Banner>
+          {failed ? (
+            <Banner tone="error" title="문제를 읽지 못했어요">
+              {failed}
+            </Banner>
+          ) : (
+            <Banner tone="error" title="결과를 찾을 수 없어요">
+              기록에서 지워졌거나 다른 기기에서 저장한 결과예요.
+            </Banner>
+          )}
           <Button kind="primary" icon="plus" label="새 문제" onPress={() => router.replace('/')} />
         </Page>
       </View>
@@ -203,7 +241,9 @@ export default function Result() {
     setSaving(true);
     setSaveError(null);
     try {
-      if (saved) await removeReading(r.id);
+      // The screen still shows the saved copy's photo and MP3: keep the files, so
+      // saving again works (dropOrphanFiles removes them at the next start if not).
+      if (saved) await removeReading(r.id, { keepFiles: true });
       else await saveReading(r);
       setSaved(!saved);
       if (Platform.OS !== 'web') AccessibilityInfo.announceForAccessibility(saved ? '기록에서 뺐어요' : '저장됨');
@@ -217,7 +257,10 @@ export default function Result() {
   };
   const again = () => {
     if (!r.imageUri) return router.replace('/'); // opened by link: no photo here to send again
-    session.upload = { uri: r.imageUri, width: r.imageWidth, height: r.imageHeight, mimeType: 'image/jpeg', name: 'photo.jpg' };
+    // The photo as it was sent, while this device still has it: a saved copy on web is a smaller thumbnail.
+    const sent = session.readings.get(r.id);
+    const full = sent?.imageUri ? sent : r;
+    session.upload = { uri: full.imageUri, width: full.imageWidth, height: full.imageHeight, mimeType: 'image/jpeg', name: 'photo.jpg' };
     session.job = null;
     persistSession();
     router.replace('/processing');
@@ -226,9 +269,80 @@ export default function Result() {
     setSpeed(v);
     storeSpeed(v);
   };
+  const pickStyle = (v: ReadingStyle) => {
+    if (v === style) return;
+    playNext.current = status.playing; // keep listening, in the other reading from its start
+    setMakeError(null);
+    setStyle(v);
+    storeStyle(v);
+  };
+  // 정확하게 읽은 음성 만들기: the only thing that sends the formal reading to Azure.
+  const makeFormal = async () => {
+    if (making) return;
+    setMaking(true);
+    setMakeError(null);
+    const at = problems ? Math.min(cur, problems.length - 1) : null;
+    try {
+      const a = await requestFormalAudio(r.id, at == null ? undefined : at + 1);
+      if (a.status === 'ready' || a.status === 'skipped') {
+        const next = withFormalAudio(r, at, { audioStatus: a.status, audioMessage: a.message, audioUrl: a.url });
+        const kept = session.readings.get(r.id);
+        if (kept) session.readings.set(r.id, withFormalAudio(kept, at, { audioStatus: a.status, audioMessage: a.message, audioUrl: a.url }));
+        persistSession();
+        if (saved) saveReading(next).catch(() => {}); // the saved copy gets the MP3 too
+        playNext.current = a.status === 'ready'; // pressed to listen: start once it has loaded
+        setR(next);
+      } else {
+        setMakeError(
+          a.status === 'quota_reached'
+            ? '음성 사용량이 잠시 다 찼어요. 잠시 후 다시 눌러 주세요.'
+            : '음성을 만들지 못했어요. 잠시 후 다시 눌러 주세요.',
+        );
+      }
+    } catch (e) {
+      setMakeError(
+        e instanceof ApiError && e.status === 404
+          ? '음성 보관 기간(24시간)이 지나 새로 만들 수 없어요. 같은 사진으로 다시 읽어 주세요.'
+          : e instanceof ApiError && e.status === 429
+            ? '요청이 많았어요. 잠시 후 다시 눌러 주세요.'
+            : '연결을 확인하고 다시 눌러 주세요.',
+      );
+    } finally {
+      setMaking(false);
+    }
+  };
 
   const listen = hasAudio ? (
-    <Player ref={playRef} player={player} status={status} speed={speed} onSpeed={pickSpeed} />
+    <Player
+      ref={playRef}
+      player={player}
+      status={status}
+      duration={duration}
+      loading={loading}
+      onPlayWhenLoaded={() => (playNext.current = true)}
+      speed={speed}
+      onSpeed={pickSpeed}
+    />
+  ) : view!.audioStatus === 'not_made' ? (
+    <Card style={{ borderRadius: 20 }}>
+      <View style={{ gap: 4 }}>
+        <H2>정확하게 듣기</H2>
+        <T muted>수식을 하나하나 풀어서 읽어요. 버튼을 누르면 이 문제의 음성을 만들어요.</T>
+      </View>
+      <View ref={playRef}>
+        <Button
+          kind={making ? 'waiting' : 'primary'}
+          icon="speaker"
+          label={making ? '음성을 만드는 중…' : '정확하게 읽은 음성 만들기'}
+          onPress={makeFormal}
+        />
+      </View>
+      {makeError && (
+        <T role="alert" style={{ color: c.errorText }}>
+          {makeError}
+        </T>
+      )}
+    </Card>
   ) : (
     <NoAudio r={view!} onRetry={again} />
   );
@@ -250,7 +364,27 @@ export default function Result() {
           </T>
         )}
       </View>
-      <Spoken text={view!.spokenText} time={status.currentTime} duration={status.duration} big={wide} />
+      {/* keyed: another problem or reading starts closed again */}
+      <Spoken
+        key={view!.spokenText}
+        text={view!.spokenText}
+        time={status.currentTime}
+        duration={duration}
+        big={wide}
+        compact={!wide}
+      />
+      {whole!.formal && (
+        <Choice
+          id="style-l"
+          title="읽는 방식"
+          value={style}
+          onPick={pickStyle}
+          options={[
+            { value: 'casual', text: '쉽게', label: '쉽게 읽기: 사람이 말하듯이' },
+            { value: 'formal', text: '정확하게', label: '정확하게 읽기: 수식을 하나하나' },
+          ]}
+        />
+      )}
     </Card>
   );
 
@@ -365,12 +499,13 @@ export default function Result() {
         </Page>
       ) : (
         <Page footer={actions}>
+          <T muted>{when(r.createdAt)}</T>
           {saveProblem}
           {nav}
           {listen}
-          {note}
           {spoken}
           {compare}
+          {note}
         </Page>
       )}
 

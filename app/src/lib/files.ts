@@ -2,7 +2,24 @@
 // so history outlives the server's 24 h retention.
 import { Directory, File, Paths } from 'expo-file-system';
 
-import type { Reading } from './store';
+import type { Reading, Spoken } from './store';
+
+/**
+ * A stored file URI under this install's folders. iOS moves the app's
+ * container on every update (…/Application/<new id>/…), so the part up to
+ * Documents/ or Library/Caches/ is replaced with where those are now.
+ */
+export function relocate(uri: string): string {
+  if (!uri.startsWith('file:')) return uri;
+  for (const [marker, root] of [
+    ['/Documents/', Paths.document.uri],
+    ['/Library/Caches/', Paths.cache.uri],
+  ] as const) {
+    const at = uri.indexOf(marker);
+    if (at >= 0 && root.includes(marker.slice(0, -1))) return root.replace(/\/?$/, '/') + uri.slice(at + marker.length);
+  }
+  return uri;
+}
 
 function dirFor(id: string) {
   return new Directory(Paths.document, 'history', id);
@@ -19,18 +36,36 @@ export async function keepFiles(r: Reading): Promise<Reading> {
   } catch {
     // Keep the cache URI; it still works until the OS clears the cache.
   }
-  out.audioUrl = await keepAudio(dir, 'audio', r.audioUrl);
+  Object.assign(out, await keptAudio(dir, 'audio', r));
   if (r.problems) {
     out.problems = [];
-    for (const [i, p] of r.problems.entries())
-      out.problems.push({ ...p, audioUrl: await keepAudio(dir, `audio-${i + 1}`, p.audioUrl) });
+    for (const [i, p] of r.problems.entries()) out.problems.push({ ...p, ...(await keptAudio(dir, `audio-${i + 1}`, p)) });
   }
   return out;
 }
 
-/** The on-device copy of a remote MP3, or `url` unchanged if it can't be made. */
+type Kept = Pick<Reading, 'audioUrl' | 'audioStatus'>;
+
+/** The audio fields after keepAudio (the formal reading's too): a local MP3 that is gone is no audio, not 'ready'. */
+async function keptAudio(dir: Directory, name: string, x: Kept & { formal?: Spoken }) {
+  const one = async (file: string, a: Kept) => {
+    const audioUrl = await keepAudio(dir, file, a.audioUrl);
+    return { audioUrl, audioStatus: a.audioStatus === 'ready' && !audioUrl ? ('expired' as const) : a.audioStatus };
+  };
+  return { ...(await one(name, x)), formal: x.formal && { ...x.formal, ...(await one(name + '-formal', x.formal)) } };
+}
+
+/** The on-device copy of a remote MP3, or `url` unchanged if it can't be made;
+ * null for a local file that no longer exists. */
 async function keepAudio(dir: Directory, name: string, url: string | null): Promise<string | null> {
-  if (!url?.startsWith('http')) return url;
+  if (!url) return null;
+  if (!url.startsWith('http')) {
+    try {
+      return new File(url).exists ? url : null;
+    } catch {
+      return null;
+    }
+  }
   try {
     const mp3 = new File(dir, name + '.mp3');
     if (!mp3.exists) {

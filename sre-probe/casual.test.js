@@ -15,14 +15,17 @@ test('simple subscripts become one name; compound ones keep 아래첨자', () =>
   assert.strictEqual(casualLatex('x_{1}^{2}'), 'x{1}^{2}');
   assert.strictEqual(casualLatex('a_{n+1}'), 'a_{n+1}');
   assert.strictEqual(casualLatex('\\log_2 8'), '\\log_2 8'); // a command, not a variable
+  assert.strictEqual(casualLatex("a_1'"), "a_1'");              // a{1}' is read "피트"
+  assert.strictEqual(casualLatex('\\mathrm{A_1}+B_1'), '\\mathrm{A_1}+B{1}');  // a unit, not a variable
+  assert.strictEqual(casualLatex('\\text{a_1}'), '\\text{a_1}');
 });
 
-async function say(latex, ssml) {
+async function say(latex, ssml, opts) {
   await sre.setupEngine({ locale: 'ko', domain: 'clearspeak', style: 'default',
                           modality: 'speech', markup: ssml ? 'ssml' : 'none' });
   await sre.engineReady();
   const xml = temml.renderToString(casualLatex(latex), { xml: true, throwOnError: true });
-  return casualSpeech(fixMisreads(sre.toSpeech(xml))).replace(/\s+/g, ' ').trim();
+  return casualSpeech(fixMisreads(sre.toSpeech(xml)), opts).replace(/\s+/g, ' ').trim();
 }
 
 const CASES = [
@@ -41,6 +44,19 @@ const CASES = [
   ['\\{1,2,3\\}', '집합 1, 2, 3'],
   ['(-1)^{n}\\times(-1)^{m}', '괄호 열고 마이너스 1 괄호 닫고 의 n 제곱 곱하기 괄호 열고 마이너스 1 괄호 닫고 의 m 제곱'],
   ['B\\times C', 'B 곱하기 C'],
+  // found in review, 2026-11-09
+  ['x^{n+1}', 'x 의 n 플러스 1 제곱'],                     // a power, not "x n …"
+  ['x^{ab}', 'x 의 a b 제곱'],
+  ['f(x)+x^2', 'f 의 x 플러스 x 제곱'],                    // unsure: keep the 의
+  ['\\log_a x', '로그 a 의 x'],                           // the base, in both modes
+  ['\\frac{x+1}{x-1}=3', 'x 마이너스 1 분의 x 플러스 1 은 3'],  // 은 after 일
+  ['\\frac{x-3}{2}\\neq 0', '2 분의 x 마이너스 3 은 0 이 아니다'],
+  ['\\frac{1}{x}=2', 'x 분의 1 은 2'],
+];
+
+// SRE says 곱하기 for a written × too; speak.js passes keepTimes for such a span
+const KEEP = [
+  ['2\\times(3+4)', '2 곱하기 괄호 열고 3 플러스 4 괄호 닫고'],
 ];
 
 for (const [latex, want] of CASES) {
@@ -53,4 +69,13 @@ for (const [latex, want] of CASES) {
     const words = out.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
     assert.strictEqual(words.replace(/ ,/g, ','), want);
   });
+}
+
+for (const [latex, want] of KEEP) {
+  for (const ssml of [false, true]) {
+    test(`keepTimes (${ssml ? 'ssml' : 'plain'}): ${latex}`, async () => {
+      const out = (await say(latex, ssml, { keepTimes: true })).replace(/^<\?xml[^>]*\?>/, '');
+      assert.strictEqual(out.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(), want);
+    });
+  }
 }

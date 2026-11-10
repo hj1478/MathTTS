@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { Image, Pressable, Text, View, type LayoutChangeEvent } from 'react-native';
 
 import type { Problem } from '@/lib/store';
-import { font, useColors } from '@/lib/theme';
+import { font, useColors, useWide } from '@/lib/theme';
 import { Button, T } from './ui';
 
 const PAD = 4; // px around a box, so the outline doesn't sit on the text
@@ -53,6 +53,11 @@ export function ProblemPhoto({
           {problems.map((p, i) =>
             p.boxes.map(([x0, y0, x1, y1], k) => {
               const on = i === cur;
+              // padded, then clamped to the photo on every side
+              const left = Math.max(0, x0 * w - PAD);
+              const top = Math.max(0, y0 * h - PAD);
+              const right = Math.min(w, x1 * w + PAD);
+              const bottom = Math.min(h, y1 * h + PAD);
               return (
                 <Pressable
                   key={`${i}-${k}`}
@@ -65,10 +70,10 @@ export function ProblemPhoto({
                   onPress={() => onPick(i)}
                   style={{
                     position: 'absolute',
-                    left: Math.max(0, x0 * w - PAD),
-                    top: Math.max(0, y0 * h - PAD),
-                    width: Math.min(w, (x1 - x0) * w + 2 * PAD),
-                    height: Math.min(h, (y1 - y0) * h + 2 * PAD),
+                    left,
+                    top,
+                    width: right - left,
+                    height: bottom - top,
                     borderRadius: 6,
                     borderWidth: on ? 3 : 1.5,
                     borderStyle: on ? 'solid' : 'dashed',
@@ -116,6 +121,7 @@ export function ProblemNav({
   finished: boolean; // the current problem has played to the end: 다음 is the main action
 }) {
   const p = problems[cur]!;
+  const wide = useWide(); // a phone has room for the short labels only
   const last = cur === problems.length - 1;
   return (
     <View style={{ gap: 12 }}>
@@ -131,20 +137,22 @@ export function ProblemNav({
         <Button
           kind="secondary"
           icon="back"
-          label="이전 문제"
+          label={wide ? '이전 문제' : '이전'}
+          accessibilityLabel="이전 문제"
           disabled={cur === 0}
           aria-disabled={cur === 0 || undefined}
           onPress={() => onPick(cur - 1)}
-          style={{ flex: 1, opacity: cur === 0 ? 0.4 : 1 }}
+          style={{ flex: 1, paddingHorizontal: 12, opacity: cur === 0 ? 0.4 : 1 }}
         />
         <Button
           kind={finished && !last ? 'primary' : 'secondary'}
           icon="chevron"
-          label="다음 문제"
+          label={wide ? '다음 문제' : '다음'}
+          accessibilityLabel="다음 문제"
           disabled={last}
           aria-disabled={last || undefined}
           onPress={() => onPick(cur + 1)}
-          style={{ flex: 1, opacity: last ? 0.4 : 1 }}
+          style={{ flex: 1, paddingHorizontal: 12, opacity: last ? 0.4 : 1 }}
         />
       </View>
     </View>

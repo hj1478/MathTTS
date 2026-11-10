@@ -22,6 +22,13 @@ for running as a service rather than as a CLI:
   - A stage-4 failure does not fail the job. The text stages are the result;
     audio carries its own status, and an exhausted quota is reported as
     "quota_reached" rather than as an error.
+  - Stage 3 also makes a second, "formal" reading: speak.js without --casual,
+    math spelled out the way SRE says it. A client lets the listener switch
+    between the two. The casual reading is the job's result; the formal one
+    is extra, and a failure in it only leaves the formal reading out. Stage 4
+    does not send it to Azure: its MP3 is made only when a listener asks for
+    it (formal_audio below, called by POST /jobs/{id}/formal-audio), so a job
+    still costs one Azure call per problem.
   - Stage 1.5 (--dots) stays off, as in a default run.py — it needs an OpenAI
     key the service does not have.
 
@@ -85,10 +92,11 @@ class JobError(Exception):
         self.code, self.detail = code, detail
 
 
-def _speak(norm_path, out_dir, ssml):
+def _speak(norm_path, out_dir, ssml, casual=True):
     """sre-probe/speak.js as run.py calls it (--strict, --voice, --write), plus
     --casual: math is read as a person says it ("A 1", "x 마이너스 1 분의 x 플러스
-    1", "3 이상"), not spelled out (sre-probe/casual.js).
+    1", "3 이상"), not spelled out (sre-probe/casual.js). casual=False leaves
+    --casual out, for the formal reading.
 
     Only the clearspeak combo: the stitched output uses the first combo, and
     the default second one (mathspeak) only fills speak.js's console table.
@@ -96,8 +104,10 @@ def _speak(norm_path, out_dir, ssml):
     Returns (exit_code, SUMMARY lines). Exit 2 is the --strict failure: the
     files were still written, but something stitched as salvage/placeholder.
     """
-    cmd = ["node", str(SPEAK_JS), "--strict", "--casual", "--combos", "clearspeak/default",
+    cmd = ["node", str(SPEAK_JS), "--strict", "--combos", "clearspeak/default",
            "--voice", VOICE, "--write", str(out_dir)]
+    if casual:
+        cmd.insert(3, "--casual")
     if ssml:
         cmd.append("--ssml")
     cmd.append(str(norm_path))
@@ -140,7 +150,7 @@ def _synthesize(ssml_text, audio_path):
     return ("quota_reached" if limits.is_quota_error(detail) else "failed"), detail
 
 
-def _speech(norm_path, stitch_dir):
+def _speech(norm_path, stitch_dir, casual=True):
     """Stage 3 on one .norm.md -> (spoken text, ssml or None, strict_ok, SUMMARY lines)."""
     base = norm_path.name.removesuffix(".norm.md")
     txt_path = stitch_dir / f"{base}.stitched.txt"
@@ -148,8 +158,9 @@ def _speech(norm_path, stitch_dir):
     for p in (txt_path, ssml_path):
         p.unlink(missing_ok=True)
     with ThreadPoolExecutor(2) as pool:  # both at once; see the module docstring
-        plain = pool.submit(_speak, norm_path, stitch_dir, ssml=False)
-        with_ssml = pool.submit(_speak, norm_path, stitch_dir, ssml=True)
+        style = {} if casual else {"casual": False}
+        plain = pool.submit(_speak, norm_path, stitch_dir, ssml=False, **style)
+        with_ssml = pool.submit(_speak, norm_path, stitch_dir, ssml=True, **style)
         code, summary = plain.result()
         strict_ok = code == 0
         if strict_ok:
@@ -167,18 +178,70 @@ def _speech(norm_path, stitch_dir):
     return spoken, ssml, strict_ok, summary
 
 
+def _formal_speech(norm_path, formal_dir):
+    """The formal reading of one .norm.md, as a "formal" entry for the speech
+    dict, or None. It is an extra: whatever goes wrong here, the job goes on
+    with the casual reading alone."""
+    try:
+        text, ssml, strict_ok, summary = _speech(norm_path, formal_dir, casual=False)
+    except Exception as e:
+        print(f"[speech] no formal reading for {norm_path.name}: {type(e).__name__}: {e}",
+              file=sys.stderr)
+        return None
+    if not text:
+        return None
+    return {"text": text, "ssml": ssml, "strict_ok": strict_ok, "summary": summary}
+
+
+def _both_readings(norm_path, stitch_dir, formal_dir):
+    """Stage 3 twice at the same time -> (_speech's casual result, formal entry
+    or None). Raises what the casual _speech raises."""
+    with ThreadPoolExecutor(1) as pool:
+        formal = pool.submit(_formal_speech, norm_path, formal_dir)
+        return _speech(norm_path, stitch_dir), formal.result()
+
+
+def _speech_entry(spoken, formal):
+    text, ssml, strict_ok, summary = spoken
+    entry = {"text": text, "ssml": ssml, "strict_ok": strict_ok, "summary": summary}
+    if formal:
+        entry["formal"] = formal
+    return entry
+
+
 def problem_audio_name(i):
     """The MP3 of problem i (1-based) in the job folder."""
     return f"audio_{i}.mp3"
 
 
-def _synthesize_problems(items, workdir):
+def formal_audio(ssml):
+    """The formal reading's MP3, on request -> (status, detail, MP3 bytes or None).
+    One Azure call (two if the first fails), as stage 4 makes for the casual one."""
+    import tempfile
+    if not ssml:
+        return "skipped", "no formal SSML", None
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / AUDIO_NAME
+        status, detail = _synthesize(ssml, path)
+        return status, detail, path.read_bytes() if status == "ready" else None
+
+
+def _no_audio(crashed):
+    """Audio status of a problem that is not sent to Azure: speak.js crashed on
+    it ("failed"), or --strict found a formula it could not read ("skipped")."""
+    if crashed:
+        return "failed", "speech_stage_failed"
+    return "skipped", "speak.js --strict failed"
+
+
+def _synthesize_problems(items, workdir, crashed=None):
     """Stage 4 per problem -> [(audio status, detail)], in order. A problem whose
     speech failed --strict is skipped, as a whole page would be."""
+    crashed = crashed or [False] * len(items)
     def one(i, p):
         sp = p["speech"]
         if not sp["strict_ok"] or not sp["ssml"]:
-            return "skipped", "speak.js --strict failed"
+            return _no_audio(crashed[i - 1])
         return _synthesize(sp["ssml"], Path(workdir) / problem_audio_name(i))
     with ThreadPoolExecutor(PARALLEL_TTS) as pool:
         return list(pool.map(one, range(1, len(items) + 1), items))
@@ -207,7 +270,8 @@ def run_job(image, workdir, device, tts=True, on_stage=lambda stage: None, ocr=N
     """image -> dict of every stage's output. Raises JobError if a text stage fails.
 
     Writes into workdir: OCR markdown (+ the OCR's JSON), <stem>.norm.md,
-    stitched/<stem>.stitched.{txt,ssml}, and audio.mp3 when stage 4 succeeds.
+    stitched/<stem>.stitched.{txt,ssml}, and audio.mp3 when stage 4 succeeds
+    (stitched_formal/ for the formal reading).
 
     `ocr` replaces the call to ocr_vl.run_image (same arguments and return);
     the Modal worker passes one that runs it in a killable child process
@@ -221,12 +285,17 @@ def run_job(image, workdir, device, tts=True, on_stage=lambda stage: None, ocr=N
     (each with its boxes, text and speech) and audio["problems"] (one status
     per problem; problem i's MP3 is problem_audio_name(i)). The page's own
     audio.mp3 is then their MP3s back to back.
+
+    The formal reading, where it could be made, is speech["formal"] (text,
+    ssml, strict_ok, summary), on the page and on each problem. It has no
+    audio here: see formal_audio.
     """
     import ocr_vl
 
     ocr = ocr or ocr_vl.run_image
     workdir = Path(workdir)
     ocr_dir, stitch_dir = workdir / "ocr", workdir / "stitched"
+    formal_dir = workdir / "stitched_formal"
     timings = {}
 
     # --- stage 1: OCR ------------------------------------------------------
@@ -280,17 +349,22 @@ def run_job(image, workdir, device, tts=True, on_stage=lambda stage: None, ocr=N
         def speak_part(part):
             # one problem speak.js can't read loses its audio, not the whole page
             try:
-                return _speech(part["norm_path"], stitch_dir)
+                return _both_readings(part["norm_path"], stitch_dir, formal_dir), None
             except JobError as e:
-                return "", None, False, [f"speech_stage_failed: {e.detail}"]
+                return (("", None, False, [f"speech_stage_failed: {e.detail}"]), None), e
         with ThreadPoolExecutor(PARALLEL_PROBLEMS) as pool:
-            spoken_parts = list(pool.map(speak_part, parts))
+            results = list(pool.map(speak_part, parts))
+        errors = [e for _, e in results if e is not None]
+        if len(errors) == len(parts):
+            raise errors[0]  # nothing was read: the job failed, as for a single page
+        spoken_parts = [r for r, _ in results]
+        crashed = [e is not None for _, e in results]
         stages["problems"] = [{
             "label": part["label"],
             "boxes": part["boxes"],
             "normalized": {"text": part["normalized"]},
-            "speech": {"text": text, "ssml": ssml, "strict_ok": ok, "summary": summary},
-        } for part, (text, ssml, ok, summary) in zip(parts, spoken_parts)]
+            "speech": _speech_entry(spoken, formal),
+        } for part, (spoken, formal) in zip(parts, spoken_parts)]
         stages["speech"] = {
             "text": "\n\n".join(p["speech"]["text"] for p in stages["problems"]),
             "ssml": None,  # one per problem, in stages.problems
@@ -299,16 +373,20 @@ def run_job(image, workdir, device, tts=True, on_stage=lambda stage: None, ocr=N
                         for line in p["speech"]["summary"]],
             "korean_present": korean,
         }
+        formals = [p["speech"].get("formal") for p in stages["problems"]]
+        if all(formals):
+            stages["speech"]["formal"] = {
+                "text": "\n\n".join(f["text"] for f in formals),
+                "ssml": None,
+                "strict_ok": all(f["strict_ok"] for f in formals),
+                "summary": [],
+            }
         on_output("problems", stages["problems"])
     else:
-        spoken, ssml, strict_ok, summary = _speech(norm_path, stitch_dir)
-        stages["speech"] = {
-            "text": spoken,          # what the listener hears, as plain text
-            "ssml": ssml,            # what was sent to Azure (None if not produced)
-            "strict_ok": strict_ok,
-            "summary": summary,
-            "korean_present": korean,
-        }
+        # text: what the listener hears, as plain text; ssml: what is sent to
+        # Azure (None if not produced)
+        stages["speech"] = _speech_entry(*_both_readings(norm_path, stitch_dir, formal_dir))
+        stages["speech"]["korean_present"] = korean
     timings["speech"] = round(time.monotonic() - t, 2)
     on_output("speech", stages["speech"])
 
@@ -317,10 +395,15 @@ def run_job(image, workdir, device, tts=True, on_stage=lambda stage: None, ocr=N
     problem_audio = None
     if not tts:
         audio_status, audio_detail = "not_requested", ""
+    elif parts and not any(p["speech"]["strict_ok"] and p["speech"]["ssml"]
+                           for p in stages["problems"]):
+        # no problem can be read aloud: stage 4 does not run (progress shows it skipped)
+        problem_audio = [_no_audio(c) for c in crashed]
+        audio_status, audio_detail = _whole_page(problem_audio, workdir, audio_path)
     elif parts:
         on_stage("tts")
         t = time.monotonic()
-        problem_audio = _synthesize_problems(stages["problems"], workdir)
+        problem_audio = _synthesize_problems(stages["problems"], workdir, crashed)
         audio_status, audio_detail = _whole_page(problem_audio, workdir, audio_path)
         timings["tts"] = round(time.monotonic() - t, 2)
     elif not stages["speech"]["strict_ok"] or not stages["speech"]["ssml"]:

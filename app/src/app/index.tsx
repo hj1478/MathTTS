@@ -1,7 +1,7 @@
 // 1 홈 · 촬영 (Main.dc.html), D1 데스크톱 홈, and the upload-rejected / offline states (E3, E4).
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Platform, View } from 'react-native';
+import { Linking, Platform, View } from 'react-native';
 
 import { DropZone } from '@/components/DropZone';
 import { HistoryRow } from '@/components/HistoryRow';
@@ -57,6 +57,22 @@ function ProblemBanner({ p }: { p: Problem }) {
         </Banner>
       );
   }
+}
+
+const PRIVACY_URL = 'https://math-tts.pages.dev/privacy';
+
+function PrivacyLink() {
+  return (
+    <T
+      v="caption"
+      muted
+      role="link"
+      onPress={() => Linking.openURL(PRIVACY_URL)}
+      style={{ textAlign: 'center', textDecorationLine: 'underline', paddingVertical: 12 }}
+    >
+      개인정보 처리방침
+    </T>
+  );
 }
 
 const TIPS = [
@@ -154,7 +170,7 @@ export default function Home() {
         <Button kind="tertiary" label="모두 보기" href="/history" />
       </View>
       <View style={{ gap: 8 }}>
-        {recent.slice(0, wide ? 3 : 1).map((r) => (
+        {recent.slice(0, 3).map((r) => (
           <HistoryRow key={r.id} r={r} />
         ))}
       </View>
@@ -230,6 +246,7 @@ export default function Home() {
               {recentList}
             </View>
           </View>
+          <PrivacyLink />
         </Page>
       ) : (
         <Page>
@@ -238,6 +255,7 @@ export default function Home() {
           {buttons}
           {pdfHint || <Tips />}
           <View style={{ marginTop: 'auto' }}>{recentList}</View>
+          <PrivacyLink />
         </Page>
       )}
       {camera && (

@@ -11,6 +11,7 @@ unchanged. This file is only the hosting around it:
                 at most MAX_WORKERS containers, so extra jobs queue instead of
                 renting more GPUs.
   web (CPU)     FastAPI: POST /warmup, POST /jobs, GET /jobs/{id}, GET /audio/{id}.
+                POST /jobs/{id}/formal-audio calls formal_tts (CPU, Azure only).
                 Validates the upload and applies the per-IP limit BEFORE a GPU
                 job is spawned. Never sees the Azure secret.
   cleanup       hourly: deletes job folders (upload, stage files), job records
@@ -25,6 +26,9 @@ State:
   Dict   "mathtts-jobs"   job:<id> -> status record (what GET /jobs returns)
                           audio:<id> -> {"data": mp3 bytes, "created"} (GET /audio)
                           audio:<id>:<n> -> the same for problem n of a page (GET /audio/<id>/<n>)
+                          audio:<id>:formal, audio:<id>:<n>:formal -> the formal reading's
+                          MP3 (GET /audio/...?style=formal), made only when a
+                          listener asks (POST /jobs/<id>/formal-audio -> formal_tts)
                           rl:<ip>|<hour>|<n> -> rate-limit slots (see limits.py)
 
 Checked against the Modal Python SDK 1.6.2 (2026-10). Parameter names that
@@ -60,6 +64,7 @@ CORS_ORIGINS = os.environ.get("MATHTTS_CORS_ORIGINS", "")
 
 RATE_LIMIT_PER_HOUR = 10       # jobs per client IP per clock hour
 WARMUP_LIMIT_PER_HOUR = 30     # POST /warmup per client IP per clock hour (own budget)
+FORMAL_AUDIO_LIMIT_PER_HOUR = 30  # POST /jobs/{id}/formal-audio that reach Azure, the same way
 MAX_WORKERS = 2                # concurrent GPU containers
 SCALEDOWN_S = 90               # idle seconds before a worker container stops
 # The OCR model runs in a child process (backend/ocr_proc.py). An OCR call
@@ -195,14 +200,30 @@ web_image = (
 )
 
 
+# Azure TTS alone, for the formal reading's MP3 on request (formal_tts): the
+# Speech SDK and the stage-4 code, without the OCR stack or a GPU.
+tts_image = (
+    modal.Image.debian_slim(python_version="3.11")
+    .apt_install("ca-certificates", "libssl3", "libasound2")
+    .uv_pip_install("azure-cognitiveservices-speech==1.50.0")
+    .add_local_file(REPO / "normalize.py", "/root/normalize.py")
+    .add_local_file(REPO / "tts_probe.py", "/root/tts_probe.py")
+    .add_local_file(REPO / "backend" / "job.py", "/root/backend/job.py")
+    .add_local_file(REPO / "backend" / "limits.py", "/root/backend/limits.py")
+    .add_local_file(REPO / "backend" / "problems.py", "/root/backend/problems.py")
+)
+
+
 # --- job records -------------------------------------------------------------
 def _key(job_id):
     return f"job:{job_id}"
 
 
-def _audio_key(job_id, problem=None):
+def _audio_key(job_id, problem=None, formal=False):
     # problem: 1-based, for one problem's MP3 on a page of several
-    return f"audio:{job_id}" if problem is None else f"audio:{job_id}:{problem}"
+    # formal: the formal reading's MP3 instead of the casual one
+    key = f"audio:{job_id}" if problem is None else f"audio:{job_id}:{problem}"
+    return key + ":formal" if formal else key
 
 
 def _call_key(job_id):
@@ -379,28 +400,61 @@ class Worker:
                           "message": job.JOB_ERROR_MESSAGES["internal_error"]})
             return False
 
-        detail = result["audio"].pop("_detail", "")
-        for i, pa in enumerate(result["audio"].get("problems") or [], 1):
-            pdetail = pa.pop("_detail", "")
-            if pa["status"] == "ready":
-                data = (workdir / job.problem_audio_name(i)).read_bytes()
-                store.put(_audio_key(job_id, i), {"data": data, "created": rec["created"]})
+        # Storing the audio can fail too (a missing MP3, a Dict error). Caught
+        # here, it is an internal_error; escaping, the record would stay
+        # "running" and later read as worker_lost.
+        try:
+            detail = result["audio"].pop("_detail", "")
+            for i, pa in enumerate(result["audio"].get("problems") or [], 1):
+                pdetail = pa.pop("_detail", "")
+                if pa["status"] == "ready":
+                    data = (workdir / job.problem_audio_name(i)).read_bytes()
+                    store.put(_audio_key(job_id, i), {"data": data, "created": rec["created"]})
+                else:
+                    print(f"[job {job_id}] problem {i} audio {pa['status']}: {pdetail}")
+            if result["audio"]["status"] == "ready":
+                # in the Dict, not on the volume: no commit/reload between the worker
+                # and GET /audio (FINDINGS.md, 2026-10-19). Written before "done".
+                data = (workdir / job.AUDIO_NAME).read_bytes()
+                store.put(_audio_key(job_id), {"data": data, "created": rec["created"]})
+                _trace(job_id, "audio_put", bytes=len(data))
             else:
-                print(f"[job {job_id}] problem {i} audio {pa['status']}: {pdetail}")
-        if result["audio"]["status"] == "ready":
-            # in the Dict, not on the volume: no commit/reload between the worker
-            # and GET /audio (FINDINGS.md, 2026-10-19). Written before "done".
-            data = (workdir / job.AUDIO_NAME).read_bytes()
-            store.put(_audio_key(job_id), {"data": data, "created": rec["created"]})
-            _trace(job_id, "audio_put", bytes=len(data))
-        else:
-            print(f"[job {job_id}] audio {result['audio']['status']}: {detail}")
+                print(f"[job {job_id}] audio {result['audio']['status']}: {detail}")
+        except Exception as e:
+            print(f"[job {job_id}] internal error storing audio: {type(e).__name__}: {e}")
+            update(status="failed", stage=None, stages=stages,
+                   error={"code": "internal_error",
+                          "message": job.JOB_ERROR_MESSAGES["internal_error"]})
+            return False
         # GET /jobs reads a done job's stages from result; the running copy would
         # only double every later poll's read
         rec.pop("stages", None)
         update(status="done", stage=None, result=result)
         _trace(job_id, "worker_return")
         return True
+
+
+# --- the formal reading's audio, on request ------------------------------------
+@app.function(image=tts_image, secrets=[azure], timeout=120, scaledown_window=120,
+              max_containers=2, retries=0)
+def formal_tts(ssml):
+    """One formal reading through Azure -> (status, detail, MP3 bytes or None).
+    Runs only when a listener presses the button (POST /jobs/{id}/formal-audio)."""
+    # tts_probe.make_config reads AZURE_SPEECH_*; the Modal secret is named SPEECH_*
+    os.environ["AZURE_SPEECH_KEY"] = os.environ.get("SPEECH_KEY", "")
+    os.environ["AZURE_SPEECH_REGION"] = os.environ.get("SPEECH_REGION", "")
+    os.environ.pop("AZURE_SPEECH_ENDPOINT", None)
+    from backend import job
+    return job.formal_audio(ssml)
+
+
+# same wording as job.AUDIO_MESSAGES (job.py is not in the web image)
+FORMAL_AUDIO_MESSAGES = {
+    "ready": "음성이 준비되었습니다.",
+    "quota_reached": "이번 달 음성 합성 한도에 도달했습니다. 텍스트 결과는 정상적으로 확인할 수 있습니다.",
+    "skipped": "인식할 수 없는 수식이 있어 음성을 만들지 않았습니다. 텍스트 결과를 확인해 주세요.",
+    "failed": "음성 합성에 실패했습니다. 텍스트 결과는 정상적으로 확인할 수 있습니다.",
+}
 
 
 # --- web API -----------------------------------------------------------------
@@ -602,6 +656,72 @@ def web():
             return True
         return True
 
+    def audio_url(request, name, **params):
+        proto = request.headers.get("x-forwarded-proto")
+        url = request.url_for(name, **params)
+        return str(url.replace(scheme=proto) if proto else url)
+
+    @api.post("/jobs/{job_id}/formal-audio")
+    async def make_formal_audio(job_id: str, request: Request, problem: str = ""):
+        """The formal reading's MP3, made now if it has not been: the one place the
+        formal reading reaches Azure. `problem` (1-based) on a page of several."""
+        rec = await store.get.aio(_key(job_id)) if job_id.isalnum() else None
+        if rec is None:
+            return error(404, "not_found", "작업을 찾을 수 없습니다. 24시간이 지나 삭제되었을 수 있습니다.")
+        if rec.get("status") != "done":
+            return error(409, "not_done", "아직 처리가 끝나지 않았습니다.")
+        if problem and not (problem.isascii() and problem.isdigit()):
+            return error(404, "not_found", "문제를 찾을 수 없습니다.")
+        n = int(problem) if problem else None
+
+        def pick(result):
+            """-> (speech, audio entry) of the page or of problem n, or None."""
+            parts = result["stages"].get("problems")
+            if n is None:
+                return None if parts else (result["stages"]["speech"], result["audio"])
+            entries = result["audio"].get("problems") or []
+            if not parts or not 1 <= n <= len(parts) or len(entries) != len(parts):
+                return None
+            return parts[n - 1]["speech"], entries[n - 1]
+
+        found = pick(rec["result"])
+        formal = found and found[0].get("formal")
+        if not formal:
+            return error(404, "no_formal_reading", "이 문제에는 정확하게 읽기가 없습니다.")
+        name, params = (("get_audio", {}) if n is None
+                        else ("get_problem_audio", {"n": str(n)}))
+        url = audio_url(request, name, job_id=job_id, **params) + "?style=formal"
+
+        def answer(status):
+            return {"status": status, "message": FORMAL_AUDIO_MESSAGES[status],
+                    "url": url if status == "ready" else None}
+
+        if (found[1].get("formal") or {}).get("status") == "ready":
+            return answer("ready")  # made before: no second Azure call
+        if not formal["strict_ok"] or not formal["ssml"]:
+            return answer("skipped")
+        slot, wait = await take_slot(f"tts:{client_ip(request)}", FORMAL_AUDIO_LIMIT_PER_HOUR)
+        if slot is None:
+            return error(429, "rate_limited",
+                         f"요청이 너무 많습니다. 한 시간에 {FORMAL_AUDIO_LIMIT_PER_HOUR}번까지 요청할 수 있습니다.",
+                         headers={"Retry-After": str(wait)})
+        try:
+            status, detail, data = await formal_tts.remote.aio(formal["ssml"])
+        except Exception as e:
+            status, detail, data = "failed", f"{type(e).__name__}: {e}", None
+        if status != "ready" or not data:
+            print(f"[job {job_id}] formal audio {problem or 'page'} {status}: {detail}", flush=True)
+            return answer(status if status != "ready" else "failed")  # not recorded: may be asked again
+        await store.put.aio(_audio_key(job_id, n, formal=True),
+                            {"data": data, "created": rec["created"]})
+        # the job is done, so the worker no longer writes its record; re-read it,
+        # another problem's formal audio may have been recorded meanwhile
+        rec = await store.get.aio(_key(job_id)) or rec
+        pick(rec["result"])[1]["formal"] = {"status": "ready",
+                                             "message": FORMAL_AUDIO_MESSAGES["ready"]}
+        await store.put.aio(_key(job_id), rec)
+        return answer("ready")
+
     @api.get("/jobs/{job_id}")
     async def get_job(job_id: str, request: Request):
         t_get = time.time()
@@ -640,19 +760,21 @@ def web():
         if stages:  # each stage's output as soon as it exists, before the audio
             body["stages"] = stages
         if result:
-            proto = request.headers.get("x-forwarded-proto")
+            def with_urls(entry, name, **params):
+                # the entry with its MP3's URL, and its formal reading's (there
+                # once someone asked for it: POST /jobs/{id}/formal-audio) the same way
+                url = audio_url(request, name, job_id=job_id, **params)
+                out = {**entry, "url": url if entry["status"] == "ready" else None}
+                if "formal" in entry:
+                    formal = entry["formal"]
+                    out["formal"] = {**formal, "url": url + "?style=formal"
+                                     if formal["status"] == "ready" else None}
+                return out
 
-            def audio_url(name, **params):
-                url = request.url_for(name, job_id=job_id, **params)
-                return str(url.replace(scheme=proto) if proto else url)
-
-            audio = dict(result["audio"])
-            audio["url"] = audio_url("get_audio") if audio["status"] == "ready" else None
+            audio = with_urls(result["audio"], "get_audio")
             if "problems" in audio:
-                audio["problems"] = [
-                    {**pa, "url": audio_url("get_problem_audio", n=str(i))
-                     if pa["status"] == "ready" else None}
-                    for i, pa in enumerate(audio["problems"], 1)]
+                audio["problems"] = [with_urls(pa, "get_problem_audio", n=str(i))
+                                     for i, pa in enumerate(audio["problems"], 1)]
             body.update(audio=audio, timings_s=result["timings_s"])
         elif status == "failed":
             body["error"] = rec.get("error")
@@ -660,20 +782,21 @@ def web():
         return body
 
     @api.get("/audio/{job_id}", name="get_audio")
-    async def get_audio(job_id: str):
+    async def get_audio(job_id: str, style: str = ""):
         if not job_id.isalnum():
             return error(404, "not_found", "음성 파일이 없습니다.")
-        audio = await store.get.aio(_audio_key(job_id))
+        audio = await store.get.aio(_audio_key(job_id, formal=style == "formal"))
         if audio is None:
             return error(404, "not_found", "음성 파일이 없습니다. 24시간이 지나 삭제되었을 수 있습니다.")
         return Response(audio["data"], media_type="audio/mpeg", headers={
             "Content-Disposition": f'attachment; filename="mathtts-{job_id}.mp3"'})
 
     @api.get("/audio/{job_id}/{n}", name="get_problem_audio")
-    async def get_problem_audio(job_id: str, n: str):
-        if not job_id.isalnum() or not n.isdigit():
+    async def get_problem_audio(job_id: str, n: str, style: str = ""):
+        # isascii: "²".isdigit() is True, but int("²") raises (a 500, not a 404)
+        if not job_id.isalnum() or not (n.isascii() and n.isdigit()):
             return error(404, "not_found", "음성 파일이 없습니다.")
-        audio = await store.get.aio(_audio_key(job_id, int(n)))
+        audio = await store.get.aio(_audio_key(job_id, int(n), formal=style == "formal"))
         if audio is None:
             return error(404, "not_found", "음성 파일이 없습니다. 24시간이 지나 삭제되었을 수 있습니다.")
         return Response(audio["data"], media_type="audio/mpeg", headers={
@@ -717,8 +840,15 @@ def cleanup():
     # An audio entry's "created" is its job's, so the job record dates it, and
     # the MP3 bytes aren't downloaded just to read a timestamp. Audio whose job
     # record is already gone is past retention too.
-    # audio:<id> and audio:<id>:<problem>
-    stale += [key for key in audio if created.get(key.split(":")[1], 0) < cutoff]
+    # audio:<id> and audio:<id>:<problem>, each also with ":formal". A job created while keys() was being
+    # listed can have its audio listed but not its record: look that record up
+    # again rather than delete fresh audio.
+    def job_created(job_id):
+        if job_id not in created:
+            rec = store.get(_key(job_id))
+            created[job_id] = rec.get("created", 0) if rec else 0
+        return created[job_id]
+    stale += [key for key in audio if job_created(key.split(":")[1]) < cutoff]
     for key in stale:
         store.pop(key, None)
     print(f"[cleanup] removed {removed} job folder(s), {len(stale)} record(s)")

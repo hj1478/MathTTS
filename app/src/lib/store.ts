@@ -3,7 +3,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
-import type { AudioStatus, Job } from './api';
+import type { AudioStatus, FormalSpeech, Job, ProblemAudio } from './api';
 
 export interface Picked {
   uri: string;
@@ -14,16 +14,25 @@ export interface Picked {
   size?: number;
 }
 
+/** One reading of a problem: the sentence and its MP3. */
+export interface Spoken {
+  spokenText: string;
+  // not_made: the formal reading before anyone asked for its MP3 (api.requestFormalAudio)
+  audioStatus: AudioStatus | 'expired' | 'not_made';
+  audioMessage: string;
+  audioUrl: string | null;
+}
+
+/** 쉽게 (casual, the default: math as a person says it) or 정확하게 (formal: spelled out). */
+export type ReadingStyle = 'casual' | 'formal';
+
 /** One problem of a page with several: where it is on the photo, and its own audio. */
-export interface Problem {
+export interface Problem extends Spoken {
   label: string;
   boxes: [number, number, number, number][]; // fractions of the photo: x0, y0, x1, y1
   normalizedText: string;
-  spokenText: string;
   strictOk: boolean;
-  audioStatus: AudioStatus | 'expired';
-  audioMessage: string;
-  audioUrl: string | null;
+  formal?: Spoken; // the formal reading, when the backend made one
 }
 
 /** What one finished job leaves behind, shown by the result screen. */
@@ -37,10 +46,29 @@ export interface Reading {
   normalizedText: string;
   spokenText: string;
   strictOk: boolean;
-  audioStatus: AudioStatus | 'expired';
+  audioStatus: Spoken['audioStatus'];
   audioMessage: string;
   audioUrl: string | null;
+  formal?: Spoken; // the formal reading, when the backend made one
   problems?: Problem[]; // a page of numbered problems, read one at a time
+}
+
+/** The formal reading from a job's speech and audio entries, if there is one. */
+function formalFrom(speech: FormalSpeech | undefined, audio: ProblemAudio | undefined): Spoken | undefined {
+  if (!speech?.text) return undefined;
+  const a = audio?.formal;
+  return {
+    spokenText: speech.text,
+    // Its MP3 is made when the listener asks; one with a placeholder never is.
+    audioStatus: a?.status ?? (speech.strict_ok && speech.ssml ? 'not_made' : 'skipped'),
+    audioMessage: a?.message ?? '',
+    audioUrl: a?.url ?? null,
+  };
+}
+
+/** What to show and play for the chosen style: the formal reading where there is one. */
+export function inStyle<T extends Spoken & { formal?: Spoken }>(x: T, style: ReadingStyle): T {
+  return style === 'formal' && x.formal ? { ...x, ...x.formal } : x;
 }
 
 // Module state for the current flow: home → crop → processing → result.
@@ -52,6 +80,13 @@ export const session: {
   job: { id: string; startedAt: number } | null; // the job for `upload`, once submitted
   readings: Map<string, Reading>; // finished this session, saved or not
 } = { picked: null, upload: null, job: null, readings: new Map() };
+
+/** `r` with the formal MP3 that was just made, for the page (`problem` null) or problem index `problem`. */
+export function withFormalAudio(r: Reading, problem: number | null, audio: Pick<Spoken, 'audioStatus' | 'audioMessage' | 'audioUrl'>): Reading {
+  const set = <T extends { formal?: Spoken }>(x: T): T => (x.formal ? { ...x, formal: { ...x.formal, ...audio } } : x);
+  if (problem == null) return set(r);
+  return { ...r, problems: r.problems?.map((p, i) => (i === problem ? set(p) : p)) };
+}
 
 /** `upload` is null when the job was opened by link, without its photo. */
 export function readingFromJob(job: Job, upload: Picked | null): Reading {
@@ -69,6 +104,7 @@ export function readingFromJob(job: Job, upload: Picked | null): Reading {
     audioStatus: job.audio?.status ?? 'failed',
     audioMessage: job.audio?.message ?? '',
     audioUrl: job.audio?.url ?? null,
+    formal: formalFrom(s.speech?.formal, job.audio),
     problems: s.problems?.map((p, i) => {
       const a = job.audio?.problems?.[i];
       return {
@@ -80,6 +116,7 @@ export function readingFromJob(job: Job, upload: Picked | null): Reading {
         audioStatus: a?.status ?? 'failed',
         audioMessage: a?.message ?? '',
         audioUrl: a?.url ?? null,
+        formal: formalFrom(p.speech.formal, a),
       };
     }),
   };
@@ -124,23 +161,42 @@ async function durable(p: Picked | null): Promise<Picked | null> {
 
 let persistSeq = 0;
 
+// A result's photo is the upload it came from: on web that is one data URL of
+// a few MB, so it is stored once and the reading points at it.
+const SAME_AS_UPLOAD = '@upload';
+const SMALL_SIDE = 1280; // the stored copy of a photo too big for sessionStorage
+
 /** Save the current flow. Call after changing `session`; fire and forget. */
 export async function persistSession(): Promise<void> {
   const seq = ++persistSeq;
   try {
     const [picked, upload] = await Promise.all([durable(session.picked), durable(session.upload)]);
     if (seq !== persistSeq) return; // a newer call is writing
-    const readings = [...session.readings.values()].slice(-SESSION_READINGS);
+    const sent = session.upload?.uri;
+    const readings = [...session.readings.values()]
+      .slice(-SESSION_READINGS)
+      .map((r) => (sent && r.imageUri === sent ? { ...r, imageUri: SAME_AS_UPLOAD } : r));
+    const job = session.job;
     // Most useful first: if storage is full, drop the original photo (only the
     // crop screen needs it), then older results.
-    const tries = [
-      { picked, upload, job: session.job, readings },
-      { picked: null, upload, job: session.job, readings },
-      { picked: null, upload, job: session.job, readings: readings.slice(-1) },
+    const tries: (() => object | Promise<object>)[] = [
+      () => ({ picked, upload, job, readings }),
+      () => ({ picked: null, upload, job, readings }),
+      () => ({ picked: null, upload, job, readings: readings.slice(-1) }),
+      // A phone photo alone can be more than sessionStorage holds (about 5 MB,
+      // less on Safari). A smaller copy keeps the photo on the result screen
+      // after the browser reloads the page.
+      async () => {
+        const small = await smaller(upload);
+        const last = readings.slice(-1).filter((r) => r.imageUri === SAME_AS_UPLOAD || !r.imageUri.startsWith('data:'));
+        return { picked: null, upload: small, job, readings: last };
+      },
     ];
     for (const snapshot of tries) {
       try {
-        await writeSession(JSON.stringify(snapshot));
+        const value = JSON.stringify(await snapshot());
+        if (seq !== persistSeq) return;
+        await writeSession(value);
         return;
       } catch {
         // too big for storage: try the smaller snapshot
@@ -151,16 +207,36 @@ export async function persistSession(): Promise<void> {
   }
 }
 
+/** Web: `p` re-encoded at SMALL_SIDE. Throws if that can't be done (then nothing smaller exists). */
+async function smaller(p: Picked | null): Promise<Picked | null> {
+  if (!p || Platform.OS !== 'web') throw new Error('no smaller copy');
+  const { shrink } = await import('./image');
+  const t = await shrink(p.uri, p.width, p.height, Math.min(SMALL_SIDE, Math.max(p.width, p.height)));
+  return { ...p, uri: t.uri, width: t.width, height: t.height, size: t.size };
+}
+
 /** Load the saved flow into `session`. Run once, before the first screen. */
 export async function restoreSession(): Promise<void> {
   try {
     const raw = await readSession();
     if (!raw) return;
     const s = JSON.parse(raw);
-    session.picked ??= s.picked ?? null;
-    session.upload ??= s.upload ?? null;
+    const here = await relocator();
+    const upload: Picked | null = s.upload ? { ...s.upload, uri: here(s.upload.uri) } : null;
+    session.picked ??= s.picked ? { ...s.picked, uri: here(s.picked.uri) } : null;
+    session.upload ??= upload;
     session.job ??= s.job ?? null;
-    for (const r of (s.readings ?? []) as Reading[]) if (!session.readings.has(r.id)) session.readings.set(r.id, r);
+    for (const stored of (s.readings ?? []) as Reading[]) {
+      if (session.readings.has(stored.id)) continue;
+      const r = relocated(stored, here);
+      if (r.imageUri === SAME_AS_UPLOAD) {
+        // the copy of the photo that was stored, which may be the smaller one
+        r.imageUri = upload?.uri ?? '';
+        r.imageWidth = upload?.width ?? 0;
+        r.imageHeight = upload?.height ?? 0;
+      }
+      session.readings.set(r.id, r);
+    }
   } catch {
     // Nothing usable saved.
   }
@@ -178,9 +254,35 @@ const THUMB_SIDE = 800; // web history keeps a smaller copy of the photo, still 
 /** A remote MP3 the server has already deleted can't play; say so instead. */
 export function withExpiry(r: Reading): Reading {
   if (Date.now() - r.createdAt <= SERVER_RETENTION_MS) return r;
-  const expire = <T extends { audioUrl: string | null; audioStatus: Reading['audioStatus'] }>(x: T): T =>
+  const one = <T extends Pick<Spoken, 'audioUrl' | 'audioStatus'>>(x: T): T =>
     x.audioUrl?.startsWith('http') ? { ...x, audioStatus: 'expired', audioUrl: null } : x;
+  const expire = <T extends Spoken & { formal?: Spoken }>(x: T): T => ({ ...one(x), formal: x.formal && one(x.formal) });
   return { ...expire(r), problems: r.problems?.map(expire) };
+}
+
+// iOS gives the app a new container path with every update, so a file URI
+// stored by the previous install points nowhere: the photo and the MP3 are
+// still there, under the new path. Native only; web URIs are left alone.
+type Relocate = (uri: string) => string;
+const asIs: Relocate = (uri) => uri;
+
+async function relocator(): Promise<Relocate> {
+  if (Platform.OS === 'web') return asIs;
+  try {
+    return (await import('./files')).relocate;
+  } catch {
+    return asIs;
+  }
+}
+
+function relocated(r: Reading, here: Relocate): Reading {
+  if (here === asIs) return { ...r };
+  const audio = <T extends Spoken & { formal?: Spoken }>(x: T): T => ({
+    ...x,
+    audioUrl: x.audioUrl && here(x.audioUrl),
+    formal: x.formal && { ...x.formal, audioUrl: x.formal.audioUrl && here(x.formal.audioUrl) },
+  });
+  return { ...audio(r), imageUri: here(r.imageUri), problems: r.problems?.map(audio) };
 }
 
 // The last parse, reused while the stored text is unchanged (the home screen
@@ -202,7 +304,8 @@ async function readHistory(): Promise<Reading[]> {
 /** For showing: an unreadable list shows as empty (and is left alone). */
 export async function listHistory(): Promise<Reading[]> {
   try {
-    return (await readHistory()).map(withExpiry);
+    const here = await relocator();
+    return (await readHistory()).map((r) => withExpiry(relocated(r, here)));
   } catch {
     return [];
   }
@@ -301,4 +404,14 @@ export async function loadSpeed(): Promise<number> {
 
 export function storeSpeed(v: number): void {
   AsyncStorage.setItem(SPEED_KEY, String(v)).catch(() => {});
+}
+
+const STYLE_KEY = 'mathtts.style';
+
+export async function loadStyle(): Promise<ReadingStyle> {
+  return (await AsyncStorage.getItem(STYLE_KEY)) === 'formal' ? 'formal' : 'casual';
+}
+
+export function storeStyle(v: ReadingStyle): void {
+  AsyncStorage.setItem(STYLE_KEY, v).catch(() => {});
 }
