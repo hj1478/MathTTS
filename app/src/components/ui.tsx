@@ -221,7 +221,8 @@ export function Banner({
   );
 }
 
-export const PROTOTYPE_NOTE = '연구용 시제품입니다. 사진과 읽은 내용이 같은지 확인해 주세요.';
+// Shown with every result: OCR can misread, so the listener should compare with the photo.
+export const ACCURACY_NOTE = '글자나 수식을 잘못 읽을 수 있어요. 사진과 읽은 내용이 같은지 확인해 주세요.';
 
 // ---- Frame -----------------------------------------------------------------
 

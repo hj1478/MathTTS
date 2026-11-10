@@ -10,7 +10,7 @@ import { Icon } from '@/components/Icon';
 import { MathText } from '@/components/MathText';
 import { Choice, Player, Spoken, type ViewRef } from '@/components/Player';
 import { ProblemNav, ProblemPhoto } from '@/components/Problems';
-import { Banner, Button, Card, H2, Header, HeaderLink, Page, PROTOTYPE_NOTE, T } from '@/components/ui';
+import { Banner, Button, Card, H2, Header, HeaderLink, Page, ACCURACY_NOTE, T } from '@/components/ui';
 import { when } from '@/lib/format';
 import { ApiError, getJob, requestFormalAudio } from '@/lib/api';
 import { useLocalAudio } from '@/lib/localAudio';
@@ -347,7 +347,7 @@ export default function Result() {
     <NoAudio r={view!} onRetry={again} />
   );
 
-  const note = <Banner tone="note">{PROTOTYPE_NOTE}</Banner>;
+  const note = <Banner tone="note">{ACCURACY_NOTE}</Banner>;
   const saveProblem = saveError && (
     <Banner tone="error" title={saveError}>
       기기의 저장 공간이 부족할 수 있어요. 잠시 후 다시 시도해 주세요.
