@@ -213,6 +213,8 @@ const SHORT_CHARS = 70;
  *
  * `compact` (a phone): a long sentence shows only the part being read, about
  * three lines, with 전체 문장 보기 to open the rest.
+ *
+ * `onSeek`: pressing a phrase asks to play from where it starts (seconds).
  */
 export function Spoken({
   text,
@@ -220,12 +222,14 @@ export function Spoken({
   duration,
   big,
   compact,
+  onSeek,
 }: {
   text: string;
   time?: number;
   duration?: number;
   big?: boolean;
   compact?: boolean;
+  onSeek?: (seconds: number) => void;
 }) {
   const c = useColors();
   const [open, setOpen] = useState(false);
@@ -271,6 +275,8 @@ export function Spoken({
             <Text key={i}>
               {k > 0 ? ' ' : ''}
               <Text
+                // a phrase's start is an estimate: begin a little early so its first word isn't cut
+                onPress={onSeek && duration ? () => onSeek(Math.max(0, s.start - 0.4)) : undefined}
                 style={
                   i === cur
                     ? {

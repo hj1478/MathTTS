@@ -360,7 +360,7 @@ export default function Result() {
         <H2>{hasAudio ? '읽어 주는 문장' : '읽어 줄 문장'}</H2>
         {hasAudio && (
           <T v="caption" muted>
-            지금 읽는 부분에 배경과 밑줄이 표시돼요.
+            지금 읽는 부분에 배경과 밑줄이 표시돼요. 문장을 누르면 그 부분부터 다시 들려줘요.
           </T>
         )}
       </View>
@@ -372,6 +372,14 @@ export default function Result() {
         duration={duration}
         big={wide}
         compact={!wide}
+        onSeek={
+          hasAudio && !loading
+            ? (t) => {
+                player.seekTo(t);
+                player.play();
+              }
+            : undefined
+        }
       />
       {whole!.formal && (
         <Choice

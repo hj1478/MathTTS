@@ -285,3 +285,28 @@ test('--both writes the same files as separate plain and --ssml runs', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// --- pace, 2026-11-10: nothing is read faster than the voice's own rate ------
+{
+  const { capRate, choicePauses } = require('./speak');
+
+  test('a prosody that speeds up is unwrapped, its content kept', () => {
+    assert.equal(capRate('a <prosody rate="+25%"> 3 <say-as interpret-as="characters">x</say-as> </prosody> b'),
+      'a  3 <say-as interpret-as="characters">x</say-as>  b');
+    assert.equal(capRate('<prosody rate="fast">a</prosody>'), 'a');
+  });
+
+  test('slower or other prosody stays, also when nested with a faster one', () => {
+    assert.equal(capRate('<prosody rate="-10%">a</prosody>'), '<prosody rate="-10%">a</prosody>');
+    assert.equal(capRate('<prosody pitch="+5%">a<prosody rate="+25%">b</prosody>c</prosody>'),
+      '<prosody pitch="+5%">abc</prosody>');
+    assert.equal(capRate('<prosody rate="+25%">a<prosody rate="-10%">b</prosody>c</prosody>'),
+      'a<prosody rate="-10%">b</prosody>c');
+  });
+
+  test('each numbered choice gets a pause before it and after its number', () => {
+    assert.equal(choicePauses('옳은 것은? ① 가 ②나'),
+      '옳은 것은? <break time="500ms"/>①<break time="250ms"/> 가 <break time="500ms"/>②<break time="250ms"/>나');
+    assert.equal(choicePauses('1. 가 (2) 나'), '1. 가 (2) 나');
+  });
+}

@@ -144,8 +144,29 @@ const escapeXml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(
 function ssmlInner(s) {
   const pros = s.match(/<prosody[^>]*>([\s\S]*)<\/prosody>/);
   const inner = pros ? pros[1] : (s.match(/<speak[^>]*>([\s\S]*)<\/speak>/) ?? [, s])[1];
-  return inner.replace(/interpret-as="character"/g, 'interpret-as="characters"').trim();
+  return capRate(inner).replace(/interpret-as="character"/g, 'interpret-as="characters"').trim();
 }
+
+/** Never faster than the voice's own pace. SRE wraps implied products ("3x",
+ * "ab") in <prosody rate="+25%">; on Azure that rushes exactly the part a
+ * listener needs most, and short answer choices that are all such terms fly
+ * by (heard 2026-11-10). A <prosody> that speeds up is unwrapped, its content
+ * kept; one that slows down or sets something else stays. */
+function capRate(s) {
+  const kept = []; // per open <prosody>: is its tag kept?
+  return s.replace(/<prosody\b([^>]*)>|<\/prosody>/g, (tag, attrs) => {
+    if (attrs === undefined) return kept.pop() === false ? '' : tag;
+    const faster = /\brate="(\+(?!0+(\.0+)?%)[\d.]+%|x?-?fast)"/.test(attrs);
+    kept.push(!faster);
+    return faster ? '' : tag;
+  });
+}
+
+// A pause before each numbered answer choice and a short one after its number,
+// so "① … ② … ③ …" is heard as separate choices, not one run.
+const CHOICE_MARK = /[\u2460-\u2473]/g; // ① … ⑳
+const choicePauses = (escapedProse) =>
+  escapedProse.replace(CHOICE_MARK, (m) => `<break time="500ms"/>${m}<break time="250ms"/>`);
 
 const AZURE_SSML = (voice, body) =>
   '<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="ko-KR">' +
@@ -855,7 +876,7 @@ async function main() {
         console.log(hr);
         const body = doc.parts
           .map((part) =>
-            part.latex === undefined ? escapeXml(part.prose) : renderSpan(part.latex, escapeXml)
+            part.latex === undefined ? choicePauses(escapeXml(part.prose)) : renderSpan(part.latex, escapeXml)
           )
           .join('')
           .replace(/ +/g, ' ')
@@ -911,7 +932,7 @@ async function main() {
 
 module.exports = { SPAN, checkWellFormed, splitRadicals, splitRepeating, splitSegments,
                    splitFences, splitChains, splitAbs, splitSpecials, endsWithJong,
-                   fixMisreads };
+                   fixMisreads, capRate, choicePauses };
 
 if (require.main === module) {
   main().catch((err) => {
