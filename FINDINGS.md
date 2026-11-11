@@ -999,3 +999,31 @@ so the highlight keeps pace now that the numbers take time to say.
   "a = b = c" reads "a 같다 b 같다 c".
 - A printed line break inside a word ("서\n윤이가") is read as two words.
 - Android build 5 predates tap-to-replay and the highlight change above.
+
+## 2026-11-11 — Azure mixes 하나/둘 and 일/이 for digits in a formula; the SSML now spells them
+
+**Question.** On a phone, problem 11 of a scan ("(6+4i)+(4-2i)=24+2i" and three
+more choices) was heard with two number systems mixed. Which numbers, and why?
+
+**What I did.** Synthesized each line of the job's SSML with
+`ko-KR-SunHiNeural`, then sent the audio to Azure speech recognition
+(`OutputFormat.Detailed`, the `Lexical` field) to read back the words said.
+
+**What happened.** The voice picks by the word after the digit: "4 마이너스 2 i"
+→ "네 마이너스 이 아이", "2 마이너스 i" → "두 마이너스 아이", "10 마이너스" →
+"열 마이너스", "1 마이너스 i 분의 1" → "한 마이너스 아이 분의 일"; next to
+them "6 플러스 4 i" → "육 플러스 사 아이". Choice numbers sent as
+`alias="2번"` were "두 번".
+
+**Result.** Verified by the same round trip after the change: every number on
+the page comes back 일/이/삼 ("사 마이너스 이 아이", "일번 영 이번 이 삼번 사
+사번 육"). The recognizer is not a listener; nobody has checked by ear.
+
+**Changed as a result.** `speak.js`: in the SSML, every number inside a math
+span is written in Hangul (`spellNumbers`: 24 → 이십사, 3.14 → 삼 점 일 사), and
+so is a bare number right after a choice mark. A number with Hangul attached
+("3개") is left to the voice, as are numbers in prose ("2016년 1회", "2일 때").
+The displayed text keeps its digits. Choice aliases are 일번, 이번, ….
+
+**Still open.** A bare number in prose that is not a choice value ("상수 2 를")
+is still the voice's choice.

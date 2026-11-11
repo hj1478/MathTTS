@@ -265,8 +265,8 @@ test('speech: chains keep their particles; |..| coefficients are spoken', () => 
 
 test('speech (SSML): sign and 은/는 across a radical split', () => {
   const [a, b] = stitch(['A) $-\\sqrt{x+1}$', 'B) $\\sqrt{x+1}=3$'], '--ssml');
-  assert.strictEqual(a, 'A) 마이너스 루트 x 더하기 1');
-  assert.strictEqual(b, 'B) 루트 x 더하기 1 은 3');
+  assert.strictEqual(a, 'A) 마이너스 루트 x 더하기 일');   // SSML spells the numbers
+  assert.strictEqual(b, 'B) 루트 x 더하기 일 은 삼');
 });
 
 test('--both writes the same files as separate plain and --ssml runs', () => {
@@ -288,7 +288,7 @@ test('--both writes the same files as separate plain and --ssml runs', () => {
 
 // --- pace, 2026-11-10: nothing is read faster than the voice's own rate ------
 {
-  const { capRate, speakMarks, fixMisreads, checkWellFormed } = require('./speak');
+  const { capRate, speakMarks, fixMisreads, checkWellFormed, sinoKorean, spellNumbers } = require('./speak');
 
   test('a prosody that speeds up is unwrapped, its content kept', () => {
     assert.equal(capRate('a <prosody rate="+25%"> 3 <say-as interpret-as="characters">x</say-as> </prosody> b'),
@@ -339,5 +339,16 @@ test('--both writes the same files as separate plain and --ssml runs', () => {
     assert.equal(
       fixMisreads('총 케이스 수 2 <break time="250ms"/> 케이스 1: a <break time="750ms"/> 케이스 2: b'),
       '첫째, a <break time="750ms"/> 둘째, b');
+  });
+
+  test('numbers in a formula are spelled 일 이 삼, never left for the voice to pick', () => {
+    for (const [n, want] of [['0', '영'], ['2', '이'], ['10', '십'], ['24', '이십사'], ['105', '백오'],
+      ['10000', '만'], ['1,200', '천이백'], ['3.14', '삼 점 일 사'], ['007', '영 영 칠']]) {
+      assert.equal(sinoKorean(n), want);
+    }
+    assert.equal(
+      spellNumbers('4 마이너스 2 <say-as interpret-as="characters">i</say-as> <break time="250ms"/> 는 24'),
+      '사 마이너스 이 <say-as interpret-as="characters">i</say-as> <break time="250ms"/> 는 이십사');
+    assert.equal(spellNumbers('사과 3개'), '사과 3개');   // a count stays the voice's
   });
 }

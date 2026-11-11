@@ -184,6 +184,32 @@ const SILENT_MARK = new RegExp([
   '\\(\\s+\\)|_{3,}',               // a blank written "(   )" or "____"
 ].join('|'), 'g');
 
+// A number in a formula is always read 일, 이, 삼 …, but given the digit the
+// Azure voice picks by what follows: "4 마이너스 2 i" came out "네 마이너스 이
+// 아이" and "2 마이너스 i" "두 마이너스 아이", next to "육 플러스 사 아이" in the
+// same problem (transcribed back from the audio, 2026-11-11). So the SSML
+// carries the reading itself. The displayed text keeps its digits.
+const digitsKo = (d) => [...d].map((c) => DIGIT_KO[c]).join(' ');
+
+/** "24" -> "이십사", "3.14" -> "삼 점 일 사", "1,200" -> "천이백". */
+function sinoKorean(num) {
+  const [int, frac] = num.replace(/,/g, '').split('.');
+  const whole = (int.length > 1 && int[0] === '0') || int.length > 16
+    ? digitsKo(int)                           // "007", or too long to name
+    : numberKo(int);
+  return frac === undefined ? whole : `${whole} 점 ${digitsKo(frac)}`;
+}
+
+/** Math speech (SSML or plain) -> the same with every number spelled out.
+ * Tags are skipped (break times, rates), and so is a number with Hangul
+ * right after it ("3개" from a \text): that one is a count. */
+const NUMBER_OR_TAG = /<[^>]*>|\d+(?:,\d{3})+(?:\.\d+)?(?![가-힣\d])|\d+(?:\.\d+)?(?![가-힣\d.])/g;
+const spellNumbers = (s) => s.replace(NUMBER_OR_TAG, (m) => (m[0] === '<' ? m : sinoKorean(m)));
+
+// The value after a choice number, when it is a bare number in the prose
+// ("① 0 ② 2"): math too, so it is spelled the same way.
+const CHOICE_VALUE = /(<sub alias="[^"]*">[\u2460-\u2473]<\/sub><break time="250ms"\/>[ \t]*)(\d+(?:\.\d+)?)(?=[ \t]*(?:<|\n|$))/g;
+
 function spokenMark(m) {
   const c = m.codePointAt(0);
   const between = (lo, hi) => c >= lo && c <= hi;
@@ -926,13 +952,14 @@ async function main() {
         console.log(hr);
         const joined = doc.parts
           .map((part) =>
-            part.latex === undefined ? escapeXml(part.prose) : renderSpan(part.latex, escapeXml)
+            part.latex === undefined ? escapeXml(part.prose) : spellNumbers(renderSpan(part.latex, escapeXml))
           )
           .join('')
           .replace(/ +/g, ' ')
           .trim();
         // math speech included: a label inside a span ("… ⋯ ㉠") is as silent
         const body = speakMarks(joined)
+          .replace(CHOICE_VALUE, (_m, lead, n) => lead + sinoKorean(n))
           // alt-voice markers -> sibling <voice> elements (nesting is rejected
           // by Azure: "[voice] should not contain [voice]")
           .replaceAll('\x01', `</voice><voice name="${altVoice}">`)
@@ -984,7 +1011,7 @@ async function main() {
 
 module.exports = { SPAN, checkWellFormed, splitRadicals, splitRepeating, splitSegments,
                    splitFences, splitChains, splitAbs, splitSpecials, endsWithJong,
-                   fixMisreads, capRate, speakMarks };
+                   fixMisreads, capRate, speakMarks, sinoKorean, spellNumbers };
 
 if (require.main === module) {
   main().catch((err) => {
