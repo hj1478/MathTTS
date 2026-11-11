@@ -952,3 +952,50 @@ before and after, so the fixes changed nothing else.
 - `f(x)^2` is "f 의 x 제곱" (SRE's own reading, ambiguous with f^x).
 - No listening test of the casual reading on Azure yet.
 
+
+## 2026-11-11 — Azure never speaks ① ② ③; three phone scans that came out wrong, and what fixed them
+
+**Question.** Two pages photographed on a phone (a workbook that prints "34
+삼차방정식 …" with no dot after the number) came back wrong: one with no audio
+and `array 3x>6 <10-x array .` in the text, one with audio but "the answer
+options aren't read aloud". Why?
+
+**What I did.** Read the job records and layout JSON from the `mathtts-jobs`
+Dict and the `mathtts-data` volume, ran the stored OCR text through
+`normalize.py` and `speak.js` locally, and asked Azure for word-boundary events
+and audio length on short SSML probes. After the fix, re-sent the second photo
+to the deployed service.
+
+**What happened.**
+
+| Seen | Cause | Now |
+|---|---|---|
+| Choices read as bare values, no numbers | Azure (`ko-KR-SunHiNeural`) skips ①–⑳ entirely: "① 1" is the same audio as "1". Also silent: ㉠ ㈎ ⑴ ⓐ ○ □, `( )`, `____` | `<sub alias="1번">①</sub>`; 기역/니은, 가/나, 동그라미, 네모, 빈칸 for the rest. Word boundaries show "1번" spoken |
+| No audio; `array 3x>6 <10-x array .` | normalize stripped the `{l}` column spec from every array. A multi-row array without it does not parse in temml, the span is salvaged, and `--strict` refuses audio for the whole page | The spec is kept; only a one-row array is unwrapped |
+| "총 케이스 수 2 케이스 1: … 케이스 2: …" | SRE's Korean for rows under one brace | "첫째, … 둘째, …" (`fixMisreads`) |
+| "10 괄호 열고 13 플러스 5 i …" for problem 10 | A bare problem number in front of `(13+5i)+…` was taken into the math run | At the start of a line, 1–3 digits, a space, then a bracket or letter: the number stays prose |
+| One block, no 이전 / 다음 | `problems.NUMBER` needs "34." / "34)" / "[34]" / "34번" / "문제 34" | A second pass accepts a bare number, only when the first pass finds fewer than two problems. The text gets "34. " so the number is heard with a pause |
+| "## 주목" read aloud | OCR markdown headings and `**bold**` reached Azure; each `#` is about 0.6 s of speech. 127 heading lines in 81 stored OCR files | Dropped at the start of `normalize_math` |
+| "AB//CD" → "나누기 슬래시"; 선분 AB : 선분 BC → "콜론" | no rule | 평행하다; 대 |
+
+**Result.** Verified: 205 Python tests and 89 Node tests pass; the bare-number
+rule changes none of the 105 stored OCR pages and the bare-number split changes
+none of the 13 stored layout files. The re-sent photo came back from the
+deployed service as six problems (10–15), each with audio, and "1번" in every
+SSML. Not verified: nobody has listened to the new audio.
+
+**Changed as a result.** Commit `54f8c90` (`normalize.py`, `sre-probe/speak.js`,
+`backend/problems.py`, `app/src/lib/format.ts`, tests); backend redeployed. In
+the app, `phrases()` counts a choice number as about ten characters of speech,
+so the highlight keeps pace now that the numbers take time to say.
+
+**Still open.**
+- OCR errors are passed through: "두 근을" read as "뒤 근을", and print showing
+  through from the back of the sheet ("(소성생자치0 30)") becomes text. In one
+  scan the answer key at the foot of the page was attached to the last problem.
+- When OCR puts two problems in one block, the second one's box is cut from
+  that block in proportion, and can sit in the wrong place (problem 13 here).
+- `{}_5\mathrm{C}_2` reads "섭씨", `P(A \mid B)` reads "약수이다", and
+  "a = b = c" reads "a 같다 b 같다 c".
+- A printed line break inside a word ("서\n윤이가") is read as two words.
+- Android build 5 predates tap-to-replay and the highlight change above.
