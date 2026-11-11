@@ -131,7 +131,60 @@ def test_dollar_env_leaves_block_math_alone():
     "중1-1 단원평가",
 ])
 def test_grade_label_survives_a_wrapping_paren(src):
-    assert normalize_math(src) == src
+    # the heading mark itself goes (test_markdown_marks_are_dropped)
+    assert normalize_math(src) == src.removeprefix("## ")
+
+
+# --- markdown marks: on no page, but the voice reads each "#" and "*" aloud
+
+@pytest.mark.parametrize("src, want", [
+    ("## 조건\n\n1. 다음을 구하시오.", "조건\n\n1. 다음을 구하시오."),
+    ("# KMA 수학\n### 제1절. 이차방정식", "KMA 수학\n제1절. 이차방정식"),
+    ("**문제 5** 일차방정식", "문제 5 일차방정식"),
+    ("C# 은 그대로, 3 #4 도", "C# 은 그대로, 3 #4 도"),   # only a heading mark at a line start
+])
+def test_markdown_marks_are_dropped(src, want):
+    assert normalize_math(src) == want
+
+
+# --- arrays keep their column spec: without it temml cannot parse the span,
+# --- it is salvaged, and the whole problem loses its audio
+
+@pytest.mark.parametrize("src, want", [
+    (r"$\left\{\begin{array}{l} x+y=5 \\ 2x-y=1 \end{array}\right.$",
+     r"$\left\{\begin{array}{l} x+y=5 \\ 2x-y=1 \end{array}\right.$"),
+    (r"$\begin{array}{c|c} x & y \\ \hline 1 & 2 \end{array}$",
+     r"$$\begin{array}{c|c} x & y \\ \hline 1 & 2 \end{array}$$"),
+    # an empty first row and empty leading cells still go, spec or not
+    (r"$$\begin{array}{ll} \\ & x=1 \\ & y=2 \end{array}$$",
+     r"$$\begin{array}{ll} x=1 \\ y=2 \end{array}$$"),
+    # one unaligned row: unwrapped, and the spec is not left to be spoken
+    (r"$\begin{array}{l} x=1 \end{array}$", "$$x=1$$"),
+    (r"$\begin{array}{r} -4, 2 \end{array}$", "$$-4, 2$$"),
+])
+def test_array_column_spec(src, want):
+    assert normalize_math(src) == want
+
+
+@pytest.mark.parametrize("src, want", [
+    (r"$\overline{AB} // \overline{CD}$", r"$\overline{AB} \parallel \overline{CD}$"),
+    ("AB//CD 일 때", r"$AB \parallel CD$ 일 때"),
+    ("1/2", "$1/2$"),                                 # one slash is still a division
+])
+def test_double_slash_is_parallel(src, want):
+    assert normalize_math(src) == want
+
+
+
+@pytest.mark.parametrize("src, want", [
+    ("10 (13+5i)+(7i-11)-2i를 계산하면?", "10 $(13+5i)+(7i-11)-2i$를 계산하면?"),
+    ("앞 문장\n11 x+y=3일 때", "앞 문장\n11 $x+y=3$일 때"),
+    ("값은 10 (x+1)이다", "값은 $10 (x+1)$이다"),          # not at the start of a line
+    ("3 x 2=6", "$3 x 2=6$"),                              # x as a times sign
+    ("2021 (x+1)=3", "$2021 (x+1)=3$"),                    # too long for a problem number
+])
+def test_bare_problem_number_stays_out_of_the_math(src, want):
+    assert normalize_math(src) == want
 
 
 def test_orphan_closer_is_ejected_from_the_span():

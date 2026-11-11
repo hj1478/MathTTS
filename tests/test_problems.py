@@ -53,6 +53,33 @@ def test_one_problem_is_not_split():
     assert problems.split(page(block("text", [0, 0, 10, 10], "다음을 계산하시오", 1))) == []
 
 
+def test_bare_numbers_split_a_page_with_no_marked_ones():
+    # a book that prints "34 삼차방정식" with no mark; the answer key is not a problem
+    res = page(
+        block("paragraph_title", [0, 0, 400, 50], "주제 10", 1),
+        block("text", [0, 100, 400, 200], "34 삼차방정식 $x^3=0$의 근은?\n① 0 ② 2", 2),
+        block("text", [0, 300, 400, 500], "35 다음 중 옳은 것은?\n① 1\n36 (13+5i)-2i를 계산하면?", 3),
+        block("text", [0, 600, 400, 700], "30 ① 31 ④\n37 ③", 4),
+    )
+    got = problems.split(res)
+    assert [p["label"] for p in got] == ["34", "35", "36"]
+    assert got[2]["text"].startswith("36. (13+5i)")   # the number gets its mark
+
+
+@pytest.mark.parametrize("text", ["30 분 동안 걸었다", "3 + 4 = 7", "2 cm 만큼", "30 ① 31 ④", "2021 수능"])
+def test_bare_number_is_not_a_quantity(text):
+    assert problems._label(text, bare=True) == (None, None)
+
+
+def test_marked_numbers_win_over_bare_ones():
+    res = page(
+        block("text", [0, 0, 400, 100], "3 학년 수학", 1),
+        block("text", [0, 100, 400, 200], "1. 가\n4 다음 수", 2),
+        block("text", [0, 200, 400, 300], "2. 나", 3),
+    )
+    assert [p["label"] for p in problems.split(res)] == ["1", "2"]
+
+
 def test_numbers_must_go_up():
     # "1." and "2." inside problem 28 are its sub-items, not new problems
     res = page(

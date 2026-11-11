@@ -162,11 +162,51 @@ function capRate(s) {
   });
 }
 
-// A pause before each numbered answer choice and a short one after its number,
-// so "① … ② … ③ …" is heard as separate choices, not one run.
-const CHOICE_MARK = /[\u2460-\u2473]/g; // ① … ⑳
-const choicePauses = (escapedProse) =>
-  escapedProse.replace(CHOICE_MARK, (m) => `<break time="500ms"/>${m}<break time="250ms"/>`);
+// Label characters and blanks the Azure voice passes over in silence (measured
+// 2026-11-10: "① 1" is exactly as long as "1", and "①" alone is no audio at
+// all), so a listener never heard which answer choice was which. Each is given
+// the words a person says for it with <sub alias>; the character stays in the
+// text. A numbered choice also gets a pause before it and a short one after
+// its number, so "① … ② … ③ …" is heard as separate choices, not one run.
+const JAMO_KO = ['기역', '니은', '디귿', '리을', '미음', '비읍', '시옷', '이응', '지읒', '치읓', '키읔', '티읕', '피읖', '히읗'];
+const GANA_KO = [...'가나다라마바사아자차카타파하'];
+const SILENT_MARK = new RegExp([
+  '[\\u2460-\\u2473]',            // ① … ⑳
+  '[\\u2474-\\u2487]',            // ⑴ … ⒇
+  '[\\u3260-\\u327b]',            // ㉠ … ㉭, ㉮ … ㉻
+  '[\\u3200-\\u321b]',            // ㈀ … ㈍, ㈎ … ㈛
+  '[\\u24d0-\\u24e9]',            // ⓐ … ⓩ
+  '[○◯□]',                        // a blank to fill in, drawn as a shape
+  '\\(\\s+\\)|_{3,}',               // a blank written "(   )" or "____"
+].join('|'), 'g');
+
+function spokenMark(m) {
+  const c = m.codePointAt(0);
+  const between = (lo, hi) => c >= lo && c <= hi;
+  if (between(0x2460, 0x2473)) return `${c - 0x245f}번`;
+  if (between(0x2474, 0x2487)) return `${c - 0x2473}번`;
+  if (between(0x3260, 0x326d)) return JAMO_KO[c - 0x3260];
+  if (between(0x326e, 0x327b)) return GANA_KO[c - 0x326e];
+  if (between(0x3200, 0x320d)) return JAMO_KO[c - 0x3200];
+  if (between(0x320e, 0x321b)) return GANA_KO[c - 0x320e];
+  if (between(0x24d0, 0x24e9)) return String.fromCharCode(0x61 + c - 0x24d0);
+  if (m === '○' || m === '◯') return '동그라미';
+  if (m === '□') return '네모';
+  return '빈칸';
+}
+
+/** Escaped text or assembled SSML body -> the same, with every silent mark
+ * given its spoken words. Only text is touched: none of these characters can
+ * occur inside a tag this file writes. */
+// "①을 ②에 대입하면": a number referred to inside a sentence, not a choice
+// being listed — no pauses around it.
+const PARTICLE_NEXT = /^(?:에서|으로|을|를|이|가|은|는|에|의|와|과|로|도|만)(?![가-힣])/;
+const speakMarks = (ssmlBody) => ssmlBody.replace(SILENT_MARK, (m, at) => {
+  const sub = `<sub alias="${spokenMark(m)}">${m}</sub>`;
+  const choice = m.length === 1 && m >= '\u2460' && m <= '\u2473'
+    && !PARTICLE_NEXT.test(ssmlBody.slice(at + 1, at + 4));
+  return choice ? `<break time="500ms"/>${sub}<break time="250ms"/>` : sub;
+});
 
 const AZURE_SSML = (voice, body) =>
   '<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="ko-KR">' +
@@ -632,6 +672,8 @@ const similarLatex = (latex) => latex.replace(/\\sim(?![A-Za-z])/g, '\\backsim '
 
 const UNIT_POWER = /(센티미터|밀리미터|킬로미터|미터) (세제곱|제곱)/g;
 
+const ROW_ORDINAL = ['첫째', '둘째', '셋째', '넷째', '다섯째'];
+
 function fixMisreads(speech) {
   return speech
     .replace(/흰색 정사각형/g, '네모')
@@ -640,7 +682,11 @@ function fixMisreads(speech) {
     .replace(/코싸인/g, '코사인')              // textbook spelling (#20)
     .replace(/싸인/g, '사인')
     .replace(UNIT_POWER, '$2$1')
-    .replace(/ 콜론 /g, ' 대 ');
+    .replace(/(^|\s)콜론(?=\s|$)/g, '$1대')    // also a ':' rendered on its own
+    // A brace over several rows (연립방정식, a piecewise function) comes out as
+    // "총 케이스 수 2 케이스 1: … 케이스 2: …"; say 첫째, … 둘째, … instead.
+    .replace(/총 케이스 수 \d+\s*(?:<break[^>]*\/>\s*)?/g, '')
+    .replace(/케이스 (\d+):/g, (_, n) => `${ROW_ORDINAL[n - 1] ?? `${n}번째`},`);
 }
 
 /**
@@ -874,13 +920,15 @@ async function main() {
       if (ssml) {
         console.log(`STITCHED SSML (${stitchKey}, Azure envelope, voice=${voice}):`);
         console.log(hr);
-        const body = doc.parts
+        const joined = doc.parts
           .map((part) =>
-            part.latex === undefined ? choicePauses(escapeXml(part.prose)) : renderSpan(part.latex, escapeXml)
+            part.latex === undefined ? escapeXml(part.prose) : renderSpan(part.latex, escapeXml)
           )
           .join('')
           .replace(/ +/g, ' ')
-          .trim()
+          .trim();
+        // math speech included: a label inside a span ("… ⋯ ㉠") is as silent
+        const body = speakMarks(joined)
           // alt-voice markers -> sibling <voice> elements (nesting is rejected
           // by Azure: "[voice] should not contain [voice]")
           .replaceAll('\x01', `</voice><voice name="${altVoice}">`)
@@ -932,7 +980,7 @@ async function main() {
 
 module.exports = { SPAN, checkWellFormed, splitRadicals, splitRepeating, splitSegments,
                    splitFences, splitChains, splitAbs, splitSpecials, endsWithJong,
-                   fixMisreads, capRate, choicePauses };
+                   fixMisreads, capRate, speakMarks };
 
 if (require.main === module) {
   main().catch((err) => {

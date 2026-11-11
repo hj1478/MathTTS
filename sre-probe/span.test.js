@@ -288,7 +288,7 @@ test('--both writes the same files as separate plain and --ssml runs', () => {
 
 // --- pace, 2026-11-10: nothing is read faster than the voice's own rate ------
 {
-  const { capRate, choicePauses } = require('./speak');
+  const { capRate, speakMarks, fixMisreads, checkWellFormed } = require('./speak');
 
   test('a prosody that speeds up is unwrapped, its content kept', () => {
     assert.equal(capRate('a <prosody rate="+25%"> 3 <say-as interpret-as="characters">x</say-as> </prosody> b'),
@@ -304,9 +304,40 @@ test('--both writes the same files as separate plain and --ssml runs', () => {
       'a<prosody rate="-10%">b</prosody>c');
   });
 
-  test('each numbered choice gets a pause before it and after its number', () => {
-    assert.equal(choicePauses('옳은 것은? ① 가 ②나'),
-      '옳은 것은? <break time="500ms"/>①<break time="250ms"/> 가 <break time="500ms"/>②<break time="250ms"/>나');
-    assert.equal(choicePauses('1. 가 (2) 나'), '1. 가 (2) 나');
+  test('a numbered choice is spoken ("1번"), with a pause before it and after its number', () => {
+    assert.equal(speakMarks('옳은 것은? ① 가 ②나'),
+      '옳은 것은? <break time="500ms"/><sub alias="1번">①</sub><break time="250ms"/> 가 '
+      + '<break time="500ms"/><sub alias="2번">②</sub><break time="250ms"/>나');
+    assert.equal(speakMarks('1. 가 (2) 나'), '1. 가 (2) 나');   // the voice reads these itself
+    // referred to inside a sentence: spoken, but no pauses
+    assert.equal(speakMarks('①을 ②에 대입'), '<sub alias="1번">①</sub>을 <sub alias="2번">②</sub>에 대입');
+    assert.equal(speakMarks('①이등변삼각형'),
+      '<break time="500ms"/><sub alias="1번">①</sub><break time="250ms"/>이등변삼각형');
+  });
+
+  test('other labels and blanks the voice skips get their spoken words', () => {
+    assert.equal(speakMarks('㉠, ㉡'), '<sub alias="기역">㉠</sub>, <sub alias="니은">㉡</sub>');
+    assert.equal(speakMarks('㈎ ㉮ ⑵ ⓑ'),
+      '<sub alias="가">㈎</sub> <sub alias="가">㉮</sub> <sub alias="2번">⑵</sub> <sub alias="b">ⓑ</sub>');
+    assert.equal(speakMarks('○ 안에, (  ) 안에, ____ 에'),
+      '<sub alias="동그라미">○</sub> 안에, <sub alias="빈칸">(  )</sub> 안에, <sub alias="빈칸">____</sub> 에');
+    assert.equal(speakMarks('f() 와 a_b'), 'f() 와 a_b');
+  });
+
+  test('the result is still well-formed SSML', () => {
+    assert.equal(checkWellFormed(`<speak><voice name="v">${speakMarks('① 1 ㉠ ( )')}</voice></speak>`), null);
+  });
+
+  test('a colon rendered on its own is still a ratio', () => {
+    assert.equal(fixMisreads('콜론'), '대');
+    assert.equal(fixMisreads('3 콜론 4 콜론 5'), '3 대 4 대 5');
+    assert.equal(fixMisreads('세미콜론'), '세미콜론');
+    // rows under one brace (연립부등식)
+    assert.equal(
+      fixMisreads('총 케이스 수 2 케이스 1: 3 x 는 6 보다 크다 케이스 2: x 는 4 보다 작다'),
+      '첫째, 3 x 는 6 보다 크다 둘째, x 는 4 보다 작다');
+    assert.equal(
+      fixMisreads('총 케이스 수 2 <break time="250ms"/> 케이스 1: a <break time="750ms"/> 케이스 2: b'),
+      '첫째, a <break time="750ms"/> 둘째, b');
   });
 }

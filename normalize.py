@@ -9,6 +9,8 @@ This is a HEURISTIC, not a LaTeX parser — there is no reliable way to tell a l
 variable from a stray letter, so it errs toward NOT wrapping when unsure.
 
 DOES:
+  - drop the markdown marks the OCR adds ("## " before a heading, "**bold**"):
+    they are not on the page, and a TTS voice reads every "#" and "*" aloud
   - strip structural HTML (<div>/<img>...): OCR figure scaffolding, never
     speakable, and attribute soup would otherwise be wrapped as "math";
     <table> CELL TEXT is kept (one line per row) — dropping it loses problem
@@ -34,13 +36,18 @@ DOES:
     (x-y, 2+3), a leading negative (-2.4), parentheses containing alphanumerics,
     an absolute-value pair (|x-2|), a ratio (3:4), or a repeating-decimal dot
   - canonicalize ^{2}->^2 (single char), keep ^{10} braced; same for _{...}
+  - read "//" between operands as the parallel sign (AB//CD -> AB \\parallel CD)
   - normalize \\(..\\) -> $..$ and \\[..\\] -> $$..$$; wrap bare \\begin{..}..\\end{..}
     environments in $$..$$ (and protect their insides from the bare-run wrapper)
   - clean OCR artifacts inside \\begin environments: empty first/last rows and empty
     leading cells (spoken as "빈 칸"), and unwrap an env left with one unaligned row
+    (an array's column spec goes only with that unwrapping: a multi-row array
+    without its spec does not parse, and the problem would get no audio)
   - repair math spans that swallowed prose: a leading problem number ("$5. (3x+4)$")
     and everything from an unmatched '(' onward ("$p\\leq k<q(p, q$") are ejected
     — the number only when what follows is still math, so "$3. 14$" stays whole
+  - keep a problem number printed with no mark out of the math: at the start of
+    a line, "10 (13+5i)+(7i-11)" is problem 10 and then the expression
   - eject orphan brackets whose partner Hangul split off ("그래프(초3-4)"): they
     are prose, must not count as the "parentheses" math signal, and would
     otherwise be spoken as a "괄호 닫고" that never opened
@@ -178,11 +185,18 @@ _UNIT_TOKEN = re.compile(r"(?<![A-Za-z\\{])" + _UNITS)
 # "\quad(a<0)" — a \quad-spaced parenthesized CONDITION after an expression;
 # juxtaposition would be read as multiplication ("네모 곱하기 괄호 열고 a...")
 _QUAD_COND = re.compile(r"\\q?quad\s*(?=\()")
+# "AB // CD": 평행 typed as two slashes. Left alone it is read as a division
+# ("A B 나누기 슬래시 C D"); nothing else in school math is written "//".
+_PARALLEL = re.compile(r"\s*//\s*")
 _WS = re.compile(r"\s+")
 
-_ENV_FIRST_ROW = re.compile(r"(\\begin\{[A-Za-z]+\*?\})\s*\\\\")
+# \\begin{..}, with the column spec an array/tabular carries ({l}, {c|c}): the
+# spec is layout, but temml cannot parse an array without one, so it stays
+# unless the env itself is unwrapped (_ARRAY_TRIVIAL)
+_ENV_BEGIN = r"(?:\\begin\{(?:array|tabular)\*?\}\s*\{[^{}]*\}|\\begin\{[A-Za-z]+\*?\})"
+_ENV_FIRST_ROW = re.compile(r"(" + _ENV_BEGIN + r")\s*\\\\")
 _ENV_LAST_ROW = re.compile(r"\\\\\s*&*\s*(?=\\end\{)")
-_ENV_LEAD_CELL = re.compile(r"(\\begin\{[A-Za-z]+\*?\}\s*|\\\\\s*)&\s*")
+_ENV_LEAD_CELL = re.compile(r"(" + _ENV_BEGIN + r"\s*|\\\\\s*)&\s*")
 # "&&" double-alignment (OCR piecewise: "2x+1 && (x>1)") -> one empty cell
 # spoken as "빈 칸"; collapse to a single separator
 _ENV_MULTI_AMP = re.compile(r"&\s*&+")
@@ -190,9 +204,14 @@ _ENV_TRIVIAL = re.compile(
     r"\\begin\{([A-Za-z]+)\*?\}((?:(?!\\begin\{|\\end\{|\\\\|&).)*)\\end\{\1\*?\}",
     re.DOTALL,
 )
-# array/tabular column spec ({r}, {c|c}) — layout, not content; unwrapping the
-# env without dropping it would speak the spec ("r 빼기 4 콤마 ...")
-_ENV_COLSPEC = re.compile(r"(\\begin\{(?:array|tabular)\*?\})\s*\{[^{}]*\}")
+# an array/tabular left with one unaligned row: unwrapped like _ENV_TRIVIAL,
+# and its column spec ({r}, {c|c}) goes with it — kept, the spec would be
+# spoken ("r 빼기 4 콤마 ..."). A multi-row array keeps env and spec: without
+# the spec temml fails, the span is salvaged and the problem gets no audio.
+_ARRAY_TRIVIAL = re.compile(
+    r"\\begin\{(array|tabular)\*?\}\s*\{[^{}]*\}((?:(?!\\begin\{|\\end\{|\\\\|&).)*)\\end\{\1\*?\}",
+    re.DOTALL,
+)
 # a single-$ pair around a whole multi-line env ("$ \begin{array}...\end{array} $"):
 # the inline SPAN can't match across newlines, so the env alternative would grab
 # just the middle and leave two stray '$'s that later pair into EMPTY math spans
@@ -202,6 +221,10 @@ _DOLLAR_ENV = re.compile(r"(?<!\$)\$(?!\$)\s*(\\begin\{[^}]+\}.*?\\end\{[^}]+\})
                          re.DOTALL)
 
 _PROBLEM_NO = re.compile(r"\s*(\d+)\.\s+(?=\S)")
+# A problem number printed with no mark ("10 (13+5i)+(7i-11)를 계산하면?"), at the
+# start of a line: a space, then math that opens with a bracket or a letter. Not
+# "3 x 2" (x as a times sign), and not a digit or operator after the space.
+_BARE_PROBLEM_NO = re.compile(r"(\d{1,3})[ \t]+(?=[(\[{|A-Za-z\\])(?![xX]\s*\d)")
 
 # list markers: "(1)" / "[3]" (digit-only) followed by space, another marker, or
 # end of run. "(2)(x+1)" — no space, followed by real math — is a product instead.
@@ -229,6 +252,12 @@ _LEAD_CLOSE = re.compile(r"^[)\]}]+\s*")
 _OCR_TYPOS = [("절맞았이", "절댓값이"), ("절맞았어", "절댓값이"),
               ("절맛값", "절댓값"), ("절맞은", "절댓값은"), ("절망은", "절댓값은"),
               ("제물 사분면", "제몇 사분면")]
+
+# Markdown the OCR adds around headings ("## 조건") and bold text. The marks are
+# not on the page; the voice reads each one aloud ("샵 샵 조건").
+_MD_HEADING = re.compile(r"^[ \t]{0,3}#{1,6}[ \t]+", re.MULTILINE)
+_MD_BOLD = re.compile(r"\*\*(?=\S)(.+?)(?<=\S)\*\*")
+
 
 # --- bare-LaTeX-in-prose repair (OCR sometimes omits the $..$ delimiters) ---
 _TEXT_CMD = re.compile(r"\\text\s*\{([^{}]*)\}")
@@ -307,6 +336,7 @@ _SIG_RATIO = re.compile(r"[0-9A-Za-z]:[0-9A-Za-z]")                # 3:4 (비례
 # minute ("09:30", "14:00") or an hour past 12 ("13:45"). An ambiguous "12:30"
 # stays a ratio; worksheets write 비례식 as "3:4" / "5:12", never zero-padded.
 _CLOCK = re.compile(r"0\d:\d{2}|\d{1,2}:0\d|1[3-9]:\d{2}|2[0-4]:\d{2}")
+_SIG_PARALLEL = re.compile(r"[A-Za-z]\s*//\s*[A-Za-z]")              # AB//CD (평행)
 _SIG_RDOT = re.compile("[0-9]̇")                              # 2̇ (순환소수)
 # a 4+-letter lowercase word means English PROSE, not math (variables are 1–2
 # letters; sin/cos/tan are converted earlier) — wrapping it makes SRE spell it
@@ -330,7 +360,6 @@ def _clean_envs(s):
     rows, empty leading cells (both verbalized as "빈 칸"), and unwrap an
     environment reduced to a single unaligned row — OCR wrapping noise around
     what is really just an expression or list."""
-    s = _ENV_COLSPEC.sub(r"\1", s)
     s = _ENV_MULTI_AMP.sub("&", s)
     prev = None
     while prev != s:
@@ -338,6 +367,7 @@ def _clean_envs(s):
         s = _ENV_FIRST_ROW.sub(r"\1", s)
         s = _ENV_LAST_ROW.sub("", s)
         s = _ENV_LEAD_CELL.sub(r"\1", s)
+        s = _ARRAY_TRIVIAL.sub(r"\2", s)
         s = _ENV_TRIVIAL.sub(r"\2", s)
     return s
 
@@ -354,6 +384,7 @@ def _latexify(s, literal_braces=False):
     s = _clean_envs(s)
     s = _CIRC.sub("°", s)
     s = _CONG.sub(r"\\equiv", s)
+    s = _PARALLEL.sub(r" \\parallel ", s)
     s = _RDOT_DIGIT.sub(r"\\dot{\1}", s)
     s = _SUP_RUN.sub(lambda m: "^{" + "".join(SUP[c] for c in m.group()) + "}", s)
     s = _SUB_RUN.sub(lambda m: "_{" + "".join(SUB[c] for c in m.group()) + "}", s)
@@ -382,6 +413,7 @@ def _is_math(core):
         or _SIG_ABS.search(core)
         or _SIG_RATIO.search(core)
         or _SIG_RDOT.search(core)
+        or _SIG_PARALLEL.search(core)
         # '[' as well as '(': "[3,4]" was not math at all, so its brackets were
         # silent where "(3,4)" at least reached the speech stage (#20, ⚠ list)
         or (("(" in core or "[" in core) and re.search(r"[0-9A-Za-z]", core))
@@ -552,6 +584,11 @@ def _wrap_bare(text):
             core = rest
         else:
             lead = ""
+        bare = None if lead or run[:i].strip() else _BARE_PROBLEM_NO.match(core)
+        if bare and _is_math(core[bare.end():]):
+            before = m.string[:m.start()].rstrip(" \t")
+            if not before or before.endswith("\n"):   # only at the start of a line
+                lead, core = bare.group(), core[bare.end():]
         mlead, mrest = _eject_list_markers(core)
         if mlead:
             if not mrest.strip() or not _is_math(mrest):
@@ -594,6 +631,8 @@ def normalize_math(text):
     """Normalize all math in OCR markdown to canonical inline $...$ LaTeX."""
     for bad, good in _OCR_TYPOS:
         text = text.replace(bad, good)
+    text = _MD_HEADING.sub("", text)
+    text = _MD_BOLD.sub(r"\1", text)
     text = text.replace("☐", "□").replace("▢", "□")   # box-char variants
     text = TABLE.sub(_table_text, text)
     text = HTML_BLOCK.sub(" ", text)

@@ -16,6 +16,10 @@ and "1.23은" (a decimal) is not a number label. Every problem on a page is
 numbered the same way as the first one, so once the page uses "1.", a "3)"
 sub-item or a "3번 학생" line inside a problem is not a new problem either.
 
+Some books print the number with no mark at all ("34 삼차방정식 …"). That is
+only tried when the page has no marked numbers, since a bare number at the
+start of a line is much more often part of the text.
+
 Pure, with no OCR or Modal import, so tests/test_problems.py can check it locally.
 """
 import json
@@ -33,11 +37,20 @@ NUMBER = re.compile(r"^\s*(?:\[\s*(\d{1,3})\s*\]|(\d{1,3})\s*([.)．]|번)(?!\d)
 # A problem number jumps by at most this much: a larger jump is more likely a
 # number inside the text (a year, a page number) than the next problem.
 MAX_JUMP = 10
+# "34 삼차방정식", "10 (13+5i)": a bare number, a space, then the text. Not
+# "30 ① 31 ④" (an answer key), "3 + 4", "30 분 동안" or "2 cm".
+BARE = re.compile(r"^\s*(\d{1,3})[ \t]+(?=[가-힣A-Za-z$(\[\\])"
+                  r"(?!(?:개|명|분|초|시간|일|월|년|원|배|번째|회|점|도|쪽|살|권|장|대|"
+                  r"km|cm|mm|m|kg|g|L|mL)(?![가-힣A-Za-z]))")
 
 
-def _label(text):
+def _label(text, bare=False):
     """(number, style) of the problem label a text starts with, or (None, None).
-    The style is how it is written: "[]", ".", ")", "번" or "문제"."""
+    The style is how it is written: "[]", ".", ")", "번" or "문제"; with `bare`,
+    only a number with no mark counts (style "")."""
+    if bare:
+        m = BARE.match(text or "")
+        return (int(m.group(1)), "") if m else (None, None)
     m = NUMBER.match(text or "")
     if not m:
         return None, None
@@ -54,10 +67,10 @@ def number_of(text):
     return _label(text)[0]
 
 
-def _opens(text, last, style):
+def _opens(text, last, style, bare=False):
     """The label's (number, style) if text starts the next problem, else None:
     the number goes up by at most MAX_JUMP and is written like the first one."""
-    n, st = _label(text)
+    n, st = _label(text, bare)
     if n is None or (style is not None and st != style):
         return None
     if last is not None and not last < n <= last + MAX_JUMP:
@@ -83,7 +96,7 @@ def _merge(boxes):
     return out
 
 
-def _pieces(b, after, style):
+def _pieces(b, after, style, bare=False):
     """One block -> [(bbox, text)]: split where a line starts the next problem
     number. OCR sometimes runs the end of one problem and the start of the next
     into one block, or an intro ("[1~2] 다음을 읽고") and problem 1; the box is
@@ -93,7 +106,7 @@ def _pieces(b, after, style):
     lines = text.split("\n")
     cuts, last = [0], after
     for i, line in enumerate(lines):
-        opened = _opens(line, last, style)
+        opened = _opens(line, last, style, bare)
         if opened:
             if i:
                 cuts.append(i)
@@ -124,6 +137,12 @@ def _owner(problems, bbox):
 
 
 def split(res):
+    """OCR result dict -> the page's problems; see _split. Marked numbers
+    ("1.", "2)") first, and bare ones ("34 삼차방정식") only if there are none."""
+    return _split(res) or _split(res, bare=True)
+
+
+def _split(res, bare=False):
     """OCR result dict -> [{"label": "1", "boxes": [[x0, y0, x1, y1], ...], "text": md}].
 
     Boxes are fractions of the page width and height (0..1), so they still fit
@@ -146,10 +165,12 @@ def split(res):
     problems, lead = [], []  # lead: text before the first number
     last = style = None
     for b in ordered:
-        for bbox, text in _pieces(b, last, style):
-            opened = _opens(text, last, style)
+        for bbox, text in _pieces(b, last, style, bare):
+            opened = _opens(text, last, style, bare)
             if opened:
                 last, style = opened
+                if bare:  # "34 삼차방정식" -> "34. 삼차방정식": heard as a number, then a pause
+                    text = BARE.sub(lambda m: f"{m.group(1)}. ", text, count=1)
                 problems.append({"label": str(last), "boxes": [bbox], "parts": [text]})
             elif b.get("block_label") == "paragraph_title":
                 continue  # a section heading ("서술형"), not problem text

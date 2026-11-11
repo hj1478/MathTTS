@@ -88,11 +88,14 @@ export function phrases(text: string, duration: number): { text: string; start: 
     }
   }
   if (cur.length) out.push(cur.join(' '));
-  const total = out.reduce((n, p) => n + p.length, 0) || 1;
+  // A choice number is one character on screen but about ten in the audio:
+  // it is said "1번", with a pause on each side (sre-probe/speak.js speakMarks).
+  const spoken = (p: string) => p.length + 9 * (p.match(/[\u2460-\u2473]/g)?.length ?? 0);
+  const total = out.reduce((n, p) => n + spoken(p), 0) || 1;
   let acc = 0;
   return out.map((p) => {
     const start = (acc / total) * duration;
-    acc += p.length;
+    acc += spoken(p);
     return { text: p, start };
   });
 }
