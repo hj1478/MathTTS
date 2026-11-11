@@ -289,7 +289,7 @@ test('--both writes the same files as separate plain and --ssml runs', () => {
 // --- pace, 2026-11-10: nothing is read faster than the voice's own rate ------
 {
   const { capRate, speakMarks, fixMisreads, checkWellFormed, sinoKorean, spellNumbers,
-          joinTextWords, splitChains } = require('./speak');
+          joinTextWords, splitChains, speakProblemLabels } = require('./speak');
 
   test('a prosody that speeds up is unwrapped, its content kept', () => {
     assert.equal(capRate('a <prosody rate="+25%"> 3 <say-as interpret-as="characters">x</say-as> </prosody> b'),
@@ -380,5 +380,13 @@ test('--both writes the same files as separate plain and --ssml runs', () => {
   test('unit characters get their Korean names; a count keeps its digit', () => {
     assert.equal(speakMarks('9㎠ 250㎖'), '9<sub alias="제곱센티미터">㎠</sub> 250<sub alias="밀리리터">㎖</sub>');
     assert.equal(spellNumbers('x 는 3 개 , 2 배 , 4 점'), 'x 는 3 개 , 2 배 , 사 점');
+  });
+
+  test('a problem number is said "N번" with a pause, not as a number before the formula', () => {
+    assert.equal(speakProblemLabels('10. 괄호 열고 13\n11. 다음 중'),
+      '<sub alias="십번">10.</sub><break time="400ms"/> 괄호 열고 13\n'
+      + '<sub alias="십일번">11.</sub><break time="400ms"/> 다음 중');
+    assert.equal(speakProblemLabels('값은 3. 그리고'), '값은 3. 그리고');   // not at the start of a line
+    assert.equal(speakProblemLabels('3.14 는'), '3.14 는');               // a decimal
   });
 }

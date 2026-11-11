@@ -224,6 +224,14 @@ const UNIT_KO = {
   '㎗': '데시리터', 'ℓ': '리터', '㎘': '킬로리터', '℃': '도씨',
 };
 
+// A problem number at the start of a line ("10. (13+5i)+…"). Read as a plain
+// number it runs into the formula and sounds like a coefficient, "십 괄호 열고
+// 십삼 …" (heard 2026-11-11). It is said "십 번" with a pause after it; spelled
+// out, because the voice reads "10번" as 열 번.
+const PROBLEM_LABEL = /^([ \t]*)(\d{1,3})\.(?=[ \t]+\S)/gm;
+const speakProblemLabels = (ssmlBody) => ssmlBody.replace(PROBLEM_LABEL, (_m, lead, n) =>
+  `${lead}<sub alias="${sinoKorean(n)}번">${n}.</sub><break time="400ms"/>`);
+
 function spokenMark(m) {
   if (UNIT_KO[m]) return UNIT_KO[m];
   const c = m.codePointAt(0);
@@ -1067,7 +1075,7 @@ async function main() {
           .replace(/ +/g, ' ')
           .trim();
         // math speech included: a label inside a span ("… ⋯ ㉠") is as silent
-        const body = speakMarks(joined)
+        const body = speakMarks(speakProblemLabels(joined))
           .replace(CHOICE_VALUE, (_m, lead, n) => lead + sinoKorean(n))
           // alt-voice markers -> sibling <voice> elements (nesting is rejected
           // by Azure: "[voice] should not contain [voice]")
@@ -1120,7 +1128,7 @@ async function main() {
 
 module.exports = { SPAN, checkWellFormed, splitRadicals, splitRepeating, splitSegments,
                    splitFences, splitChains, splitAbs, splitSpecials, endsWithJong,
-                   fixMisreads, joinTextWords, capRate, speakMarks, sinoKorean, spellNumbers };
+                   fixMisreads, joinTextWords, speakProblemLabels, capRate, speakMarks, sinoKorean, spellNumbers };
 
 if (require.main === module) {
   main().catch((err) => {

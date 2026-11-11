@@ -1085,3 +1085,13 @@ proof.
   80km/h "킬로미터 나누기 h", 25°C "도 C".
 - 1/2 in prose is "일 나누기 이"; "2-1번" is heard "이 대 일번".
 - A bare number in prose that is not a choice value is still the voice's pick.
+
+## 2026-11-11 — The problem number is said "십 번", then a pause
+
+**What happened.** "10. (13+5i)+…" was heard "십 괄호 열고 십삼 …": the problem
+number runs into the formula like a coefficient (reported from a phone).
+
+**Changed as a result.** `speak.js` `speakProblemLabels`: in the SSML, "N." at
+the start of a line becomes `<sub alias="십번">10.</sub>` and a 400 ms break.
+Spelled out because the voice reads "10번" as 열 번. Heard back as "십 번 | 괄호
+열고 …". Other label styles ("3)", "[3]", "문제 3") are unchanged.
