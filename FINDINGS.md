@@ -1027,3 +1027,61 @@ The displayed text keeps its digits. Choice aliases are 일번, 이번, ….
 
 **Still open.** A bare number in prose that is not a choice value ("상수 2 를")
 is still the voice's choice.
+
+## 2026-11-11 — Why the number mix-up was not caught, and what a hear-back pass found
+
+**Question.** Every test passed while the voice was saying "네 마이너스 이
+아이". What was missing, and what else is hiding in the same blind spot?
+
+**Why it was missed.** The tests compare the words the pipeline writes. What
+Azure does with those words was only ever checked by word-boundary events,
+which echo the input text, and by audio length. Nothing listened. The entry of
+2026-08 ("intelligible by ear? UNRESOLVED") and the 11-09 review's "no listening
+test yet" both said so and stayed open.
+
+**What I did.** `tts_hear.py`: each line goes through `normalize.py` and
+`speak.js`, Azure speaks the SSML, and Azure speech recognition transcribes the
+audio (`Lexical` form). 87 lines of ordinary problem text in
+`eval/hear_lines.txt`; I read sent against heard by eye. Then ran the 89 stored
+OCR pages before and after each change and read the diff.
+
+**What happened.** Found and fixed:
+
+| Input | Was | Now |
+|---|---|---|
+| `0\leq\theta<2\pi` | 쎄타 는 2 보다 작다 파이 | 쎄타 는 2 파이 보다 작다 |
+| `a<x<b+1` | x 는 b 보다 작다 플러스 1 | x 는 b 플러스 1 보다 작다 |
+| `\sin 30°=\frac12` after any "… 은 …" | 사인 30 도 은 2 분의 1 | 도 는 |
+| `\frac{\text{거리}}{\text{시간}}` | 시 간 분의 거 리 | 시간 분의 거리 |
+| 250㎖, 3ℓ | heard "이백오십삼 리터" (㎖ silent) | 밀리리터, 리터 |
+| 9㎠, 27㎤ | 스퀘어 센티미터, 큐빅센티미터 | 제곱센티미터, 세제곱센티미터 |
+| 3:30에 만나서 | 삼 대 삼십 에 | 3시 30분에 |
+| `\vec{a}` | a 오른쪽 화살표 | 벡터 a |
+| `3\text{개}` after the number change | 삼 개 | 3 개 (the voice says 세 개) |
+
+- The chain splitter matched single atoms, so a chain ending in `2\pi` or `b+1`
+  was cut after the 2 or the b: a different statement. A span, or each
+  comma-separated piece of one, that is a single chain is now cut at its
+  top-level relations whatever the operands are.
+- The 은/는 after ° is an SRE fault with memory: alone, "30 도 는 x"; after any
+  formula that used 은, "30 도 은 x". One process reads all problems of a page,
+  so it depends on what came earlier on the page. Now re-picked from the 받침 of
+  the Hangul word before it.
+
+The corpus diff caught two mistakes of mine before they shipped:
+`\overrightarrow{AB}` → 벡터 was wrong (it is 반직선 AB, and the OCR writes it
+for 선분), and the first chain guard lost "a-b>a>0, b-a<b<0".
+
+**Result.** Verified by the same hear-back on the fixed lines, 210 Python and
+94 Node tests, and a corpus diff showing only the intended changes. The
+recognizer mishears letters and short words ("P" at the start of a line was
+dropped by it but adds 0.3 s of audio), so a difference is a lead to check, not
+proof.
+
+**Still open** (heard, not fixed):
+- `{}_5C_2` "아래첨자 오 C 이"; `A^c` "A 의 c 제곱" (여집합); `f''(x)` "프라임
+  프라임"; `\lim_{n\to\infty}` "n 오른쪽 화살표 무한대 에 대한 리미트".
+- Units written with letters: `8 m^3` "팔 m 세제곱", 100m "백 m", 1L, 500mL,
+  80km/h "킬로미터 나누기 h", 25°C "도 C".
+- 1/2 in prose is "일 나누기 이"; "2-1번" is heard "이 대 일번".
+- A bare number in prose that is not a choice value is still the voice's pick.

@@ -181,6 +181,7 @@ const SILENT_MARK = new RegExp([
   '[\\u3200-\\u321b]',            // ㈀ … ㈍, ㈎ … ㈛
   '[\\u24d0-\\u24e9]',            // ⓐ … ⓩ
   '[○◯□]',                        // a blank to fill in, drawn as a shape
+  '[㎜㎝㎞㎟㎠㎡㎢㎣㎤㎥㎦㎎㎏㎖㎗ℓ㎘℃]',  // a unit printed as one character
   '\\(\\s+\\)|_{3,}',               // a blank written "(   )" or "____"
 ].join('|'), 'g');
 
@@ -203,14 +204,28 @@ function sinoKorean(num) {
 /** Math speech (SSML or plain) -> the same with every number spelled out.
  * Tags are skipped (break times, rates), and so is a number with Hangul
  * right after it ("3개" from a \text): that one is a count. */
-const NUMBER_OR_TAG = /<[^>]*>|\d+(?:,\d{3})+(?:\.\d+)?(?![가-힣\d])|\d+(?:\.\d+)?(?![가-힣\d.])/g;
+// … or a counting word after a space ("3 개" from 3\text{개}): 세 개, not 삼 개.
+const COUNTER = '(?!\\s*(?:개|명|마리|권|장|자루|송이|그루|켤레|살|배|가지|시간|시)(?![가-힣]))';
+const NUMBER_OR_TAG = new RegExp(
+  `<[^>]*>|\\d+(?:,\\d{3})+(?:\\.\\d+)?(?![가-힣\\d])${COUNTER}|\\d+(?:\\.\\d+)?(?![가-힣\\d.])${COUNTER}`, 'g');
 const spellNumbers = (s) => s.replace(NUMBER_OR_TAG, (m) => (m[0] === '<' ? m : sinoKorean(m)));
 
 // The value after a choice number, when it is a bare number in the prose
 // ("① 0 ② 2"): math too, so it is spelled the same way.
 const CHOICE_VALUE = /(<sub alias="[^"]*">[\u2460-\u2473]<\/sub><break time="250ms"\/>[ \t]*)(\d+(?:\.\d+)?)(?=[ \t]*(?:<|\n|$))/g;
 
+// One-character units. Measured 2026-11-11: ㎖ is silent ("250㎖, 3ℓ" was
+// heard "이백오십삼 리터"), ㎠ is "스퀘어 센티미터" and ㎤ "큐빅센티미터" while
+// ㎡ and ㎥ are Korean. All are given the Korean name.
+const UNIT_KO = {
+  '㎜': '밀리미터', '㎝': '센티미터', '㎞': '킬로미터', '㎟': '제곱밀리미터', '㎠': '제곱센티미터',
+  '㎡': '제곱미터', '㎢': '제곱킬로미터', '㎣': '세제곱밀리미터', '㎤': '세제곱센티미터',
+  '㎥': '세제곱미터', '㎦': '세제곱킬로미터', '㎎': '밀리그램', '㎏': '킬로그램', '㎖': '밀리리터',
+  '㎗': '데시리터', 'ℓ': '리터', '㎘': '킬로리터', '℃': '도씨',
+};
+
 function spokenMark(m) {
+  if (UNIT_KO[m]) return UNIT_KO[m];
   const c = m.codePointAt(0);
   const between = (lo, hi) => c >= lo && c <= hi;
   if (between(0x2460, 0x2473)) return `${SINO_KO[c - 0x2460]}번`;
@@ -418,10 +433,84 @@ const CHAIN = new RegExp(
   String.raw`(?<![A-Za-z0-9.^_{\\])` + `${TERM}(?:\\s*(?:${RELS})\\s*${TERM}){2,}`, 'g');
 const CHAIN_TOKEN = new RegExp(`${RELS}|${TERM}`, 'g');
 
+// The terms above are single atoms, so "0 \\leq \\theta < 2\\pi" used to match
+// only up to the 2 and speak "쎄타 는 2 보다 작다 파이", and "a<x<b+1"
+// "x 는 b 보다 작다 플러스 1" — a different statement (found 2026-11-11). When
+// the whole span is one chain, it is cut at its top-level relations instead,
+// whatever the operands are.
+const REL_AT = new RegExp(RELS, 'y');
+const NOT_ONE_CHAIN = /[;=|]|\\(?:text|quad|qquad|begin|left|right|mid|neq|ne|approx|to|sim|equiv)(?![A-Za-z])/;
+
+function wholeChain(latex) {
+  if (NOT_ONE_CHAIN.test(latex)) return null;
+  const parts = [];   // operand, relation, operand, …
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < latex.length; i++) {
+    const ch = latex[i];
+    if (ch === '{' || ch === '(' || ch === '[') depth++;
+    else if (ch === '}' || ch === ')' || ch === ']') depth--;
+    REL_AT.lastIndex = i;
+    const m = REL_AT.exec(latex);
+    if (!m) continue;
+    if (depth !== 0) return null;
+    parts.push(latex.slice(start, i).trim(), m[0]);
+    i += m[0].length - 1;
+    start = i + 1;
+  }
+  parts.push(latex.slice(start).trim());
+  if (parts.length < 5 || parts.some((t) => !t)) return null;
+  // "c \\leq 3 4-2 \\leq d": two answers the OCR ran together, not one operand
+  if (parts.some((t) => /\d\s+\d/.test(t))) return null;
+  const segs = [];
+  for (let i = 0; i + 2 < parts.length; i += 2) {
+    if (i) segs.push({ text: ',' });
+    segs.push({ latex: `${parts[i]} ${parts[i + 1]} ${parts[i + 2]}` });
+  }
+  return segs;
+}
+
+// What may stand right before / right after a chain found inside a longer
+// span: anything else means the match stopped partway through an operand.
+const CHAIN_MAY_FOLLOW = /(?:^|[,;(\[{]|\\(?:text\{[^{}]*\}|quad|qquad|,|;| ))\s*$/;
+const MAY_FOLLOW_CHAIN = /^\s*(?:$|[,;)\]}]|\\(?:text|quad|qquad|,|;| ))/;
+
+/** "a-b>a>0, b-a<b<0" -> its pieces at top-level commas, commas kept. */
+function splitTopCommas(latex) {
+  const out = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < latex.length; i++) {
+    const ch = latex[i];
+    if (ch === '{' || ch === '(' || ch === '[') depth++;
+    else if (ch === '}' || ch === ')' || ch === ']') depth--;
+    else if (ch === ',' && depth === 0 && latex[i - 1] !== '\\') {
+      out.push(latex.slice(start, i), ',');
+      start = i + 1;
+    }
+  }
+  out.push(latex.slice(start));
+  return out;
+}
+
 function splitChains(latex) {
+  // each comma-separated piece that is one chain on its own
+  const pieces = splitTopCommas(latex);
+  const cut = pieces.map((p) => (p === ',' ? null : wholeChain(p)));
+  if (cut.some(Boolean)) {
+    const segs = [];
+    pieces.forEach((p, i) => {
+      if (cut[i]) segs.push(...cut[i]);
+      else if (p === ',') segs.push({ text: ',' });
+      else if (p.trim()) segs.push(...splitChains(p));
+    });
+    return segs;
+  }
   const segs = [];
   let last = 0;
   for (const m of latex.matchAll(CHAIN)) {
+    if (!CHAIN_MAY_FOLLOW.test(latex.slice(0, m.index))
+        || !MAY_FOLLOW_CHAIN.test(latex.slice(m.index + m[0].length))) continue;
     // the whole chain is consumed, however many links: a 3-relation chain used
     // to leave a dangling " \leq r" that spoke as a clause with no subject
     const tok = m[0].match(CHAIN_TOKEN);
@@ -702,6 +791,20 @@ const similarLatex = (latex) => latex.replace(/\\sim(?![A-Za-z])/g, '\\backsim '
 
 const UNIT_POWER = /(센티미터|밀리미터|킬로미터|미터) (세제곱|제곱)/g;
 
+/** SRE speaks a Korean word inside \text one syllable at a time: "시 간 분의
+ * 거 리 는 속 력" for (거리)/(시간)=(속력), shown that way and read haltingly
+ * (found 2026-11-11). The words are known from the LaTeX, so each is put back
+ * together. */
+function joinTextWords(latex, speech) {
+  let out = speech;
+  for (const m of latex.matchAll(/\\(?:text|mathrm|operatorname)\s*\{([^{}]*)\}/g)) {
+    for (const word of m[1].match(/[가-힣]{2,}/g) ?? []) {
+      out = out.replace(new RegExp(`(?<![가-힣])${[...word].join('\\s+')}(?![가-힣])`, 'g'), word);
+    }
+  }
+  return out;
+}
+
 const ROW_ORDINAL = ['첫째', '둘째', '셋째', '넷째', '다섯째'];
 
 function fixMisreads(speech) {
@@ -713,6 +816,12 @@ function fixMisreads(speech) {
     .replace(/싸인/g, '사인')
     .replace(UNIT_POWER, '$2$1')
     .replace(/(^|\s)콜론(?=\s|$)/g, '$1대')    // also a ':' rendered on its own
+    // 은/는 after a Hangul word. SRE gets it right from a digit or a letter,
+    // but after a symbol it speaks as a word (° → 도) it repeats whichever
+    // particle it used LAST, in an earlier formula: "30 도 는 x" alone, "30 도
+    // 은 x" once any "… 은 …" has been read (measured 2026-11-11).
+    .replace(/([가-힣])((?:\s|<[^>]*>)+)(?:은|는)(?=\s|$)/g,
+             (_m, syl, gap) => `${syl}${gap}${hasJong(syl) ? '은' : '는'}`)
     // A brace over several rows (연립방정식, a piecewise function) comes out as
     // "총 케이스 수 2 케이스 1: … 케이스 2: …"; say 첫째, … 둘째, … instead.
     .replace(/총 케이스 수 \d+\s*(?:<break[^>]*\/>\s*)?/g, '')
@@ -845,7 +954,7 @@ async function main() {
           continue;
         }
         try {
-          speech.get(latex).set(key, fixMisreads(sre.toSpeech(conv.mathml)));
+          speech.get(latex).set(key, joinTextWords(latex, fixMisreads(sre.toSpeech(conv.mathml))));
         } catch (err) {
           speech.get(latex).set(key, { error: String(err) });
         }
@@ -1011,7 +1120,7 @@ async function main() {
 
 module.exports = { SPAN, checkWellFormed, splitRadicals, splitRepeating, splitSegments,
                    splitFences, splitChains, splitAbs, splitSpecials, endsWithJong,
-                   fixMisreads, capRate, speakMarks, sinoKorean, spellNumbers };
+                   fixMisreads, joinTextWords, capRate, speakMarks, sinoKorean, spellNumbers };
 
 if (require.main === module) {
   main().catch((err) => {

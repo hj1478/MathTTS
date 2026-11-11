@@ -48,6 +48,10 @@ DOES:
     — the number only when what follows is still math, so "$3. 14$" stays whole
   - keep a problem number printed with no mark out of the math: at the start of
     a line, "10 (13+5i)+(7i-11)" is problem 10 and then the expression
+  - write out a clock time that a time particle follows ("3:30에" -> "3시 30분에"),
+    so it is not read as the ratio 3 대 30
+  - \vec{a} -> \text{벡터}a: SRE's "a 오른쪽 화살표" is also its reading of x \to …
+    (\overrightarrow is left alone: 반직선 AB, and the OCR's guess for a 선분)
   - eject orphan brackets whose partner Hangul split off ("그래프(초3-4)"): they
     are prose, must not count as the "parentheses" math signal, and would
     otherwise be spoken as a "괄호 닫고" that never opened
@@ -257,6 +261,13 @@ _OCR_TYPOS = [("절맞았이", "절댓값이"), ("절맞았어", "절댓값이")
 # not on the page; the voice reads each one aloud ("샵 샵 조건").
 _MD_HEADING = re.compile(r"^[ \t]{0,3}#{1,6}[ \t]+", re.MULTILINE)
 _MD_BOLD = re.compile(r"\*\*(?=\S)(.+?)(?<=\S)\*\*")
+# "3:30에 출발" is a time, not the ratio 3 대 30: an hour, two digits of minutes,
+# then a particle of time. Written out so neither reading path sees a colon.
+_CLOCK_AT = re.compile(r"(?<![\d:.])(\d{1,2}):([0-5]\d)(?=\s*(?:에|부터|까지|쯤|경)(?![가-힣]))")
+# \vec{a}: SRE says "a 오른쪽 화살표", the same words as for x \to …. Korean
+# reads the name first: 벡터 a. Not \overrightarrow{AB}: in middle school that
+# is 반직선 AB, and the OCR also writes it for a plain 선분.
+_VEC = re.compile(r"\\vec(?![A-Za-z])\s*(?:\{([^{}]*)\}|([A-Za-z]))")
 
 
 # --- bare-LaTeX-in-prose repair (OCR sometimes omits the $..$ delimiters) ---
@@ -633,6 +644,8 @@ def normalize_math(text):
         text = text.replace(bad, good)
     text = _MD_HEADING.sub("", text)
     text = _MD_BOLD.sub(r"\1", text)
+    text = _CLOCK_AT.sub(lambda m: f"{m.group(1)}시" + ("" if m.group(2) == "00" else f" {int(m.group(2))}분"), text)
+    text = _VEC.sub(lambda m: "\\text{벡터}" + (m.group(1) or m.group(2)), text)
     text = text.replace("☐", "□").replace("▢", "□")   # box-char variants
     text = TABLE.sub(_table_text, text)
     text = HTML_BLOCK.sub(" ", text)

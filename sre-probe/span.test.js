@@ -288,7 +288,8 @@ test('--both writes the same files as separate plain and --ssml runs', () => {
 
 // --- pace, 2026-11-10: nothing is read faster than the voice's own rate ------
 {
-  const { capRate, speakMarks, fixMisreads, checkWellFormed, sinoKorean, spellNumbers } = require('./speak');
+  const { capRate, speakMarks, fixMisreads, checkWellFormed, sinoKorean, spellNumbers,
+          joinTextWords, splitChains } = require('./speak');
 
   test('a prosody that speeds up is unwrapped, its content kept', () => {
     assert.equal(capRate('a <prosody rate="+25%"> 3 <say-as interpret-as="characters">x</say-as> </prosody> b'),
@@ -350,5 +351,34 @@ test('--both writes the same files as separate plain and --ssml runs', () => {
       spellNumbers('4 마이너스 2 <say-as interpret-as="characters">i</say-as> <break time="250ms"/> 는 24'),
       '사 마이너스 이 <say-as interpret-as="characters">i</say-as> <break time="250ms"/> 는 이십사');
     assert.equal(spellNumbers('사과 3개'), '사과 3개');   // a count stays the voice's
+  });
+
+  test('a chain is cut at its relations, whatever the operands are', () => {
+    // was "쎄타 는 2 보다 작다 파이" and "x 는 b 보다 작다 플러스 1"
+    assert.deepStrictEqual(splitChains('0\\leq\\theta<2\\pi'),
+      [{ latex: '0 \\leq \\theta' }, { text: ',' }, { latex: '\\theta < 2\\pi' }]);
+    assert.deepStrictEqual(splitChains('a<x<b+1'),
+      [{ latex: 'a < x' }, { text: ',' }, { latex: 'x < b+1' }]);
+    // each comma-separated piece is looked at on its own
+    assert.deepStrictEqual(splitChains('y=1, a<x<b+1'),
+      [{ latex: 'y=1' }, { text: ',' }, { latex: 'a < x' }, { text: ',' }, { latex: 'x < b+1' }]);
+    assert.deepStrictEqual(splitChains('A(1, 2), B(3, 4)'), [{ latex: 'A(1, 2), B(3, 4)' }]);
+  });
+
+  test('은/는 after a spoken symbol follows its own 받침, not the previous formula', () => {
+    assert.equal(fixMisreads('30 도 은 x'), '30 도 는 x');
+    assert.equal(fixMisreads('30 도 <break time="250ms"/> 은 x'), '30 도 <break time="250ms"/> 는 x');
+    assert.equal(fixMisreads('x 제곱 는 8'), 'x 제곱 은 8');
+    assert.equal(fixMisreads('x 는 3'), 'x 는 3');   // after a letter: SRE's own choice stands
+  });
+
+  test('a Korean word inside \\text is spoken whole', () => {
+    assert.equal(joinTextWords('\\frac{\\text{거리}}{\\text{시간}}', '시 간 분의 거 리'), '시간 분의 거리');
+    assert.equal(joinTextWords('x', '시 간'), '시 간');
+  });
+
+  test('unit characters get their Korean names; a count keeps its digit', () => {
+    assert.equal(speakMarks('9㎠ 250㎖'), '9<sub alias="제곱센티미터">㎠</sub> 250<sub alias="밀리리터">㎖</sub>');
+    assert.equal(spellNumbers('x 는 3 개 , 2 배 , 4 점'), 'x 는 3 개 , 2 배 , 사 점');
   });
 }

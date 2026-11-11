@@ -236,10 +236,27 @@ def test_truncated_table_does_not_leak_markup():
 @pytest.mark.parametrize("src", [
     "1) 2026.06.24(수) 14:00 문제 공개",
     "회의는 09:30 시작",
-    "2:00 에 만나자",
+    "2:05 시작",
 ])
 def test_clock_time_is_not_wrapped_as_a_ratio(src):
     assert normalize_math(src) == src
+
+
+@pytest.mark.parametrize("src, want", [
+    ("3:30에 만나서 5:00부터 12:05까지", "3시 30분에 만나서 5시부터 12시 5분까지"),
+    ("2:00 에 만나자", "2시 에 만나자"),
+    ("비는 3:4이다", "비는 $3:4$이다"),              # a ratio stays a ratio
+    ("$3:30=1:10$", "$3:30=1:10$"),
+])
+def test_clock_time_before_a_time_particle_is_written_out(src, want):
+    assert normalize_math(src) == want
+
+
+def test_vector_is_named_before_its_letter():
+    # SRE reads \vec{a} "a 오른쪽 화살표", the same words as for x \to …
+    assert normalize_math(r"$\vec{a}+\vec b$") == r"$\text{벡터}a+\text{벡터}b$"
+    # 반직선 AB in middle school, and what the OCR writes for a 선분: left alone
+    assert normalize_math(r"$\overrightarrow{AB}=2$") == r"$\overrightarrow{AB}=2$"
 
 
 @pytest.mark.parametrize("src,expected", [
