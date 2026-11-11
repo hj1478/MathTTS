@@ -970,7 +970,7 @@ to the deployed service.
 
 | Seen | Cause | Now |
 |---|---|---|
-| Choices read as bare values, no numbers | Azure (`ko-KR-SunHiNeural`) skips ①–⑳ entirely: "① 1" is the same audio as "1". Also silent: ㉠ ㈎ ⑴ ⓐ ○ □, `( )`, `____` | `<sub alias="1번">①</sub>`; 기역/니은, 가/나, 동그라미, 네모, 빈칸 for the rest. Word boundaries show "1번" spoken |
+| Choices read as bare values, no numbers | Azure (`ko-KR-SunHiNeural`) skips ①–⑳ entirely: "① 1" is the same audio as "1". Also silent: ㉠ ㈎ ⑴ ⓐ ○ □, `( )`, `____` | `<sub alias="일번">①</sub>`; 기역/니은, 가/나, 동그라미, 네모, 빈칸 for the rest. The alias is spelled out: with "2번" Azure says "두 번" (twice), heard on a phone the same day |
 | No audio; `array 3x>6 <10-x array .` | normalize stripped the `{l}` column spec from every array. A multi-row array without it does not parse in temml, the span is salvaged, and `--strict` refuses audio for the whole page | The spec is kept; only a one-row array is unwrapped |
 | "총 케이스 수 2 케이스 1: … 케이스 2: …" | SRE's Korean for rows under one brace | "첫째, … 둘째, …" (`fixMisreads`) |
 | "10 괄호 열고 13 플러스 5 i …" for problem 10 | A bare problem number in front of `(13+5i)+…` was taken into the math run | At the start of a line, 1–3 digits, a space, then a bracket or letter: the number stays prose |

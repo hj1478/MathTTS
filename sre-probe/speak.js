@@ -170,6 +170,10 @@ function capRate(s) {
 // its number, so "① … ② … ③ …" is heard as separate choices, not one run.
 const JAMO_KO = ['기역', '니은', '디귿', '리을', '미음', '비읍', '시옷', '이응', '지읒', '치읓', '키읔', '티읕', '피읖', '히읗'];
 const GANA_KO = [...'가나다라마바사아자차카타파하'];
+// Spelled out, not "2번": Azure reads a digit before 번 as a count ("두 번",
+// twice), where a choice number is 이 번.
+const SINO_KO = ['일', '이', '삼', '사', '오', '육', '칠', '팔', '구', '십', '십일', '십이', '십삼',
+  '십사', '십오', '십육', '십칠', '십팔', '십구', '이십'];
 const SILENT_MARK = new RegExp([
   '[\\u2460-\\u2473]',            // ① … ⑳
   '[\\u2474-\\u2487]',            // ⑴ … ⒇
@@ -183,8 +187,8 @@ const SILENT_MARK = new RegExp([
 function spokenMark(m) {
   const c = m.codePointAt(0);
   const between = (lo, hi) => c >= lo && c <= hi;
-  if (between(0x2460, 0x2473)) return `${c - 0x245f}번`;
-  if (between(0x2474, 0x2487)) return `${c - 0x2473}번`;
+  if (between(0x2460, 0x2473)) return `${SINO_KO[c - 0x2460]}번`;
+  if (between(0x2474, 0x2487)) return `${SINO_KO[c - 0x2474]}번`;
   if (between(0x3260, 0x326d)) return JAMO_KO[c - 0x3260];
   if (between(0x326e, 0x327b)) return GANA_KO[c - 0x326e];
   if (between(0x3200, 0x320d)) return JAMO_KO[c - 0x3200];

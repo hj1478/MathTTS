@@ -304,21 +304,21 @@ test('--both writes the same files as separate plain and --ssml runs', () => {
       'a<prosody rate="-10%">b</prosody>c');
   });
 
-  test('a numbered choice is spoken ("1번"), with a pause before it and after its number', () => {
+  test('a numbered choice is spoken ("일번", never "한 번"), with a pause before it and after its number', () => {
     assert.equal(speakMarks('옳은 것은? ① 가 ②나'),
-      '옳은 것은? <break time="500ms"/><sub alias="1번">①</sub><break time="250ms"/> 가 '
-      + '<break time="500ms"/><sub alias="2번">②</sub><break time="250ms"/>나');
+      '옳은 것은? <break time="500ms"/><sub alias="일번">①</sub><break time="250ms"/> 가 '
+      + '<break time="500ms"/><sub alias="이번">②</sub><break time="250ms"/>나');
     assert.equal(speakMarks('1. 가 (2) 나'), '1. 가 (2) 나');   // the voice reads these itself
     // referred to inside a sentence: spoken, but no pauses
-    assert.equal(speakMarks('①을 ②에 대입'), '<sub alias="1번">①</sub>을 <sub alias="2번">②</sub>에 대입');
+    assert.equal(speakMarks('①을 ②에 대입'), '<sub alias="일번">①</sub>을 <sub alias="이번">②</sub>에 대입');
     assert.equal(speakMarks('①이등변삼각형'),
-      '<break time="500ms"/><sub alias="1번">①</sub><break time="250ms"/>이등변삼각형');
+      '<break time="500ms"/><sub alias="일번">①</sub><break time="250ms"/>이등변삼각형');
   });
 
   test('other labels and blanks the voice skips get their spoken words', () => {
     assert.equal(speakMarks('㉠, ㉡'), '<sub alias="기역">㉠</sub>, <sub alias="니은">㉡</sub>');
     assert.equal(speakMarks('㈎ ㉮ ⑵ ⓑ'),
-      '<sub alias="가">㈎</sub> <sub alias="가">㉮</sub> <sub alias="2번">⑵</sub> <sub alias="b">ⓑ</sub>');
+      '<sub alias="가">㈎</sub> <sub alias="가">㉮</sub> <sub alias="이번">⑵</sub> <sub alias="b">ⓑ</sub>');
     assert.equal(speakMarks('○ 안에, (  ) 안에, ____ 에'),
       '<sub alias="동그라미">○</sub> 안에, <sub alias="빈칸">(  )</sub> 안에, <sub alias="빈칸">____</sub> 에');
     assert.equal(speakMarks('f() 와 a_b'), 'f() 와 a_b');
