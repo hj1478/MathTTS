@@ -305,6 +305,14 @@ test('--both writes the same files as separate plain and --ssml runs', () => {
       'a<prosody rate="-10%">b</prosody>c');
   });
 
+  test('every voice run is read 10% under the voice\'s own pace', () => {
+    const { slowDown } = require('./speak');
+    const out = slowDown('<speak><voice name="a">x</voice><voice name="b">y</voice></speak>');
+    assert.equal(out, '<speak><voice name="a"><prosody rate="-10%">x</prosody></voice>' +
+      '<voice name="b"><prosody rate="-10%">y</prosody></voice></speak>');
+    assert.equal(checkWellFormed(out), null);
+  });
+
   test('a numbered choice is spoken ("일번", never "한 번"), with a pause before it and after its number', () => {
     assert.equal(speakMarks('옳은 것은? ① 가 ②나'),
       '옳은 것은? <break time="500ms"/><sub alias="일번">①</sub><break time="250ms"/> 가 '

@@ -265,6 +265,14 @@ const AZURE_SSML = (voice, body) =>
   '<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="ko-KR">' +
   `<voice name="${voice}">${body}</voice></speak>`;
 
+// The fastest anything is read: 10% under the voice's own pace (chosen
+// 2026-11-18; the voice's own pace was the limit before). Each <voice> run is
+// wrapped, since a <prosody> cannot span two voices.
+const MAX_RATE = '-10%';
+const slowDown = (ssml) => ssml
+  .replace(/<voice name="[^"]*">/g, (v) => `${v}<prosody rate="${MAX_RATE}">`)
+  .replace(/<\/voice>/g, '</prosody></voice>');
+
 /* --------------------- repeating decimals (순환소수) --------------------- */
 
 // #17, decided 2026-09-21: repeating decimals speak as reading C from the
@@ -1081,8 +1089,8 @@ async function main() {
           // by Azure: "[voice] should not contain [voice]")
           .replaceAll('\x01', `</voice><voice name="${altVoice}">`)
           .replaceAll('\x02', `</voice><voice name="${voice}">`);
-        const doc_ssml = AZURE_SSML(voice, body)
-          .replace(/<voice name="[^"]*">\s*<\/voice>/g, ''); // drop empty runs
+        const doc_ssml = slowDown(AZURE_SSML(voice, body)
+          .replace(/<voice name="[^"]*">\s*<\/voice>/g, '')); // drop empty runs
         console.log(doc_ssml);
         const xmlErr = checkWellFormed(doc_ssml);
         if (xmlErr) {
@@ -1128,7 +1136,7 @@ async function main() {
 
 module.exports = { SPAN, checkWellFormed, splitRadicals, splitRepeating, splitSegments,
                    splitFences, splitChains, splitAbs, splitSpecials, endsWithJong,
-                   fixMisreads, joinTextWords, speakProblemLabels, capRate, speakMarks, sinoKorean, spellNumbers };
+                   fixMisreads, joinTextWords, speakProblemLabels, capRate, slowDown, speakMarks, sinoKorean, spellNumbers };
 
 if (require.main === module) {
   main().catch((err) => {
