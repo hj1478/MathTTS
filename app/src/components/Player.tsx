@@ -1,13 +1,13 @@
-// Audio player card (Components.dc.html §2) and the "읽어 주는 문장" highlight.
+// Audio player card (Components.dc.html §2).
 import type { AudioPlayer, AudioStatus } from 'expo-audio';
-import { forwardRef, useMemo, useState } from 'react';
+import { forwardRef } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
-import { mmss, phrases } from '@/lib/format';
+import { mmss } from '@/lib/format';
 import { font, useColors } from '@/lib/theme';
 import { Icon, type IconName } from './Icon';
 import { SeekBar } from './SeekBar';
-import { Button, H2 } from './ui';
+import { H2 } from './ui';
 
 export const SPEEDS = [0.75, 1, 1.25];
 
@@ -200,111 +200,6 @@ export function Choice<V extends string | number>({
           );
         })}
       </View>
-    </View>
-  );
-}
-
-// A phone shows this much of a long sentence at a time (the part being read).
-const SHORT_CHARS = 70;
-
-/**
- * The spoken sentence with the phrase being read marked. Visual only: no live
- * region, so it never talks over a screen reader (Tokens.dc.html §5).
- *
- * `compact` (a phone): a long sentence shows only the part being read, about
- * three lines, with 전체 문장 보기 to open the rest.
- *
- * `onSeek`: pressing a phrase asks to play from where it starts (seconds).
- */
-export function Spoken({
-  text,
-  time,
-  duration,
-  big,
-  compact,
-  onSeek,
-}: {
-  text: string;
-  time?: number;
-  duration?: number;
-  big?: boolean;
-  compact?: boolean;
-  onSeek?: (seconds: number) => void;
-}) {
-  const c = useColors();
-  const [open, setOpen] = useState(false);
-  // speak.js passes markdown through (headings, bold); it isn't read aloud, so don't show it.
-  const clean = useMemo(() => text.replace(/^#+\s*/gm, '').replace(/\*\*/g, ''), [text]);
-  const segs = useMemo(() => phrases(clean, duration || 0), [clean, duration]);
-  // The sentence in parts of about SHORT_CHARS: [first phrase, one past the last].
-  const parts = useMemo(() => {
-    const out: [number, number][] = [];
-    let from = 0;
-    let n = 0;
-    segs.forEach((s, i) => {
-      n += s.text.length + 1;
-      if (n >= SHORT_CHARS || i === segs.length - 1) {
-        out.push([from, i + 1]);
-        from = i + 1;
-        n = 0;
-      }
-    });
-    return out;
-  }, [segs]);
-  let cur = -1;
-  if (duration && time != null && time > 0) segs.forEach((s, i) => time >= s.start && (cur = i));
-  const long = !!compact && parts.length > 1;
-  const short = long && !open;
-  const [from, to] = short ? (parts.find(([, end]) => cur < end) ?? parts[0]!) : [0, segs.length];
-  return (
-    <View style={{ gap: 4 }}>
-      <Text
-        // a screen reader gets the whole sentence, whatever part is showing
-        accessibilityLabel={short ? clean : undefined}
-        style={{
-          fontFamily: font.medium,
-          fontSize: big ? 22 : compact ? 18 : 20,
-          lineHeight: big ? 42 : compact ? 32 : 38,
-          color: c.text,
-        }}
-      >
-        {from > 0 && <Text style={{ color: c.text2 }}>… </Text>}
-        {segs.slice(from, to).map((s, k) => {
-          const i = from + k;
-          return (
-            <Text key={i}>
-              {k > 0 ? ' ' : ''}
-              <Text
-                // a phrase's start is an estimate: begin a little early so its first word isn't cut
-                onPress={onSeek && duration ? () => onSeek(Math.max(0, s.start - 0.4)) : undefined}
-                style={
-                  i === cur
-                    ? {
-                        backgroundColor: c.hlBg,
-                        color: c.hlText,
-                        textDecorationLine: 'underline',
-                        textDecorationColor: c.hlLine,
-                      }
-                    : undefined
-                }
-              >
-                {s.text}
-              </Text>
-            </Text>
-          );
-        })}
-        {to < segs.length && <Text style={{ color: c.text2 }}> …</Text>}
-      </Text>
-      {long && (
-        <View style={{ alignSelf: 'flex-start', marginLeft: -8 }}>
-          <Button
-            kind="tertiary"
-            label={open ? '접기' : '전체 문장 보기'}
-            aria-expanded={open}
-            onPress={() => setOpen(!open)}
-          />
-        </View>
-      )}
     </View>
   );
 }

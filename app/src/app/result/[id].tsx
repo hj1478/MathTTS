@@ -2,16 +2,16 @@
 // and E1 음성 사용량 초과 (QuotaReached.dc.html) when there is no audio.
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, Image, Modal, Platform, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/Icon';
 import { MathText } from '@/components/MathText';
-import { Choice, Player, Spoken, type ViewRef } from '@/components/Player';
+import { Choice, Player, type ViewRef } from '@/components/Player';
 import { ProblemNav, ProblemPhoto } from '@/components/Problems';
 import { Banner, Button, Card, H2, Header, HeaderLink, Page, ACCURACY_NOTE, T } from '@/components/ui';
-import { when } from '@/lib/format';
+import { readingSegments, when } from '@/lib/format';
 import { ApiError, getJob, requestFormalAudio } from '@/lib/api';
 import { useLocalAudio } from '@/lib/localAudio';
 import {
@@ -152,6 +152,14 @@ export default function Result() {
   // Some players report no length (0, NaN, Infinity) for an MP3 without a length header.
   const duration = Number.isFinite(status.duration) && status.duration > 0 ? status.duration : status.isLoaded ? local.seconds : 0;
   const finished = !!duration && status.currentTime >= duration - 0.25 && !status.playing;
+
+  // The problem in phrases, each with the time its reading starts (an estimate).
+  const segments = useMemo(
+    () => (view ? readingSegments(view.normalizedText, view.spokenText, duration) : []),
+    [view?.normalizedText, view?.spokenText, duration], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  let reading = -1;
+  if (duration && status.currentTime > 0) segments.forEach((s, i) => status.currentTime >= s.start && (reading = i));
 
   useEffect(() => {
     player.setPlaybackRate(speed, 'high');
@@ -354,33 +362,36 @@ export default function Result() {
     </Banner>
   );
 
-  const spoken = (
+  const problem = (
     <Card style={{ borderRadius: 20 }}>
       <View style={{ gap: 4 }}>
-        <H2>{hasAudio ? '읽어 주는 문장' : '읽어 줄 문장'}</H2>
+        <H2>읽은 문제</H2>
         {hasAudio && (
           <T v="caption" muted>
-            지금 읽는 부분에 배경과 밑줄이 표시돼요. 문장을 누르면 그 부분부터 다시 들려줘요.
+            지금 읽는 부분에 배경과 밑줄이 표시돼요. 누르면 그 부분부터 다시 들려줘요.
           </T>
         )}
       </View>
-      {/* keyed: another problem or reading starts closed again */}
-      <Spoken
-        key={view!.spokenText}
-        text={view!.spokenText}
-        time={status.currentTime}
-        duration={duration}
+      <MathText
+        text={view!.normalizedText}
+        label={view!.spokenText}
         big={wide}
-        compact={!wide}
-        onSeek={
+        segments={segments}
+        current={hasAudio ? reading : -1}
+        onPick={
           hasAudio && !loading
-            ? (t) => {
-                player.seekTo(t);
+            ? (i) => {
+                // a phrase's start is an estimate: begin a little early so its first word isn't cut
+                player.seekTo(Math.max(0, (segments[i]?.start ?? 0) - 0.4));
                 player.play();
               }
             : undefined
         }
       />
+      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+        <T muted>사진과 다른가요?</T>
+        <Button kind="tertiary" label={wide ? '다른 사진 올리기' : '다시 찍기'} onPress={() => router.replace('/')} />
+      </View>
       {whole!.formal && (
         <Choice
           id="style-l"
@@ -396,46 +407,32 @@ export default function Result() {
     </Card>
   );
 
-  const compare = (
+  // The photo, to check the typeset problem against (a page of several problems shows it above).
+  const compare = r.imageUri && !problems ? (
     <Card style={{ borderRadius: 20 }}>
-      {r.imageUri && !problems ? (
-        <>
-          <View style={{ gap: 4 }}>
-            <H2>사진과 비교하기</H2>
-            <T v="caption" muted>
-              수식과 숫자가 같은지 살펴보세요.
-            </T>
-          </View>
-          <View style={{ gap: 8 }}>
-            <Pressable onPress={() => setZoom(true)} accessibilityLabel="원본 사진, 크게 보기" role="button">
-              <Image
-                source={{ uri: r.imageUri }}
-                resizeMode="contain"
-                style={{ width: '100%', aspectRatio: r.imageWidth && r.imageHeight ? Math.max(r.imageWidth / r.imageHeight, 1.2) : 1.6, borderRadius: 12, backgroundColor: c.surface2 }}
-              />
-            </Pressable>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <T v="caption" muted>
-                원본 사진
-              </T>
-              <Button kind="tertiary" icon="expand" label="크게 보기" onPress={() => setZoom(true)} />
-            </View>
-          </View>
-          <View style={{ height: 1, backgroundColor: c.border }} />
-        </>
-      ) : null}
-      <View style={{ gap: 8 }}>
-        <T v="section" role="heading" aria-level={3}>
-          읽은 문제
+      <View style={{ gap: 4 }}>
+        <H2>사진과 비교하기</H2>
+        <T v="caption" muted>
+          수식과 숫자가 같은지 살펴보세요.
         </T>
-        <MathText text={view!.normalizedText} label={view!.spokenText} big={wide} />
-        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-          <T muted>사진과 다른가요?</T>
-          <Button kind="tertiary" label={wide ? '다른 사진 올리기' : '다시 찍기'} onPress={() => router.replace('/')} />
+      </View>
+      <View style={{ gap: 8 }}>
+        <Pressable onPress={() => setZoom(true)} accessibilityLabel="원본 사진, 크게 보기" role="button">
+          <Image
+            source={{ uri: r.imageUri }}
+            resizeMode="contain"
+            style={{ width: '100%', aspectRatio: r.imageWidth && r.imageHeight ? Math.max(r.imageWidth / r.imageHeight, 1.2) : 1.6, borderRadius: 12, backgroundColor: c.surface2 }}
+          />
+        </Pressable>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <T v="caption" muted>
+            원본 사진
+          </T>
+          <Button kind="tertiary" icon="expand" label="크게 보기" onPress={() => setZoom(true)} />
         </View>
       </View>
     </Card>
-  );
+  ) : null;
 
   const aspect = r.imageWidth && r.imageHeight ? r.imageWidth / r.imageHeight : 0.75;
   const nav = problems && (
@@ -497,7 +494,7 @@ export default function Result() {
               {saveProblem}
               {nav}
               {listen}
-              {spoken}
+              {problem}
             </View>
             <View style={{ flexGrow: 1, flexShrink: 1, flexBasis: 320, gap: 24 }}>
               {note}
@@ -511,7 +508,7 @@ export default function Result() {
           {saveProblem}
           {nav}
           {listen}
-          {spoken}
+          {problem}
           {compare}
           {note}
         </Page>

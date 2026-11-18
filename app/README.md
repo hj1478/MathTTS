@@ -34,11 +34,14 @@ Notes:
   as a data URL, but the audio stays on the server, which deletes it after
   24 h. After that the result shows "음성 보관 기간이 지났어요" and offers to
   read it again.
-- The "지금 읽는 부분" highlight is estimated from character counts, since the
-  backend returns no word timings. Azure word-boundary events would make it
-  exact.
-- "읽은 문제" is typeset with KaTeX (in a WebView on native). Screen readers
-  hear the spoken sentence instead of symbol names.
+- The result screen shows the problem itself (typeset with KaTeX, in a WebView
+  on native), not the spoken sentence. The phrase being read is highlighted,
+  and pressing a phrase plays from there. The timing is estimated
+  (`readingSegments` in `src/lib/format.ts`): the backend returns no word
+  timings, so a phrase starts in proportion to the spoken characters before
+  it, and a formula's share is taken from the spoken sentence. Azure
+  word-boundary events would make it exact.
+- Screen readers hear the spoken sentence instead of symbol names.
 - `POST /warmup` goes through one throttle (`src/lib/api.ts`): at most once a
   minute, counting a job sent or answered as a warmup, and remembered across
   reloads and tabs on web. The worker stays up 90 s after its last request, so

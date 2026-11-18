@@ -25,3 +25,13 @@ export function mathHtml(md: string): string {
   out.push(inline(md.slice(last)));
   return out.join('');
 }
+
+/** The problem in phrases, each a `<span class="seg" data-i>` the reading highlight can mark. */
+export function segmentsHtml(segments: { md: string }[]): string {
+  return segments.map((s, i) => `<span class="seg" data-i="${i}">${mathHtml(s.md)}</span>`).join('');
+}
+
+/** How a phrase looks while it is read (`.on`), and that it can be pressed. */
+export const segmentCss = (hl: { bg: string; text: string; line: string }, pressable: boolean) =>
+  `.seg{border-radius:4px;-webkit-box-decoration-break:clone;box-decoration-break:clone${pressable ? ';cursor:pointer' : ''}}` +
+  `.seg.on,.seg.on .katex-display{background:${hl.bg};color:${hl.text};box-shadow:inset 0 -2px 0 ${hl.line}}`;
