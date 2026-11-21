@@ -11,7 +11,7 @@ import { Banner, Button, Card, H1, H2, Header, Page, T } from '@/components/ui';
 import { ApiError, getJob, submitJob, type Job, type StageState } from '@/lib/api';
 import { elapsed } from '@/lib/format';
 import { WebCamera } from '@/components/WebCamera';
-import { fromFile, liveCameraOnWeb, pickPhoto, type PickProblem, type PickResult } from '@/lib/image';
+import { fromCamera, fromFile, liveCameraOnWeb, pickPhoto, type PickProblem, type PickResult } from '@/lib/image';
 import { persistSession, readingFromJob, session } from '@/lib/store';
 import { font, useColors } from '@/lib/theme';
 
@@ -282,7 +282,7 @@ export default function Processing() {
           <WebCamera
             onCapture={async (f) => {
               setCamera(false);
-              took(await fromFile(f));
+              took(fromCamera(await fromFile(f)));
             }}
             onProblem={(kind) => {
               setCamera(false);

@@ -13,6 +13,7 @@ holds no CUDA context and has no threads left running.
     ocr = OcrProcess()
     ocr.start(timeout=300)                      # loads the model in the child
     text, md_path = ocr.run(image, out_dir, timeout=60)   # OcrTimeout on a hang
+    ocr.run(image, out_dir, timeout=60, photo=True)       # a camera photo: see ocr_vl.run_image
 
 The child is `python -m backend.ocr_proc <fd>` and talks over a socketpair, so
 paddle's own prints on stdout/stderr never mix with the protocol.
@@ -68,12 +69,14 @@ class OcrProcess:
         self._conn = Connection(parent_sock.detach())
         _, self.info = self._wait(timeout, "model load")
 
-    def run(self, image, out_dir, timeout):
-        """One OCR call -> (text, md_path). Raises OcrTimeout or OcrFailed."""
+    def run(self, image, out_dir, timeout, photo=False):
+        """One OCR call -> (text, md_path). Raises OcrTimeout or OcrFailed.
+
+        photo: ocr_vl.run_image's, the page clean-up for a camera photo."""
         if not self.alive():
             raise OcrFailed("OCR process is not running")
         # the child dumps its own stacks just before the cutoff, for the logs
-        self._conn.send((str(image), str(out_dir), max(timeout - 3, 1)))
+        self._conn.send((str(image), str(out_dir), max(timeout - 3, 1), bool(photo)))
         status, value = self._wait(timeout, "OCR call")
         if status == "error":
             raise OcrFailed(value)
@@ -131,7 +134,7 @@ def _serve(conn, device):
     import faulthandler
 
     import ocr_vl
-    ocr_vl.pipeline(device)
+    ocr_vl.pipeline(device, photo_models=True)  # a photo job must not reload the model
     import paddle
     flag = "FLAGS_allocator_strategy"
     info = {"allocator_strategy": paddle.get_flags([flag])[flag], "paddle": paddle.__version__}
@@ -148,10 +151,10 @@ def _serve(conn, device):
                 "max_reserved_mib": round(paddle.device.cuda.max_memory_reserved() / mib),
             }))
             continue
-        image, out_dir, dump_after = req
+        image, out_dir, dump_after, photo = req
         faulthandler.dump_traceback_later(dump_after, exit=False, file=sys.stderr)
         try:
-            reply = ("ok", ocr_vl.run_image(image, out_dir, device))
+            reply = ("ok", ocr_vl.run_image(image, out_dir, device, photo=photo))
         except Exception as e:
             reply = ("error", f"{type(e).__name__}: {e}")
         finally:

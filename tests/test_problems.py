@@ -48,6 +48,19 @@ def test_split_basic_and_skips_page_furniture():
     assert got[1]["boxes"] == [[0.1, 0.25, 0.5, 0.3]]
 
 
+@pytest.mark.parametrize("angle, first", [
+    (-1, [0.1, 0.1, 0.5, 0.2]), (0, [0.1, 0.1, 0.5, 0.2]),
+    (90, [0.8, 0.1, 0.9, 0.5]),     # turned 90 counter-clockwise: its top edge was the photo's right edge
+    (180, [0.5, 0.8, 0.9, 0.9]),
+    (270, [0.1, 0.5, 0.2, 0.9]),
+])
+def test_boxes_are_turned_back_onto_the_photo_as_uploaded(angle, first):
+    res = page(block("text", [100, 200, 500, 400], "1. 첫 문제", 1),
+               block("text", [100, 1000, 500, 1200], "2. 둘째 문제", 2))
+    res["doc_preprocessor_res"] = {"angle": angle}
+    assert problems.split(res)[0]["boxes"] == [first]
+
+
 def test_one_problem_is_not_split():
     assert problems.split(page(block("text", [0, 0, 10, 10], "24. 문제", 1))) == []
     assert problems.split(page(block("text", [0, 0, 10, 10], "다음을 계산하시오", 1))) == []
@@ -178,7 +191,7 @@ def test_tts_stage_on_a_page_of_problems():
 @pytest.mark.skipif(not (KMA.exists() and (ROOT / "sre-probe" / "node_modules").exists())
                     or not shutil.which("node"), reason="needs output_kma and node")
 def test_run_job_reads_each_problem(tmp_path):
-    def fake_ocr(img, out_dir, device):
+    def fake_ocr(img, out_dir, device, photo=False):
         out_dir = Path(out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy(KMA / "kma_sheet_13_8_prob_5_res.json", out_dir / "upload_res.json")
@@ -222,7 +235,7 @@ def test_sub_items_written_differently_are_not_problems():
 
 def _fake_page(monkeypatch, tmp_path, speech, synth=None):
     """run_job on a two-problem page with OCR and _speech faked."""
-    def fake_ocr(img, out_dir, device):
+    def fake_ocr(img, out_dir, device, photo=False):
         out_dir = Path(out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         res = page(block("text", [0, 0, 400, 100], "1. 가 $x$", 1),

@@ -90,6 +90,17 @@ rather than starting a second cold worker.
 curl -F "image=@kr question 1.png" https://<workspace>--mathtts.<region>.modal.run/jobs
 ```
 
+An optional text field **`source`** says where the image came from. With
+`source=camera` (a photo taken just now, as the app's camera button sends) the
+OCR first turns the page upright and flattens it (PaddleOCR's orientation
+classifier and unwarping model, `ocr_vl.run_image(photo=True)`). Any other
+value, or none, reads the image as it is: screenshots and scans are already
+flat, and the two models would only cost time.
+
+```sh
+curl -F "image=@photo.jpg" -F "source=camera" https://<workspace>--mathtts.<region>.modal.run/jobs
+```
+
 The upload is checked in this order, all before any GPU work starts:
 size → type (from the file bytes, not the declared Content-Type) → decodable →
 per-IP rate limit. A rejected upload does not use up a rate-limit slot, except

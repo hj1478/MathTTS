@@ -65,7 +65,17 @@ export function liveCameraOnWeb(): boolean {
   );
 }
 
+/** `r`, marked as a photo taken with the camera (Picked.camera). */
+export function fromCamera(r: PickResult): PickResult {
+  return r && 'picked' in r ? { picked: { ...r.picked, camera: true } } : r;
+}
+
 export async function pickPhoto(source: 'camera' | 'library'): Promise<PickResult> {
+  const res = await pick(source);
+  return source === 'camera' ? fromCamera(res) : res;
+}
+
+async function pick(source: 'camera' | 'library'): Promise<PickResult> {
   if (Platform.OS === 'web') return pickWebFile(source === 'camera');
   if (source === 'camera') {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
@@ -107,7 +117,7 @@ export async function fromFile(file: File): Promise<PickResult> {
   };
 }
 
-async function render(ctx: ReturnType<typeof ImageManipulator.manipulate>, name: string, compress = 0.9): Promise<Picked> {
+async function render(ctx: ReturnType<typeof ImageManipulator.manipulate>, name: string, compress = 0.9, camera?: boolean): Promise<Picked> {
   // Both hold a decoded bitmap (~48 MB for a 12 MP photo) until released.
   let ref: Awaited<ReturnType<typeof ctx.renderAsync>> | undefined;
   try {
@@ -118,7 +128,7 @@ async function render(ctx: ReturnType<typeof ImageManipulator.manipulate>, name:
     const uri = web && out.base64 ? 'data:image/jpeg;base64,' + out.base64 : out.uri;
     if (uri !== out.uri && out.uri.startsWith('blob:')) URL.revokeObjectURL(out.uri); // web: unused copy
     const size = web && out.base64 ? Math.floor((out.base64.length * 3) / 4) : undefined;
-    return { uri, width: out.width, height: out.height, mimeType: 'image/jpeg', name: name.replace(/\.\w+$/, '') + '.jpg', size };
+    return { uri, width: out.width, height: out.height, mimeType: 'image/jpeg', name: name.replace(/\.\w+$/, '') + '.jpg', size, camera };
   } finally {
     ref?.release();
     ctx.release();
@@ -126,7 +136,7 @@ async function render(ctx: ReturnType<typeof ImageManipulator.manipulate>, name:
 }
 
 export async function rotate90(p: Picked): Promise<Picked> {
-  return render(ImageManipulator.manipulate(p.uri).rotate(90), p.name);
+  return render(ImageManipulator.manipulate(p.uri).rotate(90), p.name, 0.9, p.camera);
 }
 
 export interface Rect {
@@ -147,7 +157,7 @@ export async function prepareUpload(p: Picked, r: Rect | null): Promise<Picked> 
     h = r.h;
   }
   if (Math.max(w, h) > MAX_SIDE) ctx.resize(w >= h ? { width: MAX_SIDE } : { height: MAX_SIDE });
-  return render(ctx, p.name);
+  return render(ctx, p.name, 0.9, p.camera);
 }
 
 /** A smaller JPEG copy, at most `side` px on the long side (history thumbnails). */

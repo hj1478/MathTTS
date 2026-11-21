@@ -118,12 +118,13 @@ PADDLE_GPU_INDEX = "https://www.paddlepaddle.org.cn/packages/stable/cu126/"
 def _download_weights():
     """Image build step: fetch the OCR weights into ~/.paddlex so cold starts don't.
 
-    Same constructor arguments as ocr_vl.pipeline(), so it downloads exactly the
-    models the worker will load.
+    Same constructor arguments as ocr_vl.pipeline(photo_models=True), which is
+    what the worker's OCR child loads, so it downloads exactly those models
+    (the two page clean-up models for camera photos included).
     """
     from paddleocr import PaddleOCRVL
     PaddleOCRVL(vl_rec_backend="native", device="gpu",
-                use_doc_orientation_classify=False, use_doc_unwarping=False,
+                use_doc_orientation_classify=True, use_doc_unwarping=True,
                 use_seal_recognition=False, use_chart_recognition=False)
 
 
@@ -296,10 +297,10 @@ class Worker:
         return self.ocr.info
 
     @modal.method()
-    def run(self, job_id, image_bytes, ext):
+    def run(self, job_id, image_bytes, ext, photo=False):
         done = False
         try:
-            done = self._run(job_id, image_bytes, ext)
+            done = self._run(job_id, image_bytes, ext, photo)
         finally:
             # Nothing the web serves is on the volume; a job's files are kept for
             # debugging. Commit at once only when the job failed. A finished job's
@@ -310,8 +311,8 @@ class Worker:
                 volume.commit()
                 _trace(job_id, "volume_commit_end")
 
-    def _run(self, job_id, image_bytes, ext):
-        _trace(job_id, "worker_picked_up")
+    def _run(self, job_id, image_bytes, ext, photo):
+        _trace(job_id, "worker_picked_up", photo=photo)
         from modal.exception import InputCancellation
 
         from backend import job
@@ -349,10 +350,10 @@ class Worker:
         _trace(job_id, "upload_saved", bytes=len(image_bytes))
         update(status="running", stage="ocr", started=time.time())
 
-        def ocr(img, out_dir, device):  # ocr_vl.run_image, in the killable child
+        def ocr(img, out_dir, device, photo=False):  # ocr_vl.run_image, in the killable child
             _trace(job_id, "ocr_start")
             try:
-                return self.ocr.run(img, out_dir, timeout=OCR_CUTOFF_S)
+                return self.ocr.run(img, out_dir, timeout=OCR_CUTOFF_S, photo=photo)
             finally:
                 _trace(job_id, "ocr_end")
 
@@ -374,7 +375,7 @@ class Worker:
 
         try:
             result = job.run_job(image, workdir, "gpu", ocr=ocr,
-                                 on_stage=on_stage, on_output=output)
+                                 on_stage=on_stage, on_output=output, photo=photo)
             _trace(job_id, "run_job_returned")
         except InputCancellation:  # Modal's backstop timeout, or a cancel
             print(f"[job {job_id}] cancelled; killing OCR and retiring this container")
@@ -570,6 +571,9 @@ def web():
         if upload is None or not hasattr(upload, "read"):
             return error(400, "bad_request", "multipart/form-data 형식의 'image' 필드가 필요합니다.")
         data = await upload.read(limits.MAX_UPLOAD_BYTES + 1)
+        # optional: "camera" = taken with a camera just now, so the page may be
+        # tilted, curled or sideways and the OCR cleans it up first
+        photo = form.get("source") == "camera"
         await form.close()
         t_body = time.time()
         if len(data) > limits.MAX_UPLOAD_BYTES:
@@ -607,7 +611,7 @@ def web():
                                            "created": now, "updated": now})
         t_rec = time.time()
         try:
-            call = await Worker().run.spawn.aio(job_id, data, ext)
+            call = await Worker().run.spawn.aio(job_id, data, ext, photo)
         except Exception as e:
             # No GPU job exists. Give the slot back (nothing ran) and close the
             # record, so it never sits "queued" with no worker behind it.

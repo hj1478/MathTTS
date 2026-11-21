@@ -162,6 +162,7 @@ export interface UploadImage {
   uri: string;
   mimeType: string;
   name: string;
+  camera?: boolean; // store.Picked.camera
 }
 
 export async function submitJob(img: UploadImage): Promise<string> {
@@ -173,6 +174,7 @@ export async function submitJob(img: UploadImage): Promise<string> {
     // React Native's FormData takes a file descriptor object.
     form.append('image', { uri: img.uri, name: img.name, type: img.mimeType } as any);
   }
+  if (img.camera) form.append('source', 'camera'); // docs/API.md: the page is straightened first
   const body = await call('/jobs', { method: 'POST', body: form }, UPLOAD_TIMEOUT_MS);
   markWarm(); // the job starts (or keeps) a worker
   return body.id as string;

@@ -131,16 +131,22 @@ def _fake_speak(plain_code, ssml_raises=False):
     return speak
 
 
-def _run(tmp_path, monkeypatch, speak):
+def _run(tmp_path, monkeypatch, speak, **kw):
     from backend import job
     monkeypatch.setattr(job, "_speak", speak)
     image = tmp_path / "q.png"
     image.write_bytes(b"")
 
-    def ocr(img, out_dir, device):
+    def ocr(img, out_dir, device, photo=False):
         out_dir.mkdir(parents=True, exist_ok=True)
-        return "문제 $x+1$", None
-    return job.run_job(image, tmp_path / "work", "gpu", tts=False, ocr=ocr)
+        return "문제 $x+1$" + (" 사진" if photo else ""), None
+    return job.run_job(image, tmp_path / "work", "gpu", tts=False, ocr=ocr, **kw)
+
+
+def test_photo_reaches_the_ocr_call(tmp_path, monkeypatch):
+    assert _run(tmp_path, monkeypatch, _fake_speak(0))["stages"]["ocr"]["text"] == "문제 $x+1$"
+    r = _run(tmp_path, monkeypatch, _fake_speak(0), photo=True)
+    assert r["stages"]["ocr"]["text"] == "문제 $x+1$ 사진"
 
 
 def test_speech_both_passes_ok(tmp_path, monkeypatch):
@@ -209,11 +215,13 @@ class _FakeDict:
 
 class _FakeWorker:
     spawn_error = None
+    spawned = []   # the arguments of each run.spawn
 
     def __init__(self):
         def spawn(*a):
             if _FakeWorker.spawn_error:
                 raise _FakeWorker.spawn_error
+            _FakeWorker.spawned.append(a)
             return type("Call", (), {"object_id": "fc-1"})()
         self.run = type("M", (), {"spawn": _Aio(spawn)})()
         self.warm = self.run
@@ -229,6 +237,7 @@ def api(monkeypatch):
     monkeypatch.setattr(modal_app, "store", store)
     monkeypatch.setattr(modal_app, "Worker", _FakeWorker)
     monkeypatch.setattr(_FakeWorker, "spawn_error", None)
+    monkeypatch.setattr(_FakeWorker, "spawned", [])
     client = TestClient(modal_app.web.local(), raise_server_exceptions=False)
     return client, store, modal_app
 
@@ -255,6 +264,15 @@ def test_submit_claims_a_slot_and_records_the_call(api):
     job_id = r.json()["id"]
     assert store.d[f"call:{job_id}"]["id"] == "fc-1"
     assert len([k for k in store.d if k.startswith("rl:")]) == 1
+
+
+def test_only_a_camera_upload_asks_for_the_page_clean_up(api):
+    client, _, _ = api
+    image = {"image": ("q.png", _png(), "image/png")}
+    assert _post_image(client).status_code == 202
+    assert client.post("/jobs", files=image, data={"source": "camera"}).status_code == 202
+    assert client.post("/jobs", files=image, data={"source": "library"}).status_code == 202
+    assert [a[3] for a in _FakeWorker.spawned] == [False, True, False]
 
 
 def test_unknown_path_and_wrong_method_use_the_error_body(api):

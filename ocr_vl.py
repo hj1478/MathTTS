@@ -50,25 +50,32 @@ from normalize import SPAN as LATEX
 HANGUL = re.compile(r"[가-힣ᄀ-ᇿ]")
 
 _pipeline = None
+_photo_models = False  # does _pipeline hold the two page clean-up models?
 
 
-def pipeline(device):
-    """Load the PaddleOCR-VL pipeline once, lazily (not at import time)."""
-    global _pipeline
-    if _pipeline is None:
+def pipeline(device, photo_models=False):
+    """Load the PaddleOCR-VL pipeline once, lazily (not at import time).
+
+    photo_models also loads the orientation classifier and the unwarping model,
+    which run_image(photo=True) needs. A pipeline loaded without them is loaded
+    again when they are first asked for.
+    """
+    global _pipeline, _photo_models
+    if _pipeline is None or (photo_models and not _photo_models):
         print("\n[loading] First run downloads model weights (hundreds of MB) — "
               "slow the first time, cached after.\n", flush=True)
         from paddleocr import PaddleOCRVL
         # native = in-process VL, no server. Do NOT add engine="transformers": it is
         # a global switch that crashes the paddle-only layout model (see module docstring).
-        # Preprocessing modules OFF: worksheet PDFs are born-digital (flat, upright,
-        # no seals/charts), so orientation-classify/unwarping/seal/chart models are
-        # per-page CPU cost with nothing to find.
+        # Seal and chart models OFF: worksheets have none. The two page clean-up
+        # models are only loaded here; each predict() call says whether they run
+        # (run_image), and without them loaded a call cannot switch them on.
         _pipeline = PaddleOCRVL(vl_rec_backend="native", device=device,
-                                use_doc_orientation_classify=False,
-                                use_doc_unwarping=False,
+                                use_doc_orientation_classify=photo_models,
+                                use_doc_unwarping=photo_models,
                                 use_seal_recognition=False,
                                 use_chart_recognition=False)
+        _photo_models = photo_models
     return _pipeline
 
 
@@ -90,16 +97,26 @@ def markdown_of(res):
     return ""
 
 
-def run_image(image, out_dir, device):
+def run_image(image, out_dir, device, photo=False):
     """OCR one image -> (markdown_text, saved_md_path). Raises on failure.
 
     Text comes from the result object; artifacts are written to out_dir and the
     ACTUAL written path is read back from res.save_path (no filename assumption).
+
+    photo: the image came from a camera, so the page is first turned upright
+    (orientation classifier) and flattened (unwarping). Off for everything
+    else: worksheet PDFs and screenshots are born flat and upright, and the two
+    models are per-page cost with nothing to find. The boxes in the saved JSON
+    are then in the cleaned-up page's coordinates, and the quarter turn it was
+    given is in doc_preprocessor_res.angle (backend/problems.py turns the boxes
+    back; the flattening it cannot undo).
     """
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     text, md_path = "", ""
-    for res in pipeline(device).predict(str(image)):  # iterable — may yield >1
+    results = pipeline(device, photo_models=photo).predict(
+        str(image), use_doc_orientation_classify=photo, use_doc_unwarping=photo)
+    for res in results:  # iterable — may yield >1
         res.save_to_markdown(save_path=str(out))
         md_path = str(getattr(res, "save_path", "") or "")  # real path, set by the call
         res.save_to_json(save_path=str(out))                # (also sets save_path -> ignore)
@@ -137,8 +154,8 @@ def verdict(found, expected):
     return "ok"
 
 
-def show_single(image, out_dir, device):
-    text, md_path = run_image(image, out_dir, device)
+def show_single(image, out_dir, device, photo=False):
+    text, md_path = run_image(image, out_dir, device, photo=photo)
     math, korean = analyze(text)
     bar = "=" * 72
 
@@ -190,6 +207,8 @@ def main():
     ap.add_argument("--eval", metavar="FOLDER", help="run every image in FOLDER, print a summary table")
     ap.add_argument("--out", default="./output", help="output folder (default ./output)")
     ap.add_argument("--device", choices=["cpu", "gpu"], help="force device (default: auto)")
+    ap.add_argument("--photo", action="store_true",
+                    help="single image only: a camera photo - turn it upright and flatten it first")
     a = ap.parse_args()
 
     device = a.device or auto_device()
@@ -199,7 +218,7 @@ def main():
         run_eval(a.eval, a.out, device)
     elif a.input:
         try:
-            show_single(a.input, a.out, device)
+            show_single(a.input, a.out, device, photo=a.photo)
         except Exception:
             traceback.print_exc()
             sys.exit(1)

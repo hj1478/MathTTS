@@ -268,7 +268,7 @@ export default function Result() {
     // The photo as it was sent, while this device still has it: a saved copy on web is a smaller thumbnail.
     const sent = session.readings.get(r.id);
     const full = sent?.imageUri ? sent : r;
-    session.upload = { uri: full.imageUri, width: full.imageWidth, height: full.imageHeight, mimeType: 'image/jpeg', name: 'photo.jpg' };
+    session.upload = { uri: full.imageUri, width: full.imageWidth, height: full.imageHeight, mimeType: 'image/jpeg', name: 'photo.jpg', camera: full.camera };
     session.job = null;
     persistSession();
     router.replace('/processing');

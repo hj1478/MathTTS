@@ -39,6 +39,7 @@ def test_ok_call_returns_and_close_leaves_nothing():
     ocr = _start("ok")
     pid = ocr.pid
     assert ocr.run("/tmp/a.png", "/tmp/out", timeout=5) == ("text of a.png", "/tmp/out/x.md")
+    assert ocr.run("/tmp/a.png", "/tmp/out", timeout=5, photo=True)[0] == "text of a.png (photo)"
     ocr.close()
     assert not ocr.alive()
     assert _group_gone(pid)

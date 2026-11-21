@@ -10,7 +10,7 @@ import { WebCamera } from '@/components/WebCamera';
 import { Banner, Button, Card, H2, Header, HeaderLink, Page, T } from '@/components/ui';
 import { warmup } from '@/lib/api';
 import { megabytes } from '@/lib/format';
-import { fromFile, pickPhoto, liveCameraOnWeb, type PickProblem, type PickResult } from '@/lib/image';
+import { fromCamera, fromFile, pickPhoto, liveCameraOnWeb, type PickProblem, type PickResult } from '@/lib/image';
 import { listHistory, persistSession, session, type Reading } from '@/lib/store';
 import { font, useColors, useWide } from '@/lib/theme';
 import { useOnline } from '@/lib/useOnline';
@@ -262,7 +262,7 @@ export default function Home() {
         <WebCamera
           onCapture={async (f) => {
             setCamera(false);
-            take(await fromFile(f));
+            take(fromCamera(await fromFile(f)));
           }}
           onProblem={cameraProblem}
           onClose={closeCamera}

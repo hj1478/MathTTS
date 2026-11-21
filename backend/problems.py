@@ -192,12 +192,33 @@ def _split(res, bare=False):
     if lead:
         problems[0]["boxes"][:0] = [b for b, _ in lead]
         problems[0]["parts"][:0] = [t for _, t in lead if t]
+    angle = (res.get("doc_preprocessor_res") or {}).get("angle") or 0
     return [{
         "label": p["label"],
-        "boxes": [[round(x0 / w, 4), round(y0 / h, 4), round(x1 / w, 4), round(y1 / h, 4)]
+        "boxes": [_unturn([round(x0 / w, 4), round(y0 / h, 4), round(x1 / w, 4), round(y1 / h, 4)], angle)
                   for x0, y0, x1, y1 in _merge(p["boxes"])],
         "text": "\n\n".join(p["parts"]),
     } for p in problems]
+
+
+def _unturn(box, angle):
+    """A box (fractions) on the page as the OCR turned it -> on the image as uploaded.
+
+    For a camera photo the OCR first turns a sideways or upside-down page
+    upright (ocr_vl.run_image(photo=True)), by `angle` degrees counter-clockwise
+    (0, 90, 180, 270; -1 = not looked at), and its boxes are on the turned page.
+    The client draws them on the photo it sent. The flattening that follows the
+    turn is not undone: on a curled page a box can sit a little off.
+    """
+    x0, y0, x1, y1 = box
+    f = lambda v: round(1 - v, 4)
+    if angle == 90:
+        return [f(y1), x0, f(y0), x1]
+    if angle == 180:
+        return [f(x1), f(y1), f(x0), f(y0)]
+    if angle == 270:
+        return [y0, f(x1), y1, f(x0)]
+    return box
 
 
 def split_dir(ocr_dir):

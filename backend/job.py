@@ -266,7 +266,7 @@ def _whole_page(problem_audio, workdir, audio_path):
 
 
 def run_job(image, workdir, device, tts=True, on_stage=lambda stage: None, ocr=None,
-            on_output=lambda key, value: None):
+            on_output=lambda key, value: None, photo=False):
     """image -> dict of every stage's output. Raises JobError if a text stage fails.
 
     Writes into workdir: OCR markdown (+ the OCR's JSON), <stem>.norm.md,
@@ -276,6 +276,9 @@ def run_job(image, workdir, device, tts=True, on_stage=lambda stage: None, ocr=N
     `ocr` replaces the call to ocr_vl.run_image (same arguments and return);
     the Modal worker passes one that runs it in a killable child process
     (backend/ocr_proc.py). The original exception is the JobError's __cause__.
+
+    `photo`: the image is a camera photo, so the OCR turns the page upright and
+    flattens it first (ocr_vl.run_image).
 
     `on_output(key, value)` is called as soon as each entry of the result's
     "stages" is ready ("ocr", "normalized", "math_spans", "problems",
@@ -302,7 +305,7 @@ def run_job(image, workdir, device, tts=True, on_stage=lambda stage: None, ocr=N
     on_stage("ocr")
     t = time.monotonic()
     try:
-        text, md_path = ocr(image, ocr_dir, device)
+        text, md_path = ocr(image, ocr_dir, device, photo=photo)
     except Exception as e:
         raise JobError("ocr_failed", f"{type(e).__name__}: {e}") from e
     timings["ocr"] = round(time.monotonic() - t, 2)
@@ -432,11 +435,12 @@ def main():
     ap.add_argument("--workdir", default="./runs/backend-job")
     ap.add_argument("--device", choices=["cpu", "gpu"])
     ap.add_argument("--skip-tts", action="store_true")
+    ap.add_argument("--photo", action="store_true", help="a camera photo: clean the page up before OCR")
     a = ap.parse_args()
     import ocr_vl
     device = a.device or ocr_vl.auto_device()
     try:
-        result = run_job(a.image, a.workdir, device, tts=not a.skip_tts,
+        result = run_job(a.image, a.workdir, device, tts=not a.skip_tts, photo=a.photo,
                          on_stage=lambda s: print(f"[stage] {s}", file=sys.stderr))
     except JobError as e:
         sys.exit(f"job failed — {e}")

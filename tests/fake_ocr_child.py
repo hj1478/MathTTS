@@ -23,9 +23,9 @@ def main(conn, mode):
         req = conn.recv()
         if req is None:
             return
-        image, out_dir, _ = req
+        image, out_dir, _, photo = req
         if mode == "ok":
-            conn.send(("ok", (f"text of {os.path.basename(image)}", f"{out_dir}/x.md")))
+            conn.send(("ok", (f"text of {os.path.basename(image)}" + (" (photo)" if photo else ""), f"{out_dir}/x.md")))
         elif mode == "error":
             conn.send(("error", "RuntimeError: fake OCR failure"))
         elif mode == "crash":

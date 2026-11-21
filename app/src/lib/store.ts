@@ -12,6 +12,9 @@ export interface Picked {
   mimeType: string;
   name: string;
   size?: number;
+  // Taken with the camera for this reading, not chosen from files: the backend
+  // then straightens the page before reading it (POST /jobs `source`).
+  camera?: boolean;
 }
 
 /** One reading of a problem: the sentence and its MP3. */
@@ -42,6 +45,7 @@ export interface Reading {
   imageUri: string; // the cropped photo that was sent
   imageWidth: number;
   imageHeight: number;
+  camera?: boolean; // Picked.camera of the photo that was sent
   ocrText: string;
   normalizedText: string;
   spokenText: string;
@@ -97,6 +101,7 @@ export function readingFromJob(job: Job, upload: Picked | null): Reading {
     imageUri: upload?.uri ?? '',
     imageWidth: upload?.width ?? 0,
     imageHeight: upload?.height ?? 0,
+    camera: upload?.camera,
     ocrText: s.ocr?.text ?? '',
     normalizedText: s.normalized?.text ?? s.ocr?.text ?? '',
     spokenText: s.speech?.text ?? '',
