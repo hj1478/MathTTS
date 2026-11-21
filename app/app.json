@@ -14,7 +14,7 @@
       }
     },
     "android": {
-      "package": "com.joshuahan.mathtts",
+      "package": "com.mathtts.app",
       "blockedPermissions": [
         "android.permission.SYSTEM_ALERT_WINDOW"
       ],
