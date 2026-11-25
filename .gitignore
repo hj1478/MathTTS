@@ -28,5 +28,5 @@ audio_kma/
 .playwright-mcp/
 .wrangler/
 
-# Play store listing assets (kept locally, uploaded by hand in the Play Console)
-app/store/
+# The Expo app: not part of this repo (backend and pipeline only)
+app/
