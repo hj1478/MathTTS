@@ -1095,3 +1095,109 @@ number runs into the formula like a coefficient (reported from a phone).
 the start of a line becomes `<sub alias="십번">10.</sub>` and a 400 ms break.
 Spelled out because the voice reads "10번" as 열 번. Heard back as "십 번 | 괄호
 열고 …". Other label styles ("3)", "[3]", "문제 3") are unchanged.
+
+## 2026-11-25 — Listening to 30 problems: a pause costs the word before it 6–9 dB, so most pacing is now done by slowing a word
+
+**Question.** A set of 30 middle-school problems (ten topics, three each) was
+made to survey our reading against the plain Azure voice. Listened to one by
+one, a dozen things were wrong: the exponent ran into the next term, "(−2/3)"
+sounded like "(−a/3)", a denominator of several terms went by too fast, a lone
+"b" or "r" was unclear, 제곱 sounded like "제고", the vertices of a triangle
+were in another tone, "△ABC∽△DEF" was phrased wrong. What causes each, and what
+fixes it without breaking something next to it?
+
+**What I did.** Nothing here was judged by ear by me. Three instruments instead:
+
+1. Hear-back: synthesize the SSML, transcribe it with Azure's recognizer, and
+   compare with what was sent (as `scripts/tts_hear.py`, on whole problems).
+2. Level and length of one word: Azure's word-boundary events locate the word
+   in the PCM; its RMS against the RMS of the voiced frames of the whole clip,
+   and its duration. For short words the loudest 30 ms inside the window is
+   more robust than the mean, since a window can include the pause after it.
+3. Collisions: 50 pairs of formulas that are easy to confuse, run through
+   `speak.js`; a pair with identical SSML is the same audio by construction.
+
+Each fix was chosen by synthesizing several variants of the same sentence and
+measuring them, then re-transcribing the real problem.
+
+**What happened.**
+
+The measurement behind most of the day:
+
+| Word before a pause | With the pause | Without |
+|---|---|---|
+| 이 in "삼 분의 이 ‖ 괄호 닫고" | −8.9 dB | −0.6 dB |
+| 이 in "루트 이 ‖ 괄호 닫고" | −7.4 dB | −0.4 dB |
+| 사 in "삼 분의 사 ‖" | −6.3 dB | — |
+| 삼 in "마이너스 삼 ‖" | −5.8 dB | — |
+| r in "길이가 r ," | −7.6 dB | −2.4 dB with a pause *before* it |
+
+The level is the same for a 60 ms pause as for a 250 ms one: it is the pause
+existing, not its length, that makes the voice trail off. A `volume` or `pitch`
+attribute on a `<prosody>` nested inside the rate one changed nothing in the
+audio; `rate` did.
+
+What was heard, why, and what it is now:
+
+| Heard | Cause | Now |
+|---|---|---|
+| Exponent and the next term too fast | nothing between "x 제곱" and "플러스" | the power word is said 25% slower |
+| 제곱 sounded like "제고" | my first fix, a 300 ms pause after the power: the ㅂ is not released into silence. Recognizer: 14 of 31 powers | no pause after a power; slowed instead: 28 of 31 (26 at 40% slower, where 세제곱 twice came back "칠곱") |
+| (−2/3) heard as (−a/3) | 의 is said [에], so "분의 이" is "…에이" | a 2 after 의/는/은 is said 25% slower. A pause between them left 의 mumbled |
+| The 2 of (−2/3) mumbled and quiet | it sat before SRE's pause in front of "괄호 닫고" | nothing pauses before a closing bracket |
+| a/(2²×3×5) too fast | denominator, 분의 and numerator in one run | several-term denominator: a pause between its terms, a longer one before 분의, one after |
+| "사 사 반복" too fast (0.4̇) | two identical syllables, 391 ms together | a one-digit 순환마디 pair is said 40% slower (641 ms). A comma between them dropped the second 10–16 dB |
+| (−3xy²)²: which letter is squared | "x y 제곱" run together | a 120 ms pause before the letter that carries the power |
+| First "b" of (3a²/b)³ unclear | one syllable, 234 ms, in front of 분의; the recognizer did not hear it | a one-letter denominator is said 25% slower. 40% slower came back "d" |
+| "길이가 r" slurred | r is the tail of the phrase before a comma, 16 ms after 길이가 | a 120 ms pause before a letter that ends a phrase before a comma. Slowing it did nothing |
+| Vertices in an odd voice | SRE raises capitals 30% in pitch | pitch changes are dropped (as on the unmerged `fix/one-tone-outside-radicals`) |
+| "삼각형 ABC 닮음이다 삼각형 DEF 이고" | the relation word sits between the figures, as a verb | "삼각형 A B C 와 삼각형 D E F 는 닮음 이고"; the same for ≡, ⊥, ∥ between two figures |
+| A pause before 도 in sin²60° | SRE's pause between the angle and its unit | removed |
+
+Found by the instruments, not by ear:
+
+- (2/3)² and 2²/3 were the same audio and the same text: SRE drops the brackets
+  around a fraction of two single digits. The brackets are said again.
+- (2x−1)/3 and 2x/3−1 were the same audio. A several-term numerator is now one
+  run after a pause; the other has its pause before the 마이너스.
+- △FGH was "삼각형 F 의 G H" and ∠FGH "각 F 의 G H": SRE takes F, G, H for
+  functions. `\square EFGH` in math was the blank "네모", not 사각형. Both fixed.
+- "루트 이 ‖ 괄호 닫고" lost its 2 ("루트의 괄호 닫고").
+- "y 는 이" between two pauses had its 2 at −11.8 dB; the "=" particle now
+  joins the word before it.
+- Adding one tag re-renders the neighbours: with a `<prosody>` put around two
+  syllables, every other word kept its duration and level, but three of them
+  matched their earlier waveform at only 0.65–0.71. The same SSML twice
+  matches at 0.996 or better.
+
+Also changed on request: everything is read 20% under the voice's own pace (was
+10%), and the second voice for what is under a root is off (`VOICE_CHANGE` in
+`speak.js`).
+
+**Result.** Verified: 234 Python tests and 109 Node tests pass; `scripts/tts_eval.py`
+is 72 pass, 5 known, 0 unexpected, after five golden cases that still expected
+the wording from before 2026-11-11 ("케이스 1:", "공 배 수") were brought up to
+date. All 30 clips were rebuilt from the final rules and transcribed back. Not
+verified: I have not heard any of it; the listening was done by the person who
+reported each item, one clip at a time, and nobody has listened to the final
+set end to end. None of this is deployed: the backend still reads the old way.
+
+**Changed as a result.** `pipeline/speech/speak.js` and its tests (commits on
+`feat/speech-pacing`), `eval/cases.json`, `eval/problems.md` section H. The 30
+problems, both sets of audio, the choices and the answer key are in
+`survey_full/` (untracked).
+
+**Still open.**
+- With the second voice off, a root's end is not marked: √(2+1) and √2+1, and
+  √(4a²) and √4·a², differ only by where a pause falls.
+- (1/2)/3 and 1/(2/3) are still the same audio. 1+2/(x+1) and 2/(1+x+1) differ
+  by one pause.
+- `A < 90°` is read "A 는 90 보다 작다 도": the unit lands after the comparison.
+  Found while writing a survey problem, which was reworded around it.
+- "y 는 이" still comes back as "와이 느니", and "사 괄호 닫고" as "사과로 닫고":
+  each is the cost of the rule that keeps the number before it at level.
+- Three of 31 powers are still misheard on a given run, not the same three.
+- Every remaining pause still takes 6–9 dB off the word before it. Only the
+  ones reported were dealt with.
+- The pause lengths and slow-down amounts (120, 250, 400 ms; 25%, 40%) were
+  picked from a few variants each, not tuned.

@@ -61,3 +61,25 @@ FIXED when resolved. Updated 2026-07-28: 47/55 cases green, 8 known.
 - ✅ outage resilience: 3x retry w/ backoff, 4-way parallel judging
 - residual: judge still occasionally flips denominator-first fractions — treat
   lone fraction-order findings as suspect
+
+## H. Heard in the audio (2026-11-25, 30 survey problems) — see docs/FINDINGS.md
+Found by listening and by measuring the audio (hear-back, word level, formula
+pairs), not by the text checks above. Rules are in pipeline/speech/speak.js.
+- ✅ exponent ran into the next term -> power word 25% slower, no pause after it
+- ✅ 제곱 heard "제고" (a pause after it) -> same rule; 14 -> 28 of 31 recognized
+- ✅ "분의 이" heard as "…a" -> a 2 after 의/는/은 said slower
+- ✅ last word before "괄호 닫고" 6–9 dB down -> no pause before a closing bracket
+- ✅ several-term denominator / numerator paced; (2x-1)/3 vs 2x/3-1 no longer the same audio
+- ✅ (2/3)² read as 2²/3 (SRE drops the brackets) -> brackets said (text too)
+- ✅ one-digit 순환마디 "사 사" too fast -> the pair 40% slower
+- ✅ one-letter denominator, and a letter ending a phrase before a comma, unclear
+- ✅ xy²: slight pause before the letter that carries the power
+- ✅ capitals 30% higher in pitch -> dropped; second voice for roots off (VOICE_CHANGE)
+- ✅ △ABC∽△DEF phrased "A 닮음이다 B" -> "A 와 B 는 닮음" (also ≡ ⊥ ∥ between figures)
+- ✅ △FGH read "F 의 G H"; \square EFGH in math read 네모 -> vertices, 사각형
+- ✅ pause between an angle and 도 (sin²60°) removed
+- ⚠️ root end unmarked while the second voice is off: √(2+1) vs √2+1, √(4a²) vs √4·a²
+- ⚠️ `A < 90°` -> "A 는 90 보다 작다 도" (unit after the comparison)
+- ⚠️ "y 는 이" heard "느니"; "사 괄호 닫고" heard "사과로 닫고"
+- ⚠️ every pause left in still costs the word before it 6–9 dB
+- ⚠️ nested fractions (section E) unchanged
