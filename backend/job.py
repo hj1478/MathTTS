@@ -38,7 +38,7 @@ audio is "skipped", and Azure is never asked to read a placeholder aloud.
 
 The CLI below loads the OCR model, so run it only on a machine sized for it
 (not the dev laptop), e.g. inside the worker image:
-  python backend/job.py "kr question 1.png" --skip-tts
+  python backend/job.py "fixtures/kr question 1.png" --skip-tts
 """
 import argparse
 import json
@@ -49,16 +49,16 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+for _p in (ROOT / "pipeline", ROOT):   # the stage modules, and the backend package
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
-import normalize                 # noqa: E402  (needs ROOT on sys.path)
+import normalize                 # noqa: E402  (needs pipeline/ on sys.path)
 from backend import limits, problems  # noqa: E402
 
 SPEAK_JS = ROOT / "sre-probe" / "speak.js"
 VOICE = "ko-KR-SunHiNeural"      # run.py's default
 AUDIO_NAME = "audio.mp3"
-AUDIO_MEDIA_TYPE = "audio/mpeg"
 SPEAK_TIMEOUT_S = 120
 # A page of numbered problems: how many problems run speak.js at once (two node
 # processes each), and how many Azure calls run at once.

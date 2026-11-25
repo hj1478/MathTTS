@@ -2,16 +2,15 @@
 """Stage 0 (optional): render a PDF's pages to PNGs that ocr_vl.py can read.
 
 The pipeline proper starts at images; this closes the gap for PDF sources
-like kma_sheet_13_8_prob.pdf (whose run folders output_kma/ etc. are already
-reserved in .gitignore). Rendering uses pypdfium2 — pinned in requirements.txt.
+like fixtures/kma_sheet_13_8_prob.pdf. Rendering uses pypdfium2 — pinned in requirements.txt.
 
 DPI default is 200: PaddleOCR-VL works from photo-resolution input, and the
 repo's own fixtures ("kr question N.png") are in that range. Raise it if thin
 fraction bars or small subscripts come out broken.
 
 Usage:
-  python pdf_to_images.py kma_sheet_13_8_prob.pdf --out ./pages
-  python ocr_vl.py --eval ./pages --out ./output_kma
+  python pipeline/pdf_to_images.py fixtures/kma_sheet_13_8_prob.pdf --out ./pages
+  python pipeline/ocr_vl.py --eval ./pages --out ./output
 """
 import argparse
 import sys

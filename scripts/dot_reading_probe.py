@@ -26,9 +26,9 @@ Predictions go in docs/findings/17_repeating_decimals.md BEFORE listening
 (the file is scaffolded on first run and never overwritten).
 
 Usage:
-  python dot_reading_probe.py                 # scaffold findings + synth all wavs
-  python dot_reading_probe.py --dry-run       # print texts/table, no Azure calls
-  python dot_reading_probe.py --voice ko-KR-InJoonNeural --out ./audio/exp17
+  python scripts/dot_reading_probe.py                 # scaffold findings + synth all wavs
+  python scripts/dot_reading_probe.py --dry-run       # print texts/table, no Azure calls
+  python scripts/dot_reading_probe.py --voice ko-KR-InJoonNeural --out ./audio/exp17
 
 Credentials: reuses tts_probe.py's loader (AZURE_SPEECH_KEY +
 AZURE_SPEECH_ENDPOINT / AZURE_SPEECH_REGION from env or .env). Never hardcoded.
@@ -37,7 +37,9 @@ import argparse
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).parent
+ROOT = Path(__file__).resolve().parent.parent  # the repo root
+sys.path.insert(0, str(ROOT / "pipeline"))      # the stage modules
+
 FINDINGS = ROOT / "docs" / "findings" / "17_repeating_decimals.md"
 
 DIGIT_KO = {"0": "영", "1": "일", "2": "이", "3": "삼", "4": "사",

@@ -39,10 +39,10 @@ because it is the only stage besides Azure TTS that costs money, and because a
 wrong dot corrupts a correct number while a missing one merely reproduces the
 status quo.
 
-  python run.py sheet.pdf --dots           # as a pipeline stage
-  python inbox_eval.py                     # the eval driver runs it too
-  python dot_check.py FILE.md ...          # standalone: report what would change
-  python dot_check.py --write FILE.md ...  # standalone: patch the files in place
+  python pipeline/run.py sheet.pdf --dots           # as a pipeline stage
+  python scripts/inbox_eval.py                   # the eval driver runs it too
+  python pipeline/dot_check.py FILE.md ...          # standalone: report what would change
+  python pipeline/dot_check.py --write FILE.md ...  # standalone: patch the files in place
 """
 import argparse
 import re

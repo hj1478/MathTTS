@@ -16,8 +16,8 @@ chunk when it is long enough to matter. Choice/answer markers like "(1)" or
 "1)" deliberately do NOT split — they belong to their question.
 
 Usage:
-  python question_audio.py              # everything -> audio/questions/
-  python question_audio.py --dry-run    # show the chunk table, no Azure calls
+  python scripts/question_audio.py              # everything -> audio/questions/
+  python scripts/question_audio.py --dry-run    # show the chunk table, no Azure calls
 
 Writes audio/questions/manifest.tsv (file, chars, text preview) for browsing.
 """
@@ -28,9 +28,11 @@ import sys
 import tempfile
 from pathlib import Path
 
-import normalize
+ROOT = Path(__file__).resolve().parent.parent  # the repo root
+sys.path.insert(0, str(ROOT / "pipeline"))      # the stage modules
 
-ROOT = Path(__file__).parent
+import normalize  # noqa: E402
+
 QMARK = re.compile(r"^\s*(?:(\d{1,2})\.\s|\[(\d{1,2})\]\s?)")
 TAGS = re.compile(r"<[^>]+>")
 # OCR sometimes hallucinates emoji walls in headers (one produced 10+ minutes

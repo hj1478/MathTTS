@@ -87,7 +87,7 @@ rather than starting a second cold worker.
 `multipart/form-data` with a single file field named **`image`**.
 
 ```sh
-curl -F "image=@kr question 1.png" https://<workspace>--mathtts.<region>.modal.run/jobs
+curl -F "image=@fixtures/kr question 1.png" https://<workspace>--mathtts.<region>.modal.run/jobs
 ```
 
 An optional text field **`source`** says where the image came from. With

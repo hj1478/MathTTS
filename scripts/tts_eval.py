@@ -17,9 +17,9 @@ Two layers, no listening required (the pipeline is deterministic text -> text):
    letter-by-letter spellouts, known SRE misreads, unbalanced spoken brackets.
 
 Usage:
-  python tts_eval.py                          # cases + lint stitched*/ dirs
-  python tts_eval.py --cases eval/cases.json  # cases only
-  python tts_eval.py --lint stitched_kma      # lint only
+  python scripts/tts_eval.py                          # cases + lint stitched/
+  python scripts/tts_eval.py --cases eval/cases.json  # cases only
+  python scripts/tts_eval.py --lint stitched          # lint only
 Exit code 1 on any unexpected case failure or error-level lint finding.
 """
 import json
@@ -29,9 +29,10 @@ import sys
 import tempfile
 from pathlib import Path
 
-import normalize
+ROOT = Path(__file__).resolve().parent.parent  # the repo root
+sys.path.insert(0, str(ROOT / "pipeline"))      # the stage modules
 
-ROOT = Path(__file__).parent
+import normalize  # noqa: E402
 
 # ------------------------------------------------------------ lint detectors
 
@@ -153,7 +154,7 @@ def main():
     cases_path, lint_dirs = None, []
     if not args:
         cases_path = ROOT / "eval" / "cases.json"
-        lint_dirs = [d for d in (ROOT / "stitched", ROOT / "stitched_kma") if d.is_dir()]
+        lint_dirs = [d for d in (ROOT / "stitched",) if d.is_dir()]
     i = 0
     while i < len(args):
         if args[i] == "--cases":
@@ -167,7 +168,7 @@ def main():
                 sys.exit("--lint needs at least one DIR")
             break
         else:
-            sys.exit("usage: tts_eval.py [--cases FILE] [--lint DIR ...]")
+            sys.exit("usage: scripts/tts_eval.py [--cases FILE] [--lint DIR ...]")
         i += 1
 
     failed_ids = run_cases(cases_path) if cases_path else []

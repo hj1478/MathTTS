@@ -20,7 +20,7 @@ pypdfium2==5.11.0
 # paddle/OCR stack above.
 azure-cognitiveservices-speech==1.50.0
 
-# --- Eval harnesses (llm.py, inbox_eval.py, dot_check.py) -----------------
+# --- Eval harnesses (llm.py, dot_check.py, scripts/inbox_eval.py) -----------------
 requests==2.34.2
 
 # --- Tests (tests/) -------------------------------------------------------

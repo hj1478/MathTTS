@@ -5,7 +5,7 @@ Sends HTTP requests only: it never imports the pipeline, so it is safe to run on
 any laptop. Needs `requests`.
 
     python scripts/smoke_test.py https://<workspace>--mathtts.<region>.modal.run
-    python scripts/smoke_test.py <url> --image "kr question 2.png"
+    python scripts/smoke_test.py <url> --image "fixtures/kr question 2.png"
     python scripts/smoke_test.py <url> --repeat 2   # 1st = cold start, 2nd = warm
     python scripts/smoke_test.py <url> --warmup-lead 20   # POST /warmup, wait 20 s, then upload
 
@@ -155,7 +155,7 @@ def print_stages(body):
 def main():
     ap = argparse.ArgumentParser(description="Smoke-test the deployed MathTTS backend.")
     ap.add_argument("base_url", help="e.g. https://<workspace>--mathtts.us-east.modal.run")
-    ap.add_argument("--image", default=str(ROOT / "kr question 1.png"))
+    ap.add_argument("--image", default=str(ROOT / "fixtures" / "kr question 1.png"))
     ap.add_argument("--repeat", type=int, default=1,
                     help="submit the image this many times in a row (2 = cold then warm)")
     ap.add_argument("--warmup-lead", type=float, metavar="S",

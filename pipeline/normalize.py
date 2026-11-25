@@ -68,9 +68,9 @@ DOESN'T (documented misses, chosen to avoid false positives):
     which reads them natively; a lone letter after a digit is usually a variable
 
 CLI:
-  python normalize.py "output/kr question 3.md"   # print normalized text
-  python normalize.py --dir output                # normalize every *.md -> *.norm.md
-  cat file.md | python normalize.py -             # stdin -> stdout
+  python pipeline/normalize.py "output/kr question 3.md"   # print normalized text
+  python pipeline/normalize.py --dir output                # normalize every *.md -> *.norm.md
+  cat file.md | python pipeline/normalize.py -             # stdin -> stdout
 """
 import re
 import sys

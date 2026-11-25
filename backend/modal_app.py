@@ -45,7 +45,8 @@ from pathlib import Path
 import modal
 
 # local: the repo, for add_local_* sources. In the container the repo files are
-# copied to /root, which is already on sys.path.
+# copied to /root at the same relative paths; backend/job.py puts pipeline/ on
+# sys.path.
 REPO = Path(__file__).resolve().parent.parent if modal.is_local() else Path("/root")
 
 # Module top level stays light: `modal deploy` imports this file on the laptop,
@@ -95,7 +96,7 @@ SPAWN_LOST_AFTER_S = 60
 # One throwaway OCR call when a worker starts: the first inference in a fresh
 # process takes ~6.5 s against ~3.7 s after it (FINDINGS.md, 2026-10-19), and
 # loading the model alone does not pay that. Hidden behind POST /warmup.
-WARMUP_IMAGE = "kr question 1.png"
+WARMUP_IMAGE = "fixtures/kr question 1.png"
 WARMUP_CALL_S = 60             # cutoff for that call (it takes ~6.5 s)
 GPU = "T4"
 # The image build step that bakes the weights only needs paddle importable with
@@ -180,9 +181,9 @@ def _with_pipeline_source(image):
         image
         .add_local_file(REPO / "sre-probe" / "speak.js", "/root/sre-probe/speak.js")
         .add_local_file(REPO / "sre-probe" / "casual.js", "/root/sre-probe/casual.js")
-        .add_local_file(REPO / "normalize.py", "/root/normalize.py")
-        .add_local_file(REPO / "ocr_vl.py", "/root/ocr_vl.py")
-        .add_local_file(REPO / "tts_probe.py", "/root/tts_probe.py")
+        .add_local_file(REPO / "pipeline" / "normalize.py", "/root/pipeline/normalize.py")
+        .add_local_file(REPO / "pipeline" / "ocr_vl.py", "/root/pipeline/ocr_vl.py")
+        .add_local_file(REPO / "pipeline" / "tts_probe.py", "/root/pipeline/tts_probe.py")
         .add_local_file(REPO / "backend" / "job.py", "/root/backend/job.py")
         .add_local_file(REPO / "backend" / "limits.py", "/root/backend/limits.py")
         .add_local_file(REPO / "backend" / "ocr_proc.py", "/root/backend/ocr_proc.py")
@@ -207,8 +208,8 @@ tts_image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install("ca-certificates", "libssl3", "libasound2")
     .uv_pip_install("azure-cognitiveservices-speech==1.50.0")
-    .add_local_file(REPO / "normalize.py", "/root/normalize.py")
-    .add_local_file(REPO / "tts_probe.py", "/root/tts_probe.py")
+    .add_local_file(REPO / "pipeline" / "normalize.py", "/root/pipeline/normalize.py")
+    .add_local_file(REPO / "pipeline" / "tts_probe.py", "/root/pipeline/tts_probe.py")
     .add_local_file(REPO / "backend" / "job.py", "/root/backend/job.py")
     .add_local_file(REPO / "backend" / "limits.py", "/root/backend/limits.py")
     .add_local_file(REPO / "backend" / "problems.py", "/root/backend/problems.py")

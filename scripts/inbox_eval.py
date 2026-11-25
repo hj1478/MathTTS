@@ -27,12 +27,12 @@ Findings land in:
   OPENAI_BASE_URL   default https://api.openai.com/v1
 
 Usage:
-  python inbox_eval.py                  # process inbox/, lint + judge
-  python inbox_eval.py --no-llm         # pipeline + lint only, no API calls
-  python inbox_eval.py --no-dots        # keep the judge, skip dot restoration
-  python inbox_eval.py --force          # redo reviews (cached OCR is reused)
-  python inbox_eval.py --force-ocr      # redo everything including OCR
-  python inbox_eval.py --stitched DIR [--source DIR]
+  python scripts/inbox_eval.py                  # process inbox/, lint + judge
+  python scripts/inbox_eval.py --no-llm         # pipeline + lint only, no API calls
+  python scripts/inbox_eval.py --no-dots        # keep the judge, skip dot restoration
+  python scripts/inbox_eval.py --force          # redo reviews (cached OCR is reused)
+  python scripts/inbox_eval.py --force-ocr      # redo everything including OCR
+  python scripts/inbox_eval.py --stitched DIR [--source DIR]
                                         # judge existing *.stitched.txt (no OCR);
                                         # --source pairs <name>.norm.md as ground truth
 A finished input (runs/<name>/review.json exists) is skipped unless --force.
@@ -47,12 +47,14 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-import dot_check
-import normalize
-from llm import chat_json, openai_cfg
-from tts_eval import lint_text
+ROOT = Path(__file__).resolve().parent.parent  # the repo root
+sys.path.insert(0, str(ROOT / "pipeline"))      # the stage modules
 
-ROOT = Path(__file__).parent
+import dot_check  # noqa: E402
+import normalize  # noqa: E402
+from llm import chat_json, openai_cfg  # noqa: E402
+from tts_eval import lint_text  # noqa: E402
+
 INBOX = ROOT / "inbox"
 RUNS = ROOT / "runs"
 SUGGESTED = ROOT / "eval" / "suggested_cases.json"

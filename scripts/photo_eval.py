@@ -23,8 +23,8 @@ A photo is first put through what the app does before upload (EXIF rotation
 applied, long side cut to 2400 px, JPEG quality 90 - app/src/lib/image.ts), so
 OCR sees what the backend would. --no-shrink skips that.
 
-  python photo_eval.py --photos ./photos            # real photos
-  python photo_eval.py --synth                      # made-up ones, see below
+  python scripts/photo_eval.py --photos ./photos            # real photos
+  python scripts/photo_eval.py --synth                      # made-up ones, see below
 
 --synth makes three stand-in "photos" per fixture (shot at an angle with a
 shadow; a curled page; turned 90 degrees) and evaluates those. It shows whether
@@ -37,9 +37,11 @@ reads what is new.
 import argparse, hashlib, io, json, re, sys
 from pathlib import Path
 
-from normalize import SPAN
+ROOT = Path(__file__).resolve().parent.parent  # the repo root
+sys.path.insert(0, str(ROOT / "pipeline"))      # the stage modules
 
-ROOT = Path(__file__).resolve().parent
+from normalize import SPAN  # noqa: E402
+
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
 MAX_SIDE, JPEG_QUALITY = 2400, 90   # app/src/lib/image.ts
 CONFIGS = {  # name -> (orientation-classify, unwarping)

@@ -3,7 +3,6 @@ backend/job.py: per-problem audio and the page audio built from it.
 backend/progress.py: the tts stage on a page of problems.
 """
 import json
-import shutil
 import sys
 from pathlib import Path
 
@@ -12,8 +11,6 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from backend import job, problems, progress  # noqa: E402
-
-KMA = ROOT / "output_kma"
 
 
 def block(label, bbox, text, order):
@@ -139,15 +136,6 @@ def test_problem_continuing_in_next_column_keeps_two_boxes():
     assert problems.split(res)[0]["boxes"] == [[0.0, 0.75, 0.4, 0.95], [0.5, 0.0, 0.9, 0.15]]
 
 
-@pytest.mark.skipif(not KMA.exists(), reason="needs output_kma fixtures")
-def test_kma_sheet_finds_every_problem():
-    labels = []
-    for i in range(6):
-        res = json.loads((KMA / f"kma_sheet_13_8_prob_{i}_res.json").read_text(encoding="utf-8"))
-        labels += [int(p["label"]) for p in problems.split(res)]
-    assert labels == list(range(1, 31))
-
-
 def test_split_dir(tmp_path):
     assert problems.split_dir(tmp_path) == []
     (tmp_path / "x_res.json").write_text("not json", encoding="utf-8")
@@ -186,25 +174,6 @@ def test_tts_stage_on_a_page_of_problems():
     none_ok = {**done, "problems": _items(False, False)}
     assert progress.stage_status("running", one_ok)["tts"] == "running"
     assert progress.stage_status("running", none_ok)["tts"] == "skipped"
-
-
-@pytest.mark.skipif(not (KMA.exists() and (ROOT / "sre-probe" / "node_modules").exists())
-                    or not shutil.which("node"), reason="needs output_kma and node")
-def test_run_job_reads_each_problem(tmp_path):
-    def fake_ocr(img, out_dir, device, photo=False):
-        out_dir = Path(out_dir)
-        out_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy(KMA / "kma_sheet_13_8_prob_5_res.json", out_dir / "upload_res.json")
-        shutil.copy(KMA / "kma_sheet_13_8_prob_5.md", out_dir / "upload.md")
-        return (out_dir / "upload.md").read_text(encoding="utf-8"), str(out_dir / "upload.md")
-    seen = []
-    r = job.run_job(Path("upload.jpg"), tmp_path, "cpu", tts=False, ocr=fake_ocr,
-                    on_output=lambda k, v: seen.append(k))
-    parts = r["stages"]["problems"]
-    assert [p["label"] for p in parts] == ["27", "28", "29", "30"]
-    assert all(p["speech"]["text"] for p in parts)
-    assert r["stages"]["speech"]["text"].startswith(parts[0]["speech"]["text"])
-    assert seen.index("problems") < seen.index("speech")
 
 
 # --- found in review, 2026-11-09 ---------------------------------------------

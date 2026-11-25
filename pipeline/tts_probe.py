@@ -25,8 +25,8 @@ Env (required, never hardcoded). Read from the process environment, else from a
   AZURE_SPEECH_REGION                    alternative to endpoint, e.g. koreacentral
 
 Usage:
-  python tts_probe.py                          # all cases -> ./audio/
-  python tts_probe.py --voice ko-KR-InJoonNeural --break-ms 400 --out ./audio
+  python pipeline/tts_probe.py                          # all cases -> ./audio/
+  python pipeline/tts_probe.py --voice ko-KR-InJoonNeural --break-ms 400 --out ./audio
 """
 import argparse
 import os
@@ -61,7 +61,7 @@ SSML = ('<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" '
 
 def load_dotenv():
     """Tiny .env loader (no dependency): KEY=VALUE lines, # comments, real env wins."""
-    env_file = Path(__file__).parent / ".env"
+    env_file = Path(__file__).resolve().parent.parent / ".env"  # the repo root
     if not env_file.exists():
         return
     for line in env_file.read_text(encoding="utf-8").splitlines():

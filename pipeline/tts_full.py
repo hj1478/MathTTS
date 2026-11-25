@@ -12,7 +12,7 @@ Reuses tts_probe.py for .env loading, SpeechConfig, and verified synthesis.
 Note: the voice INSIDE a .ssml file's <voice> tag was fixed when speak.js wrote
 it (its --voice flag); --voice here only affects the plain versions.
 
-Usage:  python tts_full.py [--stitched ./stitched] [--out ./audio]
+Usage:  python pipeline/tts_full.py [--stitched ./stitched] [--out ./audio]
 """
 import argparse
 import sys

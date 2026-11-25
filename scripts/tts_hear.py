@@ -7,8 +7,8 @@ with them: skipping "①", reading "2번" as "두 번", or "4 마이너스" as "
 Recognizing the audio does, roughly: the `Lexical` field of the detailed result
 spells out each word as heard.
 
-    python tts_hear.py                      # eval/hear_lines.txt
-    python tts_hear.py my_lines.txt --formal
+    python scripts/tts_hear.py                      # eval/hear_lines.txt
+    python scripts/tts_hear.py my_lines.txt --formal
 
 One problem line per input line. Read the output by eye: the recognizer mishears
 too (letters, short words), so a difference is a lead, not a verdict. Numbers,
@@ -21,6 +21,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -28,10 +29,12 @@ from pathlib import Path
 
 import azure.cognitiveservices.speech as sdk
 
-import normalize
-from tts_probe import make_config
+ROOT = Path(__file__).resolve().parent.parent  # the repo root
+sys.path.insert(0, str(ROOT / "pipeline"))      # the stage modules
 
-ROOT = Path(__file__).resolve().parent
+import normalize  # noqa: E402
+from tts_probe import make_config  # noqa: E402
+
 VOICE = "ko-KR-SunHiNeural"
 ENVELOPE = ('<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="ko-KR">'
             f'<voice name="{VOICE}">%s</voice></speak>')

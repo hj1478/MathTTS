@@ -308,7 +308,7 @@ def hardkill_selftest(cutoff_s=5):
 
 
 @app.local_entrypoint()
-def cpu_check(image: str = str(REPO / "kr question 2.png")):
+def cpu_check(image: str = str(REPO / "fixtures" / "kr question 2.png")):
     """One image through OCR on CPU, printed next to the saved output/<stem>.md."""
     path = Path(image)
     r = ocr_cpu.remote(path.read_bytes(), path.name)
@@ -323,7 +323,7 @@ def cpu_check(image: str = str(REPO / "kr question 2.png")):
 def stack_check(report: str = ""):
     """What the threads of a hung first call (default allocator) are doing natively."""
     import json
-    r = native_stack.remote((REPO / "kr question 1.png").read_bytes(), ".png")
+    r = native_stack.remote((REPO / "fixtures" / "kr question 1.png").read_bytes(), ".png")
     print("\n===== native stack of a hung first call (default allocator, T4) =====")
     for line in r.get("log", []):
         print(line)
@@ -347,7 +347,7 @@ def selftest():
 
 @app.local_entrypoint()
 def fresh_test(gpu: str = "T4", allocator: str = "naive_best_fit", n: int = 10,
-               image: str = str(REPO / "kr question 1.png"), report: str = ""):
+               image: str = str(REPO / "fixtures" / "kr question 1.png"), report: str = ""):
     import json
     import statistics
     fn = {"T4": first_call_t4, "L4": first_call_l4}[gpu]
@@ -392,7 +392,7 @@ def output_check(allocator: str = "naive_best_fit", report: str = ""):
     the default allocator on the same GPU."""
     import difflib
     import json
-    images = {name: (REPO / name).read_bytes() for name in DIAG_IMAGES}
+    images = {name: (REPO / "fixtures" / name).read_bytes() for name in DIAG_IMAGES}
     runs = {a: ocr_outputs_t4.remote(images, a) for a in (allocator, "default")}
     differs = False
 
@@ -432,7 +432,7 @@ def output_check(allocator: str = "naive_best_fit", report: str = ""):
 
 
 @app.local_entrypoint()
-def warm_timing(gpu: str = "L4", n: int = 5, image: str = str(REPO / "kr question 1.png")):
+def warm_timing(gpu: str = "L4", n: int = 5, image: str = str(REPO / "fixtures" / "kr question 1.png")):
     import statistics
     fn = {"T4": warm_calls_t4, "L4": warm_calls_l4}[gpu]
     path = Path(image)

@@ -16,11 +16,11 @@ with --strict: a span that would stitch as a placeholder stops the pipeline
 before stage 4 pays Azure to read the placeholder aloud.
 
 Usage:
-  python run.py "kr question 1.png"
-  python run.py kma_sheet_13_8_prob.pdf
-  python run.py --dir somefolder
-  python run.py "kr question 1.png" --skip-ocr --skip-tts   # redo middle stages
-  python run.py sheet.pdf --dots                            # + 순환소수 repair
+  python pipeline/run.py "fixtures/kr question 1.png"
+  python pipeline/run.py fixtures/kma_sheet_13_8_prob.pdf
+  python pipeline/run.py --dir somefolder
+  python pipeline/run.py "fixtures/kr question 1.png" --skip-ocr --skip-tts   # redo middle stages
+  python pipeline/run.py sheet.pdf --dots                            # + 순환소수 repair
 
 Stage 1.5 is OFF by default and is the only stage besides 4 that costs money
 (one OpenAI call per page that has BOTH a decimal and a repetition signal —
@@ -43,7 +43,8 @@ from pathlib import Path
 
 import normalize
 
-ROOT = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent  # the repo root
 SPEAK_JS = ROOT / "sre-probe" / "speak.js"
 
 
@@ -199,7 +200,7 @@ def main():
     if a.skip_tts:
         print("[stage 4] skipped — no Azure synthesis")
         return
-    run_stage("stage 4", [sys.executable, ROOT / "tts_full.py",
+    run_stage("stage 4", [sys.executable, HERE / "tts_full.py",
                           "--stitched", a.stitched, "--out", a.audio,
                           "--voice", a.voice])
 

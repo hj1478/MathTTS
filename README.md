@@ -152,10 +152,10 @@ as digits, how the Azure voice pronounces it is unmeasured.
 > real broken-parenthesis case, so the example itself shows what the normalize
 > stage is for. That is more useful than an example where everything already works.
 
-`kr question 1.png`, a 중3 inequality problem, at every stage. It is the useful
+`fixtures/kr question 1.png`, a 중3 inequality problem, at every stage. It is the useful
 example precisely because the OCR gets something wrong.
 
-**1. OCR** — `python ocr_vl.py "kr question 1.png"` → `output/kr question 1.md`
+**1. OCR** — `python pipeline/ocr_vl.py "fixtures/kr question 1.png"` → `output/kr question 1.md`
 
 ```
 24. $x$에 대한 일차부등식 $3(x-k)\leq2x+5$가 모든 음의 정수 $x$에 대하여
@@ -166,7 +166,7 @@ $p\leq k<q(p, q$는 상수)이다. 이때 $p^{2}+9q^{2}$의 값을 구하시오.
 Note `$p\leq k<q(p, q$` — the model put the closing `$` too late, so the math
 span swallowed "(p, q" and the Korean that follows it.
 
-**2. Normalize** — `python normalize.py "output/kr question 1.md"`
+**2. Normalize** — `python pipeline/normalize.py "output/kr question 1.md"`
 
 ```
 24. $x$에 대한 일차부등식 $3(x-k)\leq2x+5$가 모든 음의 정수 $x$에 대하여
@@ -197,13 +197,30 @@ With `--casual`, which the web service uses, the same problem reads:
 Had the span not been repaired at stage 2, "(p, q" would have been read as
 arithmetic and the Korean inside it spelled out letter by letter.
 
-**4. Audio** — `python tts_full.py` → `audio/kr question 1-full-plain.wav` and
+**4. Audio** — `python pipeline/tts_full.py` → `audio/kr question 1-full-plain.wav` and
 `-full-ssml.wav`, for A/B listening.
 
 One weakness is visible in the text above, and it is a known gap rather than a
 bug in this example: "p 작거나 같다 k 작다 q" carries no particles, and whether
 a chained relation is parseable by ear is exactly what `tts_probe.py` case 3
 exists to test.
+
+## Layout
+
+| Path | What is there |
+|---|---|
+| `pipeline/` | `run.py` runs the whole pipeline, image or PDF → wav. One file per stage: `pdf_to_images.py` (0), `ocr_vl.py` (1), `dot_check.py` (1.5), `normalize.py` (2), `tts_full.py` (4); `llm.py` and `tts_probe.py` are their OpenAI and Azure clients |
+| `sre-probe/` | Stage 3, LaTeX → Korean speech (Node) |
+| `backend/` | The pipeline as a web API on Modal |
+| `app/` | The Expo app that uses the API |
+| `scripts/` | Eval harnesses, listening probes and the backend smoke test — nothing the pipeline needs |
+| `fixtures/` | Sample inputs with their `.expect` sidecars |
+| `eval/` | Golden cases and the record of problems found |
+| `tests/` | pytest suite |
+| `docs/`, `design/` | API reference, the findings log (`docs/FINDINGS.md`), worksheets; UI designs |
+
+`inbox/`, `runs/`, `pages/`, `output*/`, `stitched*/` and `audio*/` are written
+by the pipeline and the eval scripts, and are not in git.
 
 ## Running it
 
@@ -225,18 +242,18 @@ money, and both are opt-in:
 |---|---|---|
 | Stage 4, Azure TTS | `AZURE_SPEECH_KEY` + `AZURE_SPEECH_ENDPOINT` (or `AZURE_SPEECH_REGION`) | Every run that reaches it; skip with `--skip-tts` |
 | Stage 1.5, dot restore | `OPENAI_API_KEY` | Only with `run.py --dots`, and only for a page carrying both a decimal and a repetition signal |
-| `inbox_eval.py`, `dot_eval.py` | `OPENAI_API_KEY` | Eval drivers, run on demand |
+| `scripts/inbox_eval.py`, `scripts/dot_eval.py` | `OPENAI_API_KEY` | Eval drivers, run on demand |
 
 Stages 0–3 are otherwise local: OCR runs on your CPU and the speech stage is a
-local Node process. Copy `.env.example` to `.env` next to the scripts, or
+local Node process. Copy `.env.example` to `.env` in the repo root, or
 export the same variables.
 
-`run.py` chains everything:
+`pipeline/run.py` chains everything:
 
 ```sh
-python run.py "kr question 1.png"          # image → wav
-python run.py kma_sheet_13_8_prob.pdf      # PDF → pages → wav
-python run.py --dir pages --skip-tts       # stop before Azure synthesis
+python pipeline/run.py "fixtures/kr question 1.png"          # image → wav
+python pipeline/run.py fixtures/kma_sheet_13_8_prob.pdf      # PDF → pages → wav
+python pipeline/run.py --dir pages --skip-tts       # stop before Azure synthesis
 ```
 
 Per-stage skip flags (`--skip-ocr`, `--skip-normalize`, `--skip-speak`,
@@ -244,10 +261,10 @@ Per-stage skip flags (`--skip-ocr`, `--skip-normalize`, `--skip-speak`,
 runnable alone:
 
 ```sh
-python ocr_vl.py "kr question 1.png" --out ./output
-python normalize.py --dir output
+python pipeline/ocr_vl.py "fixtures/kr question 1.png" --out ./output
+python pipeline/normalize.py --dir output
 node sre-probe/speak.js --ssml --write ./stitched --dir ./output
-python tts_full.py --stitched ./stitched --out ./audio
+python pipeline/tts_full.py --stitched ./stitched --out ./audio
 ```
 
 Checks:
@@ -255,7 +272,7 @@ Checks:
 ```sh
 venv/bin/python -m pytest tests/       # normalize.py contract + span grammar
 cd sre-probe && node --test            # JS span grammar (same fixtures) + SSML checker
-python ocr_vl.py --eval .              # OCR each image, score against *.expect sidecars
+python pipeline/ocr_vl.py --eval fixtures       # OCR each image, score against *.expect sidecars
 ```
 
 - `<image>.expect` sidecars hold ground truth (`math` / `none`); images
@@ -263,9 +280,9 @@ python ocr_vl.py --eval .              # OCR each image, score against *.expect 
 - `speak.js` prints a per-file `SUMMARY:` line and, with `--strict`, exits
   non-zero when a formula stitched as salvage or a placeholder (`run.py` uses
   this to stop before paying Azure to read a placeholder aloud).
-- Larger harnesses: `tts_eval.py` (golden cases + lint), `inbox_eval.py`
-  (drop PDFs in `inbox/`, OCR → stitch → LLM judge), `dot_eval.py` (순환소수
-  dot restoration).
+- Larger harnesses, in `scripts/`: `tts_eval.py` (golden cases + lint),
+  `inbox_eval.py` (drop PDFs in `inbox/`, OCR → stitch → LLM judge),
+  `dot_eval.py` (순환소수 dot restoration).
 
 ## Web backend (Modal)
 
@@ -333,7 +350,7 @@ records. Rejected uploads never start a GPU job. OCR runs in a child process
 (`backend/ocr_proc.py`) with `FLAGS_allocator_strategy=naive_best_fit`: Paddle's
 default GPU allocator hangs the first OCR call in a fresh process most of the
 time. The child is also killed if a call takes over 300 s, so a hung OCR call
-cannot keep a GPU running (see FINDINGS.md, 2026-10-16). `tests/test_backend.py`
+cannot keep a GPU running (see docs/FINDINGS.md, 2026-10-16). `tests/test_backend.py`
 covers the upload, quota and rate-limit helpers and the per-stage status
 (`backend/progress.py`) without Modal.
 
@@ -346,7 +363,7 @@ Known OCR error: in `kr question 2.png` the model drops the braces in
 −2⁵ ÷ {(−2)⁴ × (−2)}, on GPU and CPU alike, which changes the math that is read
 aloud. `output/kr question 2.md` has the braces but is not raw model output
 (it appears to have been edited by hand), so don't use it as an OCR reference
-(FINDINGS.md, 2026-10-16).
+(docs/FINDINGS.md, 2026-10-16).
 
 ## Limitations and what is unverified
 
@@ -374,7 +391,7 @@ in #15) restores them from surrounding context with a text-only LLM pass. It
 is off by default for two reasons that outlive each other: it is the only
 stage besides Azure TTS that costs money, and a wrong dot **corrupts** a
 correct number where a missing one merely reproduces the status quo —
-`dot_eval.py` measures precision and recall per number for exactly that
+`scripts/dot_eval.py` measures precision and recall per number for exactly that
 asymmetry. Without `--dots`, a printed 순환소수 is still read as terminating.
 
 *The reading (decided, #17).* SRE itself cannot read the notation — it names
@@ -391,7 +408,7 @@ against SRE 5.0.0-rc.4 (clearspeak/default, 2026-08):
 So `speak.js` now intercepts `\dot{}`/`\overline{}` decimals before SRE and
 speaks them directly as **reading C** from the #17 experiment — pattern twice,
 then 반복: `0.2̇4̇` → "영 점 이사 이사 반복". Chosen 2026-09-21 over two
-competing candidates (`dot_reading_probe.py` generates all three, and the
+competing candidates (`scripts/dot_reading_probe.py` generates all three, and the
 A/B wavs to compare them). One limit is recorded rather than cleared: on a
 PARTIAL repetend, C separates `0.12̇3̇` from `0.1̇23̇` by phrasing alone, which
 a TTS voice may flatten. See `docs/findings/17_repeating_decimals.md`.

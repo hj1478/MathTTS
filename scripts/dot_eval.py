@@ -33,10 +33,12 @@ import re
 import sys
 from pathlib import Path
 
-import dot_check
-from llm import openai_cfg
+ROOT = Path(__file__).resolve().parent.parent  # the repo root
+sys.path.insert(0, str(ROOT / "pipeline"))      # the stage modules
 
-ROOT = Path(__file__).parent
+import dot_check  # noqa: E402
+from llm import openai_cfg  # noqa: E402
+
 DOT = dot_check._DOT
 _LATEX_DOT = re.compile(r"\\dot\{([0-9])\}")
 _DOTTED_TOKEN = re.compile(rf"[0-9]+\.(?:[0-9]{DOT}?)+")
