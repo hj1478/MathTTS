@@ -27,3 +27,6 @@ audio_kma/
 .DS_Store
 .playwright-mcp/
 .wrangler/
+
+# Play store listing assets (kept locally, uploaded by hand in the Play Console)
+app/store/
