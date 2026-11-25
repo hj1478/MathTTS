@@ -216,7 +216,7 @@ exists to test.
 | `fixtures/` | Sample inputs with their `.expect` sidecars |
 | `eval/` | Golden cases and the record of problems found |
 | `tests/` | pytest suite |
-| `docs/`, `design/` | API reference, the findings log (`docs/FINDINGS.md`), worksheets; UI designs |
+| `docs/` | API reference, the findings log (`docs/FINDINGS.md`), worksheets |
 
 `inbox/`, `runs/`, `pages/`, `output*/`, `stitched*/` and `audio*/` are written
 by the pipeline and the eval scripts, and are not in git.

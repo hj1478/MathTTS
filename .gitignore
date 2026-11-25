@@ -26,7 +26,6 @@ audio_kma/
 # macOS
 .DS_Store
 .playwright-mcp/
-.wrangler/
 
 # The Expo app: not part of this repo (backend and pipeline only)
 app/

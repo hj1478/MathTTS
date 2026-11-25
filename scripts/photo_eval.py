@@ -20,7 +20,7 @@ Scores, per photo and config (the reference is 0 / 100% by construction):
   math  share of the reference's formulas that came out character-identical.
 
 A photo is first put through what the app does before upload (EXIF rotation
-applied, long side cut to 2400 px, JPEG quality 90 - app/src/lib/image.ts), so
+applied, long side cut to 2400 px, JPEG quality 90 - the app's src/lib/image.ts), so
 OCR sees what the backend would. --no-shrink skips that.
 
   python scripts/photo_eval.py --photos ./photos            # real photos
@@ -43,7 +43,7 @@ sys.path.insert(0, str(ROOT / "pipeline"))      # the stage modules
 from normalize import SPAN  # noqa: E402
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
-MAX_SIDE, JPEG_QUALITY = 2400, 90   # app/src/lib/image.ts
+MAX_SIDE, JPEG_QUALITY = 2400, 90   # as the app's src/lib/image.ts (its own repository)
 CONFIGS = {  # name -> (orientation-classify, unwarping)
     "off": (False, False), "orient": (True, False),
     "unwarp": (False, True), "both": (True, True),
