@@ -221,7 +221,7 @@ The stages, in pipeline order:
 | `stages.ocr.text` | Stage 1, PaddleOCR-VL (`ocr_vl.run_image`): markdown with LaTeX |
 | `stages.normalized.text` | Stage 2, `normalize.normalize_math` |
 | `stages.math_spans` | The math spans extracted from the normalized text, in reading order (`ocr_vl.analyze`). `latex` is `source` without its `$` delimiters |
-| `stages.speech.text` | Stage 3, `sre-probe/speak.js` (Temml → speech-rule-engine, Korean): the final spoken text |
+| `stages.speech.text` | Stage 3, `pipeline/speech/speak.js` (Temml → speech-rule-engine, Korean): the final spoken text |
 | `stages.speech.ssml` | Stage 3 `--ssml` output, which is what stage 4 sends to Azure. `null` if it was not produced |
 | `stages.speech.strict_ok` | `false` when a formula stitched as salvage or a placeholder (speak.js `--strict`). The text is still returned, but no audio is made (`audio.status` = `skipped`) |
 | `audio` | Stage 4, Azure TTS (`ko-KR-SunHiNeural`) |

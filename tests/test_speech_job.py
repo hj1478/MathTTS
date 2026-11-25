@@ -32,7 +32,7 @@ def test_speak_uses_only_the_stitched_combo_and_utf8(tmp_path, monkeypatch):
 
 
 def test_speak_real_node_run(tmp_path):
-    """The real speak.js with job.py's arguments (needs node + sre-probe/node_modules)."""
+    """The real speak.js with job.py's arguments (needs node + pipeline/speech/node_modules)."""
     norm = tmp_path / "q.norm.md"
     norm.write_text("문제 $-2<x<3$ 일 때", encoding="utf-8")
     code, summary = job._speak(norm, tmp_path / "out", ssml=False)

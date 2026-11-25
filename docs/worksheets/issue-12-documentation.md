@@ -65,7 +65,7 @@ Two to four questions, one or two sentences each:
 **This is mostly transcription, not invention.** Two tools in the repo were built to answer specific questions:
 
 ```sh
-sed -n '1,15p' sre-probe/index.js       # what is this probe asking?
+sed -n '1,15p' pipeline/speech/probe.js       # what is this probe asking?
 sed -n '1,30p' scripts/tts_probe.py             # and what do its four test cases check?
 ```
 

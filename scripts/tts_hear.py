@@ -78,7 +78,7 @@ def main():
         (work / "in").mkdir()
         for i, line in enumerate(lines):
             (work / "in" / f"c{i:03d}.norm.md").write_text(normalize.normalize_math(line), encoding="utf-8")
-        subprocess.run(["node", str(ROOT / "sre-probe" / "speak.js"), *([] if args.formal else ["--casual"]),
+        subprocess.run(["node", str(ROOT / "pipeline" / "speech" / "speak.js"), *([] if args.formal else ["--casual"]),
                         "--ssml", "--combos", "clearspeak/default", "--write", str(work / "out"),
                         "--dir", str(work / "in")], capture_output=True, text=True, check=False)
 

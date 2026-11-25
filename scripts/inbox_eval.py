@@ -8,7 +8,7 @@ goes through the real pipeline, then two reviewers go over the spoken output:
   2. dot_check.restore (text-only LLM)     -> <name>_<p>.dots.md when it
      restored 순환소수 dots OCR dropped     (skipped with --no-llm / --no-dots)
   3. normalize.normalize_math              -> <name>_<p>.norm.md
-  4. sre-probe/speak.js --write            -> <name>_<p>.stitched.txt  (speech)
+  4. pipeline/speech/speak.js --write            -> <name>_<p>.stitched.txt  (speech)
   5. review of the speech:
        - deterministic lint detectors from tts_eval.py (free, no API), and
        - an OpenAI judge that reads OCR markdown + stitched speech side by
@@ -117,7 +117,7 @@ def stitch(md_files, out_dir, dots_cfg=None):
         norm = md.parent / (md.stem + ".norm.md")
         norm.write_text(normalize.normalize_math(text), encoding="utf-8")
         norm_files.append(norm)
-    cmd = ["node", str(ROOT / "sre-probe" / "speak.js"), "--write", str(out_dir),
+    cmd = ["node", str(ROOT / "pipeline" / "speech" / "speak.js"), "--write", str(out_dir),
            *map(str, norm_files)]
     for attempt in (1, 2):  # empty-stderr nonzero exits = killed under memory
         proc = subprocess.run(cmd, capture_output=True, text=True)  # pressure;

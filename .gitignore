@@ -9,7 +9,7 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 
-# Node (sre-probe)
+# Node (pipeline/speech)
 node_modules/
 
 # Everything the pipeline and the eval scripts write (and the eval inbox)

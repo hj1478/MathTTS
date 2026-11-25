@@ -32,13 +32,13 @@ There are two separate causes: ① OCR loses the dots, and ② **even when the d
 Don't start from someone else's table. Seeing it once makes every later judgement faster.
 
 ```sh
-cd sre-probe && npm install && cd ..          # first time only
+cd pipeline/speech && npm install && cd ../..          # first time only
 mkdir -p /tmp/dots
 
 printf '순환소수 $0.2̇4̇$ 를 분수로 나타내시오.\n' > /tmp/dots/a.norm.md
 printf '순환소수 $0.24$ 를 분수로 나타내시오.\n'   > /tmp/dots/b.norm.md
 
-cd sre-probe && node speak.js /tmp/dots/a.norm.md /tmp/dots/b.norm.md
+cd pipeline/speech && node speak.js /tmp/dots/a.norm.md /tmp/dots/b.norm.md
 ```
 
 The `STITCHED` line is the sentence a TTS voice would actually read. Compare the two files.
@@ -100,7 +100,7 @@ Two things worth thinking about before step 3:
 Two candidates in this repository, plus the SRE option raised in step 2. All three could work; they are not equivalent.
 
 - **`normalize.py`** — its current job is turning the OCR's inconsistent math notation into canonical LaTeX.
-- **`sre-probe/speak.js`** — it stitches Korean speech back into the surrounding prose.
+- **`pipeline/speech/speak.js`** — it stitches Korean speech back into the surrounding prose.
 
 **Question:** what is each file's job right now? Does "a Korean word" belong to that job? Is it natural for a language rule to live in the file that assembles Korean sentences, or should that file stay pure plumbing?
 
@@ -153,5 +153,5 @@ Two facts to weigh it against: the number itself is still read correctly, and **
 ## If you get stuck
 
 - **Stuck on step 1** — that's normal. It is not a coding problem, it is a judgement call. Read it aloud, play it to someone, ask them what they heard.
-- **Stuck on step 2** — if you want to test other notations, `node index.js` in `sre-probe/` run as-is shows you how that tool is fed; the expression list is at the top of the file.
-- **Stuck on step 3** — read the docstrings of the two candidate files. Each one already states what job it thinks it has, which is most of the argument. For the third option, look at what `sre-probe/index.js` reports about which Korean rule sets exist.
+- **Stuck on step 2** — if you want to test other notations, `node probe.js` in `pipeline/speech/` run as-is shows you how that tool is fed; the expression list is at the top of the file.
+- **Stuck on step 3** — read the docstrings of the two candidate files. Each one already states what job it thinks it has, which is most of the argument. For the third option, look at what `pipeline/speech/probe.js` reports about which Korean rule sets exist.

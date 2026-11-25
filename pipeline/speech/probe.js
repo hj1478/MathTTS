@@ -3,7 +3,7 @@
  *
  * Pipeline under test:  LaTeX --temml--> MathML --SRE--> Korean speech string
  *
- * Run:  node index.js
+ * Run:  node probe.js
  *
  * Verified against speech-rule-engine 5.0.0-rc.4:
  *   - setupEngine(options) returns a Promise -> must be awaited (async engine setup)

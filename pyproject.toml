@@ -12,7 +12,7 @@ requires-python = ">=3.11"
 # dependencies only, hand-written; developed on macOS arm64 / Python 3.11, and
 # every package publishes Linux and Windows wheels too.
 #
-# The Node side is separate: `npm install` inside sre-probe/ (stage 3).
+# The Node side is separate: `npm install` inside pipeline/speech/ (stage 3).
 dependencies = []
 
 [project.optional-dependencies]

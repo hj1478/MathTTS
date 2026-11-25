@@ -8,7 +8,7 @@ stage can still be re-run in isolation with its own CLI:
   1. OCR         ocr_vl.py            *.png        -> work/output/*.md
   1.5 Dots       dot_check.py         *.md         -> *.dots.md   (--dots only)
   2. Normalize   normalize.py         *.md         -> *.norm.md
-  3. Speech      sre-probe/speak.js   *.norm.md    -> work/stitched/*.stitched.txt + .ssml
+  3. Speech      pipeline/speech/speak.js   *.norm.md    -> work/stitched/*.stitched.txt + .ssml
   4. TTS         tts_full.py          work/stitched/* -> work/audio/*.wav  (needs Azure creds)
 
 speak.js is resolved relative to THIS file, not the caller's cwd, and runs
@@ -45,7 +45,7 @@ from pipeline import normalize
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent  # the repo root
-SPEAK_JS = ROOT / "sre-probe" / "speak.js"
+SPEAK_JS = ROOT / "pipeline" / "speech" / "speak.js"
 
 
 def collect_images(a):

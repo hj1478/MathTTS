@@ -1,0 +1,17 @@
+{
+  "name": "mathtts-speech",
+  "version": "1.0.0",
+  "description": "Stage 3: LaTeX -> MathML (temml) -> Korean math speech (speech-rule-engine), stitched back into the prose",
+  "private": true,
+  "scripts": {
+    "probe": "node probe.js",
+    "speak": "node speak.js --dir ../../work/output",
+    "test": "node --test"
+  },
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "speech-rule-engine": "5.0.0-rc.4",
+    "temml": "0.13.3"
+  }
+}

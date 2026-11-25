@@ -44,7 +44,7 @@ from pathlib import Path
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
 # Math-span grammar: single source of truth is normalize.SPAN (the $...$
 # convention is confirmed from real PaddleOCR-VL output — see module docstring).
-# sre-probe/speak.js keeps a JS copy of the inline rule; the shared fixtures in
+# pipeline/speech/speak.js keeps a JS copy of the inline rule; the shared fixtures in
 # fixtures/span_cases.json are checked by both test suites so the two
 # languages cannot silently drift apart.
 from pipeline.normalize import SPAN as LATEX

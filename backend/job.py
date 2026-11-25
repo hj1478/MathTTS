@@ -2,7 +2,7 @@
 """Run the pipeline on ONE image and collect every stage's output (the Modal worker's job).
 
 Same stages, same order and same guards as run.py — this calls the stage code
-(ocr_vl.run_image, normalize.normalize_math, sre-probe/speak.js --strict,
+(ocr_vl.run_image, normalize.normalize_math, pipeline/speech/speak.js --strict,
 azure_tts.synth) and changes none of it. Where it differs from run.py, it is
 for running as a service rather than as a CLI:
 
@@ -53,7 +53,7 @@ from pipeline import normalize
 
 ROOT = Path(__file__).resolve().parent.parent
 
-SPEAK_JS = ROOT / "sre-probe" / "speak.js"
+SPEAK_JS = ROOT / "pipeline" / "speech" / "speak.js"
 VOICE = "ko-KR-SunHiNeural"      # run.py's default
 AUDIO_NAME = "audio.mp3"
 SPEAK_TIMEOUT_S = 120
@@ -90,9 +90,9 @@ class JobError(Exception):
 
 
 def _speak(norm_path, out_dir, ssml, casual=True):
-    """sre-probe/speak.js as run.py calls it (--strict, --voice, --write), plus
+    """pipeline/speech/speak.js as run.py calls it (--strict, --voice, --write), plus
     --casual: math is read as a person says it ("A 1", "x 마이너스 1 분의 x 플러스
-    1", "3 이상"), not spelled out (sre-probe/casual.js). casual=False leaves
+    1", "3 이상"), not spelled out (pipeline/speech/casual.js). casual=False leaves
     --casual out, for the formal reading.
 
     Only the clearspeak combo: the stitched output uses the first combo, and

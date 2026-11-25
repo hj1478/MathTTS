@@ -49,7 +49,7 @@ TODO
 >   at all?
 >
 > Where to find them: two tools here were built to answer specific questions
-> already. What question is `sre-probe/index.js` asking? What is each of the four
+> already. What question is `pipeline/speech/probe.js` asking? What is each of the four
 > test cases in `scripts/tts_probe.py` checking? Those are your candidates — this is a
 > matter of writing down what you already know.
 >
@@ -65,7 +65,7 @@ TODO
 | 1. OCR | `ocr_vl.py` | `*.png` → `work/output/*.md` | PaddleOCR-VL, locally on CPU: Korean prose + inline `$...$` LaTeX |
 | 1.5 Dots (opt-in) | `dot_check.py` | `*.md` → `*.dots.md` | `run.py --dots` only. Text-only LLM pass restoring 순환소수 dots the OCR dropped; writes beside the raw page, which stage 2 then prefers |
 | 2. Normalize | `normalize.py` | `*.md` → `*.norm.md` | Canonicalizes the OCR's inconsistent math (unicode, bare runs, stray `$`) into `$...$` LaTeX |
-| 3. Math → speech | `sre-probe/speak.js` | `*.norm.md` → `work/stitched/*.stitched.txt` / `.ssml` | temml → MathML → SRE (locale ko); stitches Korean speech back into the prose. `--casual` (what the service uses) reads it as a person would: "A 1", "x 마이너스 1 분의 x 플러스 1", "3 이상" (`sre-probe/casual.js`) |
+| 3. Math → speech | `pipeline/speech/speak.js` | `*.norm.md` → `work/stitched/*.stitched.txt` / `.ssml` | temml → MathML → SRE (locale ko); stitches Korean speech back into the prose. `--casual` (what the service uses) reads it as a person would: "A 1", "x 마이너스 1 분의 x 플러스 1", "3 이상" (`pipeline/speech/casual.js`) |
 | 4. TTS | `tts_full.py` | `work/stitched/*` → `work/audio/*.wav` | Azure Neural TTS; plain and SSML versions per problem for A/B listening |
 
 The split exists because no single tool crosses the whole gap: the OCR emits
@@ -76,7 +76,7 @@ emits math in three inconsistent shapes (`$...$`, unicode `x²≤`, plain
 arrive already delimited. Stage 3 is the actual subject of the project:
 turning LaTeX into *Korean* math speech, which only SRE attempts.
 
-Two files are investigation tools, not stages: `sre-probe/index.js` (does SRE
+Two files are investigation tools, not stages: `pipeline/speech/probe.js` (does SRE
 support Korean math speech at all, and in which domains/styles?) and
 `scripts/tts_probe.py` (is the resulting Korean speech intelligible by ear? A/B wavs).
 Their docstrings record what each one established.
@@ -178,7 +178,7 @@ Two changes: the span is cut at the unmatched `(` so the prose is ejected back
 out of the math, and `^{2}` is canonicalized to `^2`. This is the one place
 `normalize.py` deliberately cuts up content it was handed.
 
-**3. Speech** — `node sre-probe/speak.js --write ./work/stitched "…norm.md"`
+**3. Speech** — `node pipeline/speech/speak.js --write ./work/stitched "…norm.md"`
 
 ```
 24. x 에 대한 일차부등식 3 곱하기 괄호 열고 x 빼기 k 괄호 닫고 는 2 x 더하기 5
@@ -209,8 +209,7 @@ exists to test.
 
 | Path | What is there |
 |---|---|
-| `pipeline/` | `run.py` runs the whole pipeline, image or PDF → wav. One file per stage: `pdf_to_images.py` (0), `ocr_vl.py` (1), `dot_check.py` (1.5), `normalize.py` (2), `tts_full.py` (4); `llm.py` and `azure_tts.py` are their OpenAI and Azure clients |
-| `sre-probe/` | Stage 3, LaTeX → Korean speech (Node) |
+| `pipeline/` | `run.py` runs the whole pipeline, image or PDF → wav. One file per stage: `pdf_to_images.py` (0), `ocr_vl.py` (1), `dot_check.py` (1.5), `normalize.py` (2), `tts_full.py` (4); `llm.py` and `azure_tts.py` are their OpenAI and Azure clients. Stage 3, LaTeX → Korean speech, is Node: `pipeline/speech/` (`speak.js`, `casual.js`; `probe.js` is the experiment the folder began as) |
 | `backend/` | The pipeline as a web API on Modal |
 | `scripts/` | Eval harnesses, listening probes and the backend smoke test — nothing the pipeline needs |
 | `fixtures/` | Sample inputs with their `.expect` sidecars, and the span-grammar cases both test suites read |
@@ -229,7 +228,7 @@ Two dependency trees — Python **and** Node:
 
 ```sh
 python3.11 -m venv venv && venv/bin/pip install -e ".[all]"
-cd sre-probe && npm install && cd ..
+cd pipeline/speech && npm install && cd ../..
 ```
 
 The install is editable: it puts `pipeline/` and `backend/` on the path as
@@ -269,7 +268,7 @@ runnable alone:
 ```sh
 python pipeline/ocr_vl.py fixtures/question_1.png --out ./work/output
 python pipeline/normalize.py --dir work/output
-node sre-probe/speak.js --ssml --write ./work/stitched --dir ./work/output
+node pipeline/speech/speak.js --ssml --write ./work/stitched --dir ./work/output
 python pipeline/tts_full.py --stitched ./work/stitched --out ./work/audio
 ```
 
@@ -277,7 +276,7 @@ Checks:
 
 ```sh
 venv/bin/python -m pytest tests/       # normalize.py contract + span grammar
-cd sre-probe && node --test            # JS span grammar (same fixtures) + SSML checker
+cd pipeline/speech && node --test            # JS span grammar (same fixtures) + SSML checker
 python pipeline/ocr_vl.py --eval fixtures       # OCR each image, score against *.expect sidecars
 ```
 
@@ -317,7 +316,7 @@ modal secret create azure-speech SPEECH_KEY=<key> SPEECH_REGION=<region>   # onc
 ```
 
 **Deploy.** The first deploy builds the image: the CUDA Paddle install, Node,
-the sre-probe packages, and the OCR weights baked in so cold starts don't
+the stage 3 Node packages, and the OCR weights baked in so cold starts don't
 download them. This takes a while. Later deploys reuse those layers unless
 dependencies change.
 

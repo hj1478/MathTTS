@@ -4,7 +4,7 @@
 Two layers, no listening required (the pipeline is deterministic text -> text):
 
 1. GOLDEN CASES (eval/cases.json): each case is a raw OCR-style snippet fed
-   through normalize.py + sre-probe/speak.js; the stitched Korean speech is
+   through normalize.py + pipeline/speech/speak.js; the stitched Korean speech is
    checked against `must` / `mustnot` substrings.
      - a failing case is a regression;
      - a case marked "known": <reason> is an expected failure — it documents a
@@ -85,7 +85,7 @@ def stitch(named_inputs):
         f.write_text(normalize.normalize_math(text), encoding="utf-8")
         files.append(str(f))
     proc = subprocess.run(
-        ["node", str(ROOT / "sre-probe" / "speak.js"), "--write", str(tmp), *files],
+        ["node", str(ROOT / "pipeline" / "speech" / "speak.js"), "--write", str(tmp), *files],
         capture_output=True, text=True)
     if proc.returncode != 0:
         sys.exit(f"speak.js failed:\n{proc.stderr}")

@@ -141,7 +141,7 @@ def pipeline_image(paddle="gpu"):
         modal.Image.debian_slim(python_version="3.11")
         .apt_install("curl", "ca-certificates", "gnupg", "libgl1", "libglib2.0-0",
                      "libgomp1", "libssl3", "libasound2")
-        # Node 22 LTS for sre-probe/speak.js (Debian's own nodejs is too old)
+        # Node 22 LTS for pipeline/speech/speak.js (Debian's own nodejs is too old)
         .run_commands("curl -fsSL https://deb.nodesource.com/setup_22.x | bash -",
                       "apt-get install -y nodejs")
     )
@@ -164,12 +164,12 @@ def pipeline_image(paddle="gpu"):
             'use_seal_recognition=False, use_chart_recognition=False)"')
     image = (
         image
-        # sre-probe dependencies, from the lockfile (temml, speech-rule-engine)
-        .add_local_file(REPO / "sre-probe" / "package.json", "/root/sre-probe/package.json",
+        # pipeline/speech dependencies, from the lockfile (temml, speech-rule-engine)
+        .add_local_file(REPO / "pipeline" / "speech" / "package.json", "/root/pipeline/speech/package.json",
                         copy=True)
-        .add_local_file(REPO / "sre-probe" / "package-lock.json",
-                        "/root/sre-probe/package-lock.json", copy=True)
-        .run_commands("cd /root/sre-probe && npm ci --omit=dev")
+        .add_local_file(REPO / "pipeline" / "speech" / "package-lock.json",
+                        "/root/pipeline/speech/package-lock.json", copy=True)
+        .run_commands("cd /root/pipeline/speech && npm ci --omit=dev")
     )
     return _with_pipeline_source(image)
 
@@ -179,8 +179,8 @@ def _with_pipeline_source(image):
     Only the stage files job.py runs — never .env (azure_tts would load it)."""
     return (
         image
-        .add_local_file(REPO / "sre-probe" / "speak.js", "/root/sre-probe/speak.js")
-        .add_local_file(REPO / "sre-probe" / "casual.js", "/root/sre-probe/casual.js")
+        .add_local_file(REPO / "pipeline" / "speech" / "speak.js", "/root/pipeline/speech/speak.js")
+        .add_local_file(REPO / "pipeline" / "speech" / "casual.js", "/root/pipeline/speech/casual.js")
         .add_local_file(REPO / "pipeline" / "normalize.py", "/root/pipeline/normalize.py")
         .add_local_file(REPO / "pipeline" / "ocr_vl.py", "/root/pipeline/ocr_vl.py")
         .add_local_file(REPO / "pipeline" / "azure_tts.py", "/root/pipeline/azure_tts.py")

@@ -128,7 +128,7 @@ def main():
 
     print("[stitch] one speak.js --ssml pass over all chunks...")
     proc = subprocess.run(
-        ["node", str(ROOT / "sre-probe" / "speak.js"), "--ssml", "--voice", a.voice,
+        ["node", str(ROOT / "pipeline" / "speech" / "speak.js"), "--ssml", "--voice", a.voice,
          "--write", str(tmp), *[str(f) for _, _, f in files]],
         capture_output=True, text=True)
     if proc.returncode != 0:

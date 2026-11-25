@@ -7,17 +7,17 @@
  *   2. STITCHED view: the full problem text with every math span replaced by its
  *      Korean speech — eyeball this; it is what a TTS voice would eventually read.
  *
- * Still a probe: no TTS, no audio, output is for inspection only.
+ * No TTS and no audio here: the stitched text and SSML go to stage 4.
  *
  * Usage:
- *   node speak.js "../output/kr question 1.norm.md" [more files...]
- *   node speak.js --dir ../output              # every *.norm.md in the folder
- *   node speak.js --combos mathspeak/sbrief,clearspeak/default --dir ../output
- *   node speak.js --ssml [--voice ko-KR-SunHiNeural] --dir ../output
+ *   node speak.js ../../work/output/question_1.norm.md [more files...]
+ *   node speak.js --dir ../../work/output      # every *.norm.md in the folder
+ *   node speak.js --combos mathspeak/sbrief,clearspeak/default --dir ../../work/output
+ *   node speak.js --ssml [--voice ko-KR-SunHiNeural] --dir ../../work/output
  *   node speak.js --both --write OUT f.norm.md    # plain .txt AND .ssml, one process
  *
  * Default combos: clearspeak/default (natural register, used for the stitched
- * view) and mathspeak/default (unambiguous register), per the index.js probe.
+ * view) and mathspeak/default (unambiguous register), per the probe.js probe.
  * Only the FIRST combo reaches the stitched output; the rest are for the table.
  *
  * --casual: read math as a person says it ("A 1", "x 마이너스 1 분의 x 플러스
@@ -64,7 +64,7 @@ const { casualLatex, casualSpeech } = require('./casual');
 // stage consumes normalize.py output, which only ever emits $..$ / $$..$$).
 // Inline may not contain Hangul/'$'/newline so a stray '$' in prose can't
 // swallow text. JS cannot share Python's regex, so this copy is held in sync
-// by the shared fixtures in ../fixtures/span_cases.json — span.test.js
+// by the shared fixtures in fixtures/span_cases.json — span.test.js
 // here and tests/test_span_grammar.py both check their regex against it.
 const SPAN = /\$\$.+?\$\$|\$[^$\n가-힣]+?\$/gs;
 

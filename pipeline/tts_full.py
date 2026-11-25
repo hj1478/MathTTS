@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Speak WHOLE Korean math problems (prose + math) through Azure Neural TTS.
 
-Input: stitched files produced by  sre-probe/speak.js --write ../stitched
+Input: stitched files produced by  pipeline/speech/speak.js --write ../stitched
   *.stitched.txt   plain stitched text (SRE markup:none)   -> speak_text_async
   *.stitched.ssml  Azure-enveloped SSML (SRE markup:ssml,  -> speak_ssml_async
                    structural <break>s, <say-as> character, prosody rate)
@@ -31,7 +31,7 @@ def main():
     files = sorted(Path(a.stitched).glob("*.stitched.*"))
     if not files:
         sys.exit(f"No *.stitched.txt / *.stitched.ssml in {a.stitched} — "
-                 "generate them with: node sre-probe/speak.js --write ./stitched ...")
+                 "generate them with: node pipeline/speech/speak.js --write ./stitched ...")
 
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)

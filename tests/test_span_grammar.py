@@ -1,7 +1,7 @@
 """The math-span grammar must behave identically in Python and JS (issue #4).
 
 fixtures/span_cases.json holds the tricky inputs; this test checks the
-Python side (normalize.SPAN), sre-probe/span.test.js checks the JS copy in
+Python side (normalize.SPAN), pipeline/speech/span.test.js checks the JS copy in
 speak.js against the same file. Editing one grammar and forgetting the other
 fails one of the two suites instead of going unnoticed.
 
