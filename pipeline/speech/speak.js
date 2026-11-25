@@ -150,15 +150,19 @@ function ssmlInner(s) {
 /** Never faster than the voice's own pace. SRE wraps implied products ("3x",
  * "ab") in <prosody rate="+25%">; on Azure that rushes exactly the part a
  * listener needs most, and short answer choices that are all such terms fly
- * by (heard 2026-11-10). A <prosody> that speeds up is unwrapped, its content
- * kept; one that slows down or sets something else stays. */
+ * by (heard 2026-11-10). A <prosody> that speeds up or changes the pitch is
+ * unwrapped, its content kept; one that only slows down stays. */
 function capRate(s) {
   const kept = []; // per open <prosody>: is its tag kept?
   return s.replace(/<prosody\b([^>]*)>|<\/prosody>/g, (tag, attrs) => {
     if (attrs === undefined) return kept.pop() === false ? '' : tag;
     const faster = /\brate="(\+(?!0+(\.0+)?%)[\d.]+%|x?-?fast)"/.test(attrs);
-    kept.push(!faster);
-    return faster ? '' : tag;
+    // SRE also raises the pitch 30% on capital letters ("삼각형 A B C"), which
+    // made the vertices of a triangle sound like another voice (reported
+    // 2026-11-25). Dropped, so the whole problem is read in one tone.
+    const drop = faster || /\bpitch=/.test(attrs);
+    kept.push(!drop);
+    return drop ? '' : tag;
   });
 }
 
@@ -273,19 +277,20 @@ const slowDown = (ssml) => ssml
   .replace(/<voice name="[^"]*">/g, (v) => `${v}<prosody rate="${MAX_RATE}">`)
   .replace(/<\/voice>/g, '</prosody></voice>');
 
-// A power runs straight into what comes next: SRE puts a break after an
-// exponent only before an implied product ("x 제곱 <break/> y"), so "x 제곱
-// 플러스 삼 x" was one unbroken run and the exponent was hard to catch
-// (reported 2026-11-25). Every power is followed by a pause; a particle that
-// belongs to it (제곱 은, 세제곱 분의) is said first. Also at the end of a span:
-// "…제곱 을 간단히 하시오" ran the power into the sentence's own particle
-// (reported 2026-11-25). Not where a break already follows. 제곱근 and
+// A power runs straight into what comes next: "x 제곱 플러스 삼 x" was one
+// unbroken run and the exponent was hard to catch (reported 2026-11-25). A
+// pause after it was tried first and did give the space, but the ㅂ of 제곱 is
+// not released into silence: it was heard as "제고", and the recognizer got 5
+// of 10 (reported the same day). Said slower with NO pause after it, the word
+// still takes longer to reach the next one (575 ms at 25% slower, 705 ms at
+// 40%; 455 ms plain, 896 ms with the pause) and keeps its ㅂ. Over the 31
+// powers in the 30 problems the recognizer heard 14 with the pause, 28 at 25%
+// slower and 26 at 40%, where 세제곱 twice came back as "칠곱". So the power
+// word is said 25% slower, and a short pause right after it, SRE's or anyone's,
+// is taken out. A long one (between the rows of a system) stays. 제곱근 and
 // 제곱센티미터 are other words.
-const POWER_PAUSE = '<break time="300ms"/>';
-// the power word, and a particle said with it
-const POWER = /(?<![가-힣])(?:세|네)?제곱(?![가-힣])(?:\s+(?:은|는|의|분의)(?![가-힣]))?/g;
-const pauseAfterPowers = (span) => span.replace(POWER, (m, at) =>
-  (/^\s*(?:<break\b|,|\x02)/.test(span.slice(at + m.length)) ? m : `${m} ${POWER_PAUSE}`));
+const POWER = /(?<![가-힣])((?:세|네)?제곱)(?![가-힣])(?:\s*<break time="(?:[1-9]\d?|[12]\d\d|300)ms"\/>)*/g;
+const slowPowers = (span) => span.replace(POWER, '<prosody rate="-25%">$1</prosody>');
 
 // 의 is said [에], so a 2 right after it — "삼 분의 이", "x 의 이 제곱" — comes
 // out "…에이", which is the letter a: (-2/3) was heard as (-a/3), and the
@@ -293,8 +298,77 @@ const pauseAfterPowers = (span) => span.replace(POWER, (m, at) =>
 // recognizer hears as 이 in both places tried. A pause between the two did
 // separate them but left 의 hanging before it, mumbled ("삼 분 이"). Runs
 // before the numbers are spelled out.
-const TWO_AFTER_UI = /((?<![가-힣])(?:분의|의)\s+)(2(?:\.\d+)?)(?![\d,])/g;
+// The same after 는/은 for "=": "y 는 이" came back as "와이 느니" (final pass).
+const TWO_AFTER_UI = /((?<![가-힣])(?:분의|의|는|은)\s+)(2(?:\.\d+)?)(?![\d,])/g;
 const slowTwo = (span) => span.replace(TWO_AFTER_UI, '$1<prosody rate="-25%">$2</prosody>');
+
+// The voice trails off into a pause: measured on the audio, the word right
+// before one is 4 to 9 dB under the rest (2026-11-25), and the 2 of (-2/3),
+// a single vowel in front of the pause SRE puts before "괄호 닫고", was heard
+// "mumbly and quiet" at -8.9 dB. Said straight into the closing bracket it
+// is at full level (-0.6 dB). So nothing pauses before a closing bracket;
+// the pause after it marks the boundary.
+const PAUSE_BEFORE_CLOSE = /(?:\s*<break\b[^>]*\/>)+(\s*(?:중|대)?괄호 닫고)/g;
+const closeBracketsTight = (span) => span.replace(PAUSE_BEFORE_CLOSE, '$1');
+
+// In a product of letters, a power belongs to the letter right before it:
+// xy² is "x y 제곱", which run together can be taken for (xy)². A slight pause
+// before the letter that carries the power sets "y 제곱" apart from the x
+// (asked for on (-3xy²)², 2026-11-25). Letters only: after a number ("3 y
+// 제곱") or a power ("x 제곱 ‖ y 제곱") nothing is added.
+const LETTER = '<say-as interpret-as="characters">[A-Za-z]</say-as>';
+const POWERED_LETTER = new RegExp(`(${LETTER})(\\s+)(?=${LETTER}\\s+(?:(?:세|네)?제곱(?![가-힣])|의\\s))`, 'g');
+const pauseBeforePoweredLetter = (span) => span.replace(POWERED_LETTER, '$1 <break time="120ms"/>$2');
+
+// A denominator that is one letter is one short syllable in front of 분의: the
+// b of (3a²/b)³ lasted 234 ms and the recognizer did not hear it at all
+// (reported unclear, 2026-11-25). Said 25% slower (312 ms) it is heard as b.
+// 40% slower came back as "d", and a pause after it dropped it 5.7 dB. Only a
+// letter standing alone: in "9 a 분의" the number carries it.
+const LETTER_DENOMINATOR = new RegExp(`(?<!(?:\\d|</say-as>)\\s{1,3})(${LETTER})(?=\\s+분의(?![가-힣]))`, 'g');
+const slowLetterDenominator = (span) => span.replace(LETTER_DENOMINATOR, '<prosody rate="-25%">$1</prosody>');
+
+// A letter that is the last word before a comma is said as the tail of the
+// phrase in front of it: "반지름의 길이가 r, …" ran 길이가 into 알 with 16 ms
+// between them and the r 7.6 dB under the rest, heard as slurred (reported
+// 2026-11-25). A slight pause before it makes it a word of its own (-2.4 dB).
+// Slowing it did nothing. A letter the sentence goes on from ("상수 a 의 값")
+// measured at full level and is left alone.
+const LETTER_BEFORE_COMMA = new RegExp(`([가-힣])(\\s+)(${LETTER})(?=\\s*,)`, 'g');
+const pauseBeforeLastLetter = (body) => body.replace(LETTER_BEFORE_COMMA, '$1 <break time="120ms"/>$2$3');
+
+// 도 belongs to the number before it. SRE pauses between them after a
+// function with a power ("사인 제곱 ‖ 60 ‖ 도" for sin²60°), which splits the
+// angle from its unit (asked to remove, 2026-11-25).
+const PAUSE_BEFORE_DEGREE = /(\d)(?:\s*<break\b[^>]*\/>)+(\s*도(?![가-힣]))/g;
+const degreeWithNumber = (span) => span.replace(PAUSE_BEFORE_DEGREE, '$1$2');
+
+// 는/은 for "=" belongs to the word before it, but SRE pauses in front of it
+// after a longer left side: "삼 분의 y ‖ 는 이 ‖ 둘째". That left "는 이" as a
+// two-syllable phrase of its own between two pauses, and its 2 at -11.8 dB
+// (found in the final pass over the 30 problems, 2026-11-25). Without the
+// pause the particle joins its word and the number after it starts at level.
+const PAUSE_BEFORE_COPULA = /(?:\s*<break\b[^>]*\/>)+(\s*(?:는|은)(?=\s))/g;
+const copulaWithItsWord = (span) => span.replace(PAUSE_BEFORE_COPULA, '$1');
+
+// The y of "이차함수 y 는 …" came back from the recognizer as "i": after a
+// syllable with no 받침 the glide of 와이 is swallowed ("수와이" -> "수아이"). A
+// slight pause before the letter brings it back (same pass). Only a y that
+// opens a formula right after a word of the sentence: inside a formula ("이 y"
+// for 2y) a pause would cost the number before it.
+const OPENS_WITH_Y = /^\s*<say-as interpret-as="characters">[yY]<\/say-as>/;
+function pauseBeforeY(proseBefore, span) {
+  const last = proseBefore.trimEnd().slice(-1);
+  return OPENS_WITH_Y.test(span) && /[가-힣]/.test(last) && !hasJong(last) ? ` <break time="120ms"/>${span}` : span;
+}
+
+// A one-digit 순환마디 said twice is two identical syllables in a row: the "사
+// 사" of 0.4̇ took 391 ms together, the second one 156 ms, and was heard as
+// too fast (2026-11-25). The pair is said 40% slower (641 ms). A comma or a
+// pause between the two was worse: the second syllable dropped 10 to 16 dB and
+// the recognizer lost 반복. Longer 순환마디 ("이칠 이칠") are left alone.
+const ONE_DIGIT_REPEAT = /(?<![가-힣])([영일이삼사오육칠팔구]) \1(?= 반복(?![가-힣]))/g;
+const slowRepeat = (span) => span.replace(ONE_DIGIT_REPEAT, '<prosody rate="-40%">$1 $1</prosody>');
 
 // "루트 이" right before a pause loses its 2: 트 and 이 run together and the
 // recognizer hears "루트의" or just "루트" ((√5-√2) came back as "루트 오
@@ -699,7 +773,7 @@ function splitSpecialsRaw(latex, withRadicals) {
           for (const sub of splitAbs(seg4.latex)) {
             if (sub.latex === undefined || !withRadicals) { out.push(sub); continue; }
             for (const part of splitFractions(sub.latex)) {
-              if (part.latex !== undefined && !part.inNum) out.push(...splitRadicals(part.latex));
+              if (part.latex !== undefined && !part.inNum) out.push(...radicalSegments(part.latex));
               else out.push(part);
             }
           }
@@ -711,6 +785,12 @@ function splitSpecialsRaw(latex, withRadicals) {
 }
 
 /* --------------------- radical grouping by voice change ------------------ */
+
+// Off for now (2026-11-25): everything is read in the one voice, and a root is
+// read as SRE reads it, with its own grouping words. Set to true to bring the
+// second voice back for radicands; nothing else has to change.
+const VOICE_CHANGE = false;
+const radicalSegments = (latex) => (VOICE_CHANGE ? splitRadicals(latex) : [{ latex }]);
 
 // a radicand worth marking: contains an operator, a power or a nested
 // structure, i.e. the "where does the root end?" ambiguity actually exists
@@ -822,7 +902,7 @@ function splitFractions(latex) {
         plain = '';
         // the numerator may hold a root that takes the other voice
         const numSegs = isLong(num.inner)
-          ? splitRadicals(num.inner).map((seg) => ({ ...seg, inNum: true })) : [{ latex: num.inner }];
+          ? radicalSegments(num.inner).map((seg) => ({ ...seg, inNum: true })) : [{ latex: num.inner }];
         if (numSegs[0].inNum) numSegs[numSegs.length - 1].numEnd = true;
         segs.push({ den: den.inner, long: isLong(den.inner) }, BUNUI, ...numSegs);
         i = den.end;
@@ -951,6 +1031,38 @@ function keepFractionBrackets(latex, speech) {
   }
   return out;
 }
+
+/* ------------------------- figures and their relations ------------------- */
+
+// SRE puts the relation word between the two figures, in the order of the
+// symbols: "삼각형 A B C 닮음이다 삼각형 D E F 이고 …" for △ABC∽△DEF 이고. Korean
+// says the relation last, and the sentence then goes on from it (reported as
+// phrased wrong, 2026-11-25): "삼각형 A B C 와 삼각형 D E F 는 닮음 이고 …". The
+// same for ≡, and for ⊥ and ∥ between two figures. One relation per span;
+// a span with a comma or an equation in it is left as it was.
+const RELATION = { 닮음이다: '닮음', 합동이다: '합동', 수직이다: '수직', 평행하다: '평행' };
+const RELATION_WORD = '닮음이다|합동이다|수직이다|평행하다';
+const GAP = '(?:\\s|<break\\b[^>]*\\/>)+';
+const BETWEEN_FIGURES = new RegExp(`^(\\s*)(\\S[\\s\\S]*?)${GAP}(${RELATION_WORD})${GAP}(\\S[\\s\\S]*?)(\\s*)$`);
+const NOT_ONE_STATEMENT = new RegExp(`${RELATION_WORD}|,|(?:^|\\s)(?:는|은|같다)(?:\\s|$)`);
+function relationLast(speech) {
+  const m = speech.match(BETWEEN_FIGURES);
+  if (!m || NOT_ONE_STATEMENT.test(m[2]) || NOT_ONE_STATEMENT.test(m[4])) return speech;
+  const [, lead, a, rel, b, tail] = m;
+  return `${lead}${a} ${endsWithJong(a) ? '과' : '와'} ${b} ${endsWithJong(b) ? '은' : '는'} ${RELATION[rel]}${tail}`;
+}
+
+// A figure is named by its vertices, and SRE takes F, G and H for functions:
+// △FGH was "삼각형 F 의 G H" and ∠FGH "각 F 의 G H" (found 2026-11-25). Between
+// two capital letters that 의 is never a power's ("A 의 n 제곱" has the 제곱).
+// And \square before vertices is a quadrilateral, not the blank 네모.
+const CAP = '(?:<say-as interpret-as="characters">)?[A-Z](?:</say-as>)?';
+const UI_BETWEEN_CAPITALS = new RegExp(`(${CAP})\\s+의\\s+(?=${CAP}(?!\\s+(?:세|네)?제곱))`, 'g');
+const BLANK_BEFORE_VERTICES = new RegExp(`네모(?=\\s+${CAP}\\s+(?:의\\s+)?${CAP}\\s+(?:의\\s+)?${CAP})`, 'g');
+const figureNames = (speech) => speech.replace(BLANK_BEFORE_VERTICES, '사각형').replace(UI_BETWEEN_CAPITALS, '$1 ');
+
+/** One span's finished speech (plain, or SSML without its envelope). */
+const figures = (speech) => relationLast(figureNames(speech));
 
 const ROW_ORDINAL = ['첫째', '둘째', '셋째', '넷째', '다섯째'];
 
@@ -1212,15 +1324,17 @@ async function main() {
       if (ssml) {
         console.log(`STITCHED SSML (${stitchKey}, Azure envelope, voice=${voice}):`);
         console.log(hr);
-        const joined = doc.parts
-          .map((part) =>
-            part.latex === undefined ? escapeXml(part.prose) : spellNumbers(keepRootTwo(slowTwo(pauseAfterPowers(renderSpan(part.latex, escapeXml)))))
-          )
+        const pieces = doc.parts.map((part) => ({
+          math: part.latex !== undefined,
+          text: part.latex === undefined ? escapeXml(part.prose) : spellNumbers(keepRootTwo(slowTwo(slowRepeat(slowLetterDenominator(degreeWithNumber(copulaWithItsWord(closeBracketsTight(slowPowers(pauseBeforePoweredLetter(figures(renderSpan(part.latex, escapeXml)))))))))))),
+        }));
+        const joined = pieces
+          .map((piece, at) => (piece.math && at && !pieces[at - 1].math ? pauseBeforeY(pieces[at - 1].text, piece.text) : piece.text))
           .join('')
           .replace(/ +/g, ' ')
           .trim();
         // math speech included: a label inside a span ("… ⋯ ㉠") is as silent
-        const body = speakMarks(speakProblemLabels(joined))
+        const body = speakMarks(speakProblemLabels(pauseBeforeLastLetter(joined)))
           .replace(CHOICE_VALUE, (_m, lead, n) => lead + sinoKorean(n))
           // alt-voice markers -> sibling <voice> elements (nesting is rejected
           // by Azure: "[voice] should not contain [voice]")
@@ -1241,7 +1355,7 @@ async function main() {
         console.log(hr);
         const stitched = doc.parts
           .map((part) =>
-            part.latex === undefined ? part.prose : renderSpan(part.latex, (s) => s)
+            part.latex === undefined ? part.prose : figures(renderSpan(part.latex, (s) => s))
           )
           .join('')
           .replace(/ +/g, ' ')
@@ -1273,7 +1387,7 @@ async function main() {
 
 module.exports = { SPAN, checkWellFormed, splitRadicals, splitRepeating, splitSegments,
                    splitFences, splitChains, splitAbs, splitSpecials, endsWithJong,
-                   fixMisreads, joinTextWords, speakProblemLabels, capRate, slowDown, pauseAfterPowers, slowTwo, keepRootTwo, keepFractionBrackets, splitFractions, pauseDenominator, speakMarks, sinoKorean, spellNumbers };
+                   fixMisreads, joinTextWords, speakProblemLabels, capRate, slowDown, VOICE_CHANGE, figures, copulaWithItsWord, pauseBeforeY, degreeWithNumber, pauseBeforeLastLetter, slowPowers, pauseBeforePoweredLetter, closeBracketsTight, slowLetterDenominator, slowRepeat, slowTwo, keepRootTwo, keepFractionBrackets, splitFractions, pauseDenominator, speakMarks, sinoKorean, spellNumbers };
 
 if (require.main === module) {
   main().catch((err) => {

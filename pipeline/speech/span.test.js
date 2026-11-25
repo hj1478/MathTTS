@@ -111,6 +111,25 @@ test('fixMisreads clears the remaining #20 geometry misreads', () => {
   assert.strictEqual(fixMisreads('싸인 A 더하기 코싸인 B'), '사인 A 더하기 코사인 B');
 });
 
+test('a relation between two figures is said last, and vertices F G H are not functions', () => {
+  const { figures } = require('./speak');
+  const L = (c) => `<say-as interpret-as="characters">${c}</say-as>`;
+  assert.strictEqual(figures(' 삼각형 A B C 닮음이다 삼각형 D E F '), ' 삼각형 A B C 와 삼각형 D E F 는 닮음 ');
+  assert.strictEqual(figures('삼각형 A B L 합동이다 삼각형 D E M'), '삼각형 A B L 과 삼각형 D E M 은 합동');
+  assert.strictEqual(figures('선분 A B 수직이다 선분 C D'), '선분 A B 와 선분 C D 는 수직');
+  assert.strictEqual(figures(`삼각형 ${L('A')} ${L('B')} ${L('C')} <break time="250ms"/> 닮음이다 삼각형 ${L('D')} ${L('E')} ${L('F')}`),
+    `삼각형 ${L('A')} ${L('B')} ${L('C')} 와 삼각형 ${L('D')} ${L('E')} ${L('F')} 는 닮음`);
+  // already in sentence order, a chain, or more than one statement: unchanged
+  assert.strictEqual(figures('l 은 m 과 수직이다'), 'l 은 m 과 수직이다');
+  assert.strictEqual(figures('삼각형 A B C 닮음이다 삼각형 D E F 닮음이다 삼각형 G H I'), '삼각형 A B C 닮음이다 삼각형 D E F 닮음이다 삼각형 G H I');
+  // vertices
+  assert.strictEqual(figures('삼각형 F 의 G H'), '삼각형 F G H');
+  assert.strictEqual(figures('각 F 의 G H 는 90 도'), '각 F G H 는 90 도');
+  assert.strictEqual(figures('네모 E F 의 G H'), '사각형 E F G H');
+  assert.strictEqual(figures('A 의 B 제곱'), 'A 의 B 제곱');
+  assert.strictEqual(figures('네모 안에 알맞은 수'), '네모 안에 알맞은 수');
+});
+
 test('only ∽ (\\sim, read via \\backsim) becomes 닮음이다, never the \\tilde accent', async () => {
   // a plain 물결표 is \tilde, even between operands: \tilde{x}+1 is "x 물결표 더하기 1"
   assert.strictEqual(fixMisreads('x 물결표 더하기 1'), 'x 물결표 더하기 1');
@@ -123,7 +142,7 @@ test('only ∽ (\\sim, read via \\backsim) becomes 닮음이다, never the \\til
                         { encoding: 'utf8' });
   };
   const out = run('$\\triangle ABC \\sim \\triangle DEF$ 이고 $\\tilde{x}+1$');
-  assert.match(out, /삼각형 A B C 닮음이다 삼각형 D E F/);
+  assert.match(out, /삼각형 A B C 와 삼각형 D E F 는 닮음 이고/);
   assert.match(out, /x 물결표 더하기 1/);
 });
 
@@ -201,9 +220,11 @@ test('splitSpecials turns a dangling sign minus into its own word', () => {
      { text: '의 절댓값' }, { latex: '+3' }]);
   assert.deepStrictEqual(splitSpecials('-0.\\dot{3}', false),
     [{ text: '마이너스', sign: true }, { text: '영 점 삼 삼 반복' }]);
-  // between two roots the minus is binary and stays latex
+  // between two roots the minus is binary and stays latex; with the second
+  // voice off (speak.js VOICE_CHANGE) the roots are not split out at all
   assert.deepStrictEqual(splitSpecials('\\sqrt{a+b}-\\sqrt{a-b}', true),
-    [{ root: 'a+b' }, { latex: '-' }, { root: 'a-b' }]);
+    require('./speak').VOICE_CHANGE ? [{ root: 'a+b' }, { latex: '-' }, { root: 'a-b' }]
+      : [{ latex: '\\sqrt{a+b}-\\sqrt{a-b}' }]);
 });
 
 test('splitRepeating reads the integer part as a number', () => {
@@ -299,28 +320,24 @@ test('--both writes the same files as separate plain and --ssml runs', () => {
 
   test('slower or other prosody stays, also when nested with a faster one', () => {
     assert.equal(capRate('<prosody rate="-10%">a</prosody>'), '<prosody rate="-10%">a</prosody>');
-    assert.equal(capRate('<prosody pitch="+5%">a<prosody rate="+25%">b</prosody>c</prosody>'),
-      '<prosody pitch="+5%">abc</prosody>');
+    // a pitch change is unwrapped too: capital letters are not read in a higher tone
+    assert.equal(capRate('<prosody pitch="+30%">a<prosody rate="+25%">b</prosody>c</prosody>'), 'abc');
     assert.equal(capRate('<prosody rate="+25%">a<prosody rate="-10%">b</prosody>c</prosody>'),
       'a<prosody rate="-10%">b</prosody>c');
   });
 
-  test('a power is followed by a pause, so it does not run into the next term', () => {
-    const { pauseAfterPowers } = require('./speak');
-    const B = '<break time="300ms"/>';
-    assert.equal(pauseAfterPowers(' x 제곱 플러스 3 x '), ` x 제곱 ${B} 플러스 3 x `);
-    // also at the end of the formula, before the sentence goes on ("… 네제곱 을 간단히 하시오")
-    assert.equal(pauseAfterPowers(' 2 x 세제곱 마이너스 x 네제곱 '), ` 2 x 세제곱 ${B} 마이너스 x 네제곱 ${B} `);
-    // a particle that belongs to the power is said before the pause
-    assert.equal(pauseAfterPowers(' x 제곱 은 4 '), ` x 제곱 은 ${B} 4 `);
-    assert.equal(pauseAfterPowers(' y 세제곱 분의 x 제곱 '), ` y 세제곱 분의 ${B} x 제곱 ${B} `);
-    // already followed by a break or a comma, or at the end of the alt-voice run
-    assert.equal(pauseAfterPowers(' x 제곱 <break time="250ms"/> y '), ' x 제곱 <break time="250ms"/> y ');
-    assert.equal(pauseAfterPowers(' x 제곱 , y 제곱 '), ` x 제곱 , y 제곱 ${B} `);
-    assert.equal(pauseAfterPowers(' 루트 \x01x 제곱\x02 플러스 1 '), ' 루트 \x01x 제곱\x02 플러스 1 ');
+  test('a power is said slower and nothing pauses right after it, so its ㅂ is not lost', () => {
+    const { slowPowers } = require('./speak');
+    const P = (w) => `<prosody rate="-25%">${w}</prosody>`;
+    assert.equal(slowPowers(' x 제곱 플러스 3 x '), ` x ${P('제곱')} 플러스 3 x `);
+    assert.equal(slowPowers(' 2 x 세제곱 마이너스 x 네제곱 '), ` 2 x ${P('세제곱')} 마이너스 x ${P('네제곱')} `);
+    assert.equal(slowPowers(' x 제곱 은 4 '), ` x ${P('제곱')} 은 4 `);
+    // a short pause after it is taken out; the long one between rows stays
+    assert.equal(slowPowers(' x 제곱 <break time="250ms"/> y '), ` x ${P('제곱')} y `);
+    assert.equal(slowPowers(' x 제곱 <break time="750ms"/> 둘째, '), ` x ${P('제곱')} <break time="750ms"/> 둘째, `);
     // other words that contain 제곱
-    assert.equal(pauseAfterPowers(' 5 제곱센티미터 는 x '), ' 5 제곱센티미터 는 x ');
-    assert.equal(pauseAfterPowers(' 제곱근 2 '), ' 제곱근 2 ');
+    assert.equal(slowPowers(' 5 제곱센티미터 는 x '), ' 5 제곱센티미터 는 x ');
+    assert.equal(slowPowers(' 제곱근 2 '), ' 제곱근 2 ');
   });
 
   test('a 2 after 의 is said slower, so "의 이" is not heard as the letter a', () => {
@@ -329,6 +346,7 @@ test('--both writes the same files as separate plain and --ssml runs', () => {
     assert.equal(slowTwo(' 마이너스 3 분의 2 '), ` 마이너스 3 분의 ${slow(2)} `);
     assert.equal(slowTwo(' x 의 2 제곱 '), ` x 의 ${slow(2)} 제곱 `);
     assert.equal(slowTwo(' 3 분의 2.5 '), ` 3 분의 ${slow('2.5')} `);
+    assert.equal(slowTwo(' y 는 2 '), ` y 는 ${slow(2)} `);
     assert.equal(spellNumbers(slowTwo(' 3 분의 2 ')), ` 삼 분의 ${slow('이')} `);
     // other numbers, and a letter, do not collide
     assert.equal(slowTwo(' 3 분의 20 '), ' 3 분의 20 ');
@@ -346,9 +364,10 @@ test('--both writes the same files as separate plain and --ssml runs', () => {
     // (2x-1)/3: the numerator is the long part
     assert.deepEqual(splitFractions('\\frac{2x-1}{3}+1'),
       [{ den: '3', long: false }, BUNUI, { latex: '2x-1', inNum: true, numEnd: true }, { latex: '+1' }]);
-    // a root in a long numerator still gets its own segment (the other voice)
-    assert.deepEqual(splitFractions('\\frac{-b+\\sqrt{b^2-4ac}}{2a}'),
-      [{ den: '2a', long: false }, BUNUI, { latex: '-b+', inNum: true }, { root: 'b^2-4ac', inNum: true, numEnd: true }]);
+    // a root in a long numerator gets its own segment when the second voice is on
+    assert.deepEqual(splitFractions('\\frac{-b+\\sqrt{b^2-4ac}}{2a}'), require('./speak').VOICE_CHANGE
+      ? [{ den: '2a', long: false }, BUNUI, { latex: '-b+', inNum: true }, { root: 'b^2-4ac', inNum: true, numEnd: true }]
+      : [{ den: '2a', long: false }, BUNUI, { latex: '-b+\\sqrt{b^2-4ac}', inNum: true, numEnd: true }]);
     // one-term parts, a signed one, and a fraction inside brackets or braces stay whole
     for (const whole of ['\\frac{2}{3}x-\\frac{1}{2}', '\\frac{1}{-3}', '\\frac{-2}{3}', '\\left(\\frac{1}{x+1}\\right)^2',
       '2^{\\frac{1}{x+1}}']) {
@@ -369,6 +388,83 @@ test('--both writes the same files as separate plain and --ssml runs', () => {
     // no bracketed fraction in the LaTeX, or brackets already said: unchanged
     assert.equal(keepFractionBrackets('\\frac{2^2}{3}', '3 분의 2 제곱'), '3 분의 2 제곱');
     assert.equal(keepFractionBrackets('\\left(\\frac{2}{3}\\right)^2', '괄호 열고 3 분의 2 괄호 닫고 제곱'), '괄호 열고 3 분의 2 괄호 닫고 제곱');
+  });
+
+  test('nothing pauses before a closing bracket, so the last word inside is not swallowed', () => {
+    const { closeBracketsTight } = require('./speak');
+    const B = '<break time="250ms"/>';
+    assert.equal(closeBracketsTight(`괄호 열고 ${B} 마이너스 3 분의 2 ${B} 괄호 닫고 ${B} 제곱`),
+      `괄호 열고 ${B} 마이너스 3 분의 2 괄호 닫고 ${B} 제곱`);
+    assert.equal(closeBracketsTight(`x 제곱 <break time="300ms"/> 중괄호 닫고`), 'x 제곱 중괄호 닫고');
+    assert.equal(closeBracketsTight(`y ${B} 중괄호 닫고`), 'y 중괄호 닫고');
+    assert.equal(closeBracketsTight(`x ${B} 플러스 1`), `x ${B} 플러스 1`);
+  });
+
+  test('a one-digit 순환마디 said twice is slowed, so the two syllables do not blur', () => {
+    const { slowRepeat } = require('./speak');
+    const slow = (w) => `<prosody rate="-40%">${w}</prosody>`;
+    assert.equal(slowRepeat(' 영 점 사 사 반복 '), ` 영 점 ${slow('사 사')} 반복 `);
+    assert.equal(slowRepeat(' 영 점 일 육 육 반복 '), ` 영 점 일 ${slow('육 육')} 반복 `);
+    // a longer 순환마디, and the same digit twice with no 반복 after it, are left alone
+    assert.equal(slowRepeat(' 영 점 이칠 이칠 반복 '), ' 영 점 이칠 이칠 반복 ');
+    assert.equal(slowRepeat(' 사 사 분의 일 '), ' 사 사 분의 일 ');
+  });
+
+  test('a slight pause before the letter that carries a power: x, then "y 제곱"', () => {
+    const { pauseBeforePoweredLetter } = require('./speak');
+    const L = (c) => `<say-as interpret-as="characters">${c}</say-as>`;
+    const B = '<break time="120ms"/>';
+    assert.equal(pauseBeforePoweredLetter(` 마이너스 3 ${L('x')} ${L('y')} 제곱 `), ` 마이너스 3 ${L('x')} ${B} ${L('y')} 제곱 `);
+    assert.equal(pauseBeforePoweredLetter(` ${L('a')} ${L('b')} ${L('c')} 세제곱 `), ` ${L('a')} ${L('b')} ${B} ${L('c')} 세제곱 `);
+    assert.equal(pauseBeforePoweredLetter(` ${L('x')} ${L('y')} 의 n 제곱 `), ` ${L('x')} ${B} ${L('y')} 의 n 제곱 `);
+    // no power on the second letter, or a number in front: unchanged
+    assert.equal(pauseBeforePoweredLetter(` 3 ${L('x')} ${L('y')} `), ` 3 ${L('x')} ${L('y')} `);
+    assert.equal(pauseBeforePoweredLetter(` 3 ${L('y')} 제곱 `), ` 3 ${L('y')} 제곱 `);
+  });
+
+  test('a one-letter denominator is said slower, so it is not lost before 분의', () => {
+    const { slowLetterDenominator } = require('./speak');
+    const L = (c) => `<say-as interpret-as="characters">${c}</say-as>`;
+    const slow = (x) => `<prosody rate="-25%">${x}</prosody>`;
+    assert.equal(slowLetterDenominator(`괄호 열고 <break time="250ms"/> ${L('b')} 분의 3 ${L('a')} 제곱`),
+      `괄호 열고 <break time="250ms"/> ${slow(L('b'))} 분의 3 ${L('a')} 제곱`);
+    assert.equal(slowLetterDenominator(` ${L('x')} 분의 1 `), ` ${slow(L('x'))} 분의 1 `);
+    // a letter after a number or another letter is not alone
+    assert.equal(slowLetterDenominator(` 9 ${L('a')} 분의 ${L('b')} 제곱 `), ` 9 ${L('a')} 분의 ${L('b')} 제곱 `);
+    assert.equal(slowLetterDenominator(` ${L('a')} ${L('b')} 분의 1 `), ` ${L('a')} ${L('b')} 분의 1 `);
+  });
+
+  test('a letter that ends a phrase before a comma gets a slight pause in front of it', () => {
+    const { pauseBeforeLastLetter } = require('./speak');
+    const L = (c) => `<say-as interpret-as="characters">${c}</say-as>`;
+    const B = '<break time="120ms"/>';
+    assert.equal(pauseBeforeLastLetter(`반지름의 길이가 ${L('r')} , 중심각의 크기가 ${L('x')} 도 인`),
+      `반지름의 길이가 ${B} ${L('r')} , 중심각의 크기가 ${L('x')} 도 인`);
+    assert.equal(pauseBeforeLastLetter(`${L('x')} 는 ${L('a')} , ${L('y')} 는 ${L('b')} 일 때`),
+      `${L('x')} 는 ${B} ${L('a')} , ${L('y')} 는 ${L('b')} 일 때`);
+    // the sentence goes on from the letter: unchanged
+    assert.equal(pauseBeforeLastLetter(`상수 ${L('a')} 의 값`), `상수 ${L('a')} 의 값`);
+  });
+
+  test('no pause between an angle and 도', () => {
+    const { degreeWithNumber } = require('./speak');
+    const B = '<break time="250ms"/>';
+    assert.equal(degreeWithNumber(`사인 제곱 ${B} 60 ${B} 도 ${B} 플러스`), `사인 제곱 ${B} 60 도 ${B} 플러스`);
+    assert.equal(degreeWithNumber('탄젠트 45 도'), '탄젠트 45 도');
+    assert.equal(degreeWithNumber(`x 는 3 ${B} 도형`), `x 는 3 ${B} 도형`);
+  });
+
+  test('the = particle joins the word before it; y after an open syllable gets a slight pause', () => {
+    const { copulaWithItsWord, pauseBeforeY } = require('./speak');
+    const L = (c) => `<say-as interpret-as="characters">${c}</say-as>`;
+    const B = '<break time="250ms"/>';
+    assert.equal(copulaWithItsWord(`3 분의 ${L('y')} ${B} 는 2 ${B}`), `3 분의 ${L('y')} 는 2 ${B}`);
+    assert.equal(copulaWithItsWord(`2 분의 1 은 ${B} 4 분의 ${L('x')}`), `2 분의 1 은 ${B} 4 분의 ${L('x')}`);
+    // (the sentence before the formula, the formula's speech)
+    assert.equal(pauseBeforeY('이차함수', ` ${L('y')} 는 `), ` <break time="120ms"/> ${L('y')} 는 `);
+    assert.equal(pauseBeforeY('그 값', ` ${L('y')} 는 `), ` ${L('y')} 는 `);
+    assert.equal(pauseBeforeY('이차함수', ` ${L('x')} 는 `), ` ${L('x')} 는 `);
+    assert.equal(pauseBeforeY('이차함수', ` 2 ${L('y')} `), ` 2 ${L('y')} `);
   });
 
   test('a lone 2 after 루트 is kept apart from it when a pause follows', () => {

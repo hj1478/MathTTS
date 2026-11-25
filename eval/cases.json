@@ -98,7 +98,7 @@
     "id": "system-of-equations",
     "input": "연립방정식 $\\left\\{\\begin{aligned}&x+y=5\\\\ &2x+y=7\\end{aligned}\\right.$ 의 해를 구하시오.",
     "must": [
-      "케이스 1: x 더하기 y 는 5"
+      "첫째, x 더하기 y 는 5"
     ],
     "mustnot": [
       "빈 칸"
@@ -197,7 +197,7 @@
     "input": "△ABC∽△DEF일 때, 닮음비를 구하시오.",
     "must": [
       "삼각형 A B C",
-      "닮음이다"
+      "삼각형 D E F 는 닮음"
     ],
     "mustnot": [
       "물결표",
@@ -293,7 +293,7 @@
     "id": "hangul-text-in-math",
     "input": "즉, $ \\frac{(9\\text{와 }12\\text{의 공배수})}{(26\\text{과 }13\\text{의 공약수})} $의 꼴이어야 한다.",
     "must": [
-      "공 배 수",
+      "공배수",
       "분모가",
       "인 분수"
     ],
@@ -527,16 +527,16 @@
     "id": "piecewise-basic",
     "input": "$f(x)=\\begin{cases} x+1 & (x\\geq 0) \\\\ -x & (x<0) \\end{cases}$ 일 때 f(-2)를 구하시오.",
     "must": [
-      "케이스 1: x 더하기 1",
+      "첫째, x 더하기 1",
       "0 보다 크거나 같다",
-      "케이스 2: 마이너스 x"
+      "둘째, 마이너스 x"
     ]
   },
   {
     "id": "piecewise-double-align",
     "input": "함수 $f(x)=\\left\\{\\begin{aligned}&2x+1 && (x>1)\\\\ &-x+4 && (x\\leq 1)\\end{aligned}\\right.$ 에서 f(3)을 구하시오.",
     "must": [
-      "케이스 2: 마이너스 x 더하기 4"
+      "둘째, 마이너스 x 더하기 4"
     ],
     "mustnot": [
       "빈 칸"
@@ -547,8 +547,8 @@
     "input": "$f(x)=\\begin{cases} \\frac{x}{2} & (x는 짝수) \\\\ 3x+1 & (x는 홀수) \\end{cases}$ 로 정의한다.",
     "must": [
       "2 분의 x",
-      "짝 수",
-      "홀 수"
+      "짝수",
+      "홀수"
     ],
     "mustnot": [
       "백슬래시",
@@ -641,7 +641,7 @@
     "id": "congruence-cong-spelling",
     "input": "△ABC≅△DEF일 때, 대응변의 길이를 구하시오.",
     "must": [
-      "합동이다"
+      "는 합동"
     ],
     "mustnot": [
       "거의 같다",
