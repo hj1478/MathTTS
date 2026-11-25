@@ -47,8 +47,7 @@ selftest_image = _with_app_module(
 
 DIAG_HANG_S = 60
 DIAG_PARALLEL = 4
-DIAG_IMAGES = ["kr question 1.png", "kr question 2.png", "kr question 3.png",
-               "kr question 4.png", "kr question 5.png", "page.png"]
+DIAG_IMAGES = ["kr question 1.png", "page.png"]
 DIAG_KW = dict(memory=16384, retries=0, startup_timeout=STARTUP_TIMEOUT_S,
                timeout=STARTUP_TIMEOUT_S + 8 * DIAG_HANG_S)
 
@@ -308,7 +307,7 @@ def hardkill_selftest(cutoff_s=5):
 
 
 @app.local_entrypoint()
-def cpu_check(image: str = str(REPO / "fixtures" / "kr question 2.png")):
+def cpu_check(image: str = str(REPO / "fixtures" / "kr question 1.png")):
     """One image through OCR on CPU, printed next to the saved output/<stem>.md."""
     path = Path(image)
     r = ocr_cpu.remote(path.read_bytes(), path.name)

@@ -212,7 +212,6 @@ exists to test.
 | `pipeline/` | `run.py` runs the whole pipeline, image or PDF → wav. One file per stage: `pdf_to_images.py` (0), `ocr_vl.py` (1), `dot_check.py` (1.5), `normalize.py` (2), `tts_full.py` (4); `llm.py` and `tts_probe.py` are their OpenAI and Azure clients |
 | `sre-probe/` | Stage 3, LaTeX → Korean speech (Node) |
 | `backend/` | The pipeline as a web API on Modal |
-| `app/` | The Expo app that uses the API |
 | `scripts/` | Eval harnesses, listening probes and the backend smoke test — nothing the pipeline needs |
 | `fixtures/` | Sample inputs with their `.expect` sidecars |
 | `eval/` | Golden cases and the record of problems found |
@@ -286,8 +285,7 @@ python pipeline/ocr_vl.py --eval fixtures       # OCR each image, score against 
 
 ## Web backend (Modal)
 
-The app that uses it is in [`app/`](app/README.md): Expo (iOS, Android, web); the
-web build deploys to Cloudflare Pages (see its README).
+The Expo app that uses it (iOS, Android, web) is kept outside this repository.
 
 `backend/modal_app.py` runs the same pipeline as a web API on
 [Modal](https://modal.com): `POST /jobs` with an image, poll `GET /jobs/{id}`
@@ -359,7 +357,8 @@ in `backend/diagnostics.py`, run with `modal run` and never deployed (its
 docstring lists the commands). The deployed `mathtts` app has only the worker,
 the web API and the hourly cleanup.
 
-Known OCR error: in `kr question 2.png` the model drops the braces in
+Known OCR error: in `kr question 2.png` (no longer in the repo; see git
+history) the model drops the braces in
 −2⁵ ÷ {(−2)⁴ × (−2)}, on GPU and CPU alike, which changes the math that is read
 aloud. `output/kr question 2.md` has the braces but is not raw model output
 (it appears to have been edited by hand), so don't use it as an OCR reference

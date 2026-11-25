@@ -5,7 +5,7 @@ Sends HTTP requests only: it never imports the pipeline, so it is safe to run on
 any laptop. Needs `requests`.
 
     python scripts/smoke_test.py https://<workspace>--mathtts.<region>.modal.run
-    python scripts/smoke_test.py <url> --image "fixtures/kr question 2.png"
+    python scripts/smoke_test.py <url> --image fixtures/page.png
     python scripts/smoke_test.py <url> --repeat 2   # 1st = cold start, 2nd = warm
     python scripts/smoke_test.py <url> --warmup-lead 20   # POST /warmup, wait 20 s, then upload
 
