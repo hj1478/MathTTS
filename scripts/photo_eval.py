@@ -199,7 +199,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--photos", help="folder of phone photos, named after their fixture")
     ap.add_argument("--synth", action="store_true", help="make stand-in photos from the fixtures instead")
-    ap.add_argument("--fixtures", default=str(ROOT), help="folder of clean originals (default: repo root)")
+    ap.add_argument("--fixtures", default=str(ROOT / "fixtures"), help="folder of clean originals (default: fixtures/)")
     ap.add_argument("--only", help="comma-separated fixture names to keep (without extension)")
     ap.add_argument("--configs", default="off,both", help="comma-separated, of: " + ", ".join(CONFIGS))
     ap.add_argument("--out", default=str(ROOT / "runs" / "photo_eval"))
