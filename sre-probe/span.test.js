@@ -305,11 +305,85 @@ test('--both writes the same files as separate plain and --ssml runs', () => {
       'a<prosody rate="-10%">b</prosody>c');
   });
 
-  test('every voice run is read 10% under the voice\'s own pace', () => {
+  test('a power is followed by a pause, so it does not run into the next term', () => {
+    const { pauseAfterPowers } = require('./speak');
+    const B = '<break time="300ms"/>';
+    assert.equal(pauseAfterPowers(' x 제곱 플러스 3 x '), ` x 제곱 ${B} 플러스 3 x `);
+    // also at the end of the formula, before the sentence goes on ("… 네제곱 을 간단히 하시오")
+    assert.equal(pauseAfterPowers(' 2 x 세제곱 마이너스 x 네제곱 '), ` 2 x 세제곱 ${B} 마이너스 x 네제곱 ${B} `);
+    // a particle that belongs to the power is said before the pause
+    assert.equal(pauseAfterPowers(' x 제곱 은 4 '), ` x 제곱 은 ${B} 4 `);
+    assert.equal(pauseAfterPowers(' y 세제곱 분의 x 제곱 '), ` y 세제곱 분의 ${B} x 제곱 ${B} `);
+    // already followed by a break or a comma, or at the end of the alt-voice run
+    assert.equal(pauseAfterPowers(' x 제곱 <break time="250ms"/> y '), ' x 제곱 <break time="250ms"/> y ');
+    assert.equal(pauseAfterPowers(' x 제곱 , y 제곱 '), ` x 제곱 , y 제곱 ${B} `);
+    assert.equal(pauseAfterPowers(' 루트 \x01x 제곱\x02 플러스 1 '), ' 루트 \x01x 제곱\x02 플러스 1 ');
+    // other words that contain 제곱
+    assert.equal(pauseAfterPowers(' 5 제곱센티미터 는 x '), ' 5 제곱센티미터 는 x ');
+    assert.equal(pauseAfterPowers(' 제곱근 2 '), ' 제곱근 2 ');
+  });
+
+  test('a 2 after 의 is said slower, so "의 이" is not heard as the letter a', () => {
+    const { slowTwo, spellNumbers } = require('./speak');
+    const slow = (n) => `<prosody rate="-25%">${n}</prosody>`;
+    assert.equal(slowTwo(' 마이너스 3 분의 2 '), ` 마이너스 3 분의 ${slow(2)} `);
+    assert.equal(slowTwo(' x 의 2 제곱 '), ` x 의 ${slow(2)} 제곱 `);
+    assert.equal(slowTwo(' 3 분의 2.5 '), ` 3 분의 ${slow('2.5')} `);
+    assert.equal(spellNumbers(slowTwo(' 3 분의 2 ')), ` 삼 분의 ${slow('이')} `);
+    // other numbers, and a letter, do not collide
+    assert.equal(slowTwo(' 3 분의 20 '), ' 3 분의 20 ');
+    assert.equal(slowTwo(' 3 분의 4 '), ' 3 분의 4 ');
+    assert.equal(slowTwo(' 3 분의 a '), ' 3 분의 a ');
+  });
+
+  test('a fraction with a several-term denominator or numerator is split so it can be paced', () => {
+    const { splitFractions, pauseDenominator } = require('./speak');
+    const BUNUI = { text: '분의', sign: true, frac: true };
+    assert.deepEqual(splitFractions('\\frac{a}{2^2\\times3\\times5}'),
+      [{ den: '2^2\\times3\\times5', long: true }, BUNUI, { latex: 'a' }]);
+    assert.deepEqual(splitFractions('1+\\frac{x}{x^2+1}=3'),
+      [{ latex: '1+' }, { den: 'x^2+1', long: true }, BUNUI, { latex: 'x' }, { latex: '=3' }]);
+    // (2x-1)/3: the numerator is the long part
+    assert.deepEqual(splitFractions('\\frac{2x-1}{3}+1'),
+      [{ den: '3', long: false }, BUNUI, { latex: '2x-1', inNum: true, numEnd: true }, { latex: '+1' }]);
+    // a root in a long numerator still gets its own segment (the other voice)
+    assert.deepEqual(splitFractions('\\frac{-b+\\sqrt{b^2-4ac}}{2a}'),
+      [{ den: '2a', long: false }, BUNUI, { latex: '-b+', inNum: true }, { root: 'b^2-4ac', inNum: true, numEnd: true }]);
+    // one-term parts, a signed one, and a fraction inside brackets or braces stay whole
+    for (const whole of ['\\frac{2}{3}x-\\frac{1}{2}', '\\frac{1}{-3}', '\\frac{-2}{3}', '\\left(\\frac{1}{x+1}\\right)^2',
+      '2^{\\frac{1}{x+1}}']) {
+      assert.deepEqual(splitFractions(whole), [{ latex: whole }]);
+    }
+    const B = '<break time="250ms"/>';
+    assert.equal(pauseDenominator('2 제곱 곱하기 3 곱하기 마이너스 5'), `2 제곱 ${B} 곱하기 3 ${B} 곱하기 마이너스 5`);
+    assert.equal(pauseDenominator(`x ${B} 플러스 1`), `x ${B} 플러스 1`);
+    assert.equal(pauseDenominator('마이너스 x 플러스 1'), `마이너스 x ${B} 플러스 1`);
+  });
+
+  test('brackets around a one-digit fraction under a power are said', () => {
+    const { keepFractionBrackets } = require('./speak');
+    assert.equal(keepFractionBrackets('\\left(\\frac{2}{3}\\right)^2', '3 분의 2 제곱'), '괄호 열고 3 분의 2 괄호 닫고 제곱');
+    assert.equal(keepFractionBrackets('(\\frac{2}{3})^n', '3 분의 2 의 n 제곱'), '괄호 열고 3 분의 2 괄호 닫고 의 n 제곱');
+    assert.equal(keepFractionBrackets('\\left(\\frac{1}{2}\\right)^3\\times\\left(\\frac{3}{4}\\right)^2', '2 분의 1 세제곱 곱하기 4 분의 3 제곱'),
+      '괄호 열고 2 분의 1 괄호 닫고 세제곱 곱하기 괄호 열고 4 분의 3 괄호 닫고 제곱');
+    // no bracketed fraction in the LaTeX, or brackets already said: unchanged
+    assert.equal(keepFractionBrackets('\\frac{2^2}{3}', '3 분의 2 제곱'), '3 분의 2 제곱');
+    assert.equal(keepFractionBrackets('\\left(\\frac{2}{3}\\right)^2', '괄호 열고 3 분의 2 괄호 닫고 제곱'), '괄호 열고 3 분의 2 괄호 닫고 제곱');
+  });
+
+  test('a lone 2 after 루트 is kept apart from it when a pause follows', () => {
+    const { keepRootTwo } = require('./speak');
+    const B = '<break time="250ms"/>';
+    assert.equal(keepRootTwo(`루트 2 ${B} 괄호 닫고`), `루트 <break time="120ms"/> 2 ${B} 괄호 닫고`);
+    assert.equal(keepRootTwo('루트 2 x'), '루트 2 x');
+    assert.equal(keepRootTwo(`루트 27 ${B}`), `루트 27 ${B}`);
+  });
+
+  test('every voice run is read 20% under the voice\'s own pace', () => {
     const { slowDown } = require('./speak');
     const out = slowDown('<speak><voice name="a">x</voice><voice name="b">y</voice></speak>');
-    assert.equal(out, '<speak><voice name="a"><prosody rate="-10%">x</prosody></voice>' +
-      '<voice name="b"><prosody rate="-10%">y</prosody></voice></speak>');
+    assert.equal(out, '<speak><voice name="a"><prosody rate="-20%">x</prosody></voice>' +
+      '<voice name="b"><prosody rate="-20%">y</prosody></voice></speak>');
     assert.equal(checkWellFormed(out), null);
   });
 

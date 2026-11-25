@@ -265,13 +265,43 @@ const AZURE_SSML = (voice, body) =>
   '<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="ko-KR">' +
   `<voice name="${voice}">${body}</voice></speak>`;
 
-// The fastest anything is read: 10% under the voice's own pace (chosen
-// 2026-11-18; the voice's own pace was the limit before). Each <voice> run is
-// wrapped, since a <prosody> cannot span two voices.
-const MAX_RATE = '-10%';
+// The fastest anything is read: 20% under the voice's own pace (2026-11-25;
+// it was 10% under from 2026-11-18, and the voice's own pace before that).
+// Each <voice> run is wrapped, since a <prosody> cannot span two voices.
+const MAX_RATE = '-20%';
 const slowDown = (ssml) => ssml
   .replace(/<voice name="[^"]*">/g, (v) => `${v}<prosody rate="${MAX_RATE}">`)
   .replace(/<\/voice>/g, '</prosody></voice>');
+
+// A power runs straight into what comes next: SRE puts a break after an
+// exponent only before an implied product ("x 제곱 <break/> y"), so "x 제곱
+// 플러스 삼 x" was one unbroken run and the exponent was hard to catch
+// (reported 2026-11-25). Every power is followed by a pause; a particle that
+// belongs to it (제곱 은, 세제곱 분의) is said first. Also at the end of a span:
+// "…제곱 을 간단히 하시오" ran the power into the sentence's own particle
+// (reported 2026-11-25). Not where a break already follows. 제곱근 and
+// 제곱센티미터 are other words.
+const POWER_PAUSE = '<break time="300ms"/>';
+// the power word, and a particle said with it
+const POWER = /(?<![가-힣])(?:세|네)?제곱(?![가-힣])(?:\s+(?:은|는|의|분의)(?![가-힣]))?/g;
+const pauseAfterPowers = (span) => span.replace(POWER, (m, at) =>
+  (/^\s*(?:<break\b|,|\x02)/.test(span.slice(at + m.length)) ? m : `${m} ${POWER_PAUSE}`));
+
+// 의 is said [에], so a 2 right after it — "삼 분의 이", "x 의 이 제곱" — comes
+// out "…에이", which is the letter a: (-2/3) was heard as (-a/3), and the
+// recognizer heard 일 (reported 2026-11-25). The 2 is said slower, which the
+// recognizer hears as 이 in both places tried. A pause between the two did
+// separate them but left 의 hanging before it, mumbled ("삼 분 이"). Runs
+// before the numbers are spelled out.
+const TWO_AFTER_UI = /((?<![가-힣])(?:분의|의)\s+)(2(?:\.\d+)?)(?![\d,])/g;
+const slowTwo = (span) => span.replace(TWO_AFTER_UI, '$1<prosody rate="-25%">$2</prosody>');
+
+// "루트 이" right before a pause loses its 2: 트 and 이 run together and the
+// recognizer hears "루트의" or just "루트" ((√5-√2) came back as "루트 오
+// 마이너스 루트 괄호 닫고", 2026-11-25). A very short pause between the two
+// keeps the number; with no pause after it the 2 is heard as it is.
+const ROOT_TWO = /(루트)(\s+)(?=2(?![\d.,])\s*<break\b)/g;
+const keepRootTwo = (span) => span.replace(ROOT_TWO, '$1 <break time="120ms"/>$2');
 
 /* --------------------- repeating decimals (순환소수) --------------------- */
 
@@ -667,8 +697,11 @@ function splitSpecialsRaw(latex, withRadicals) {
         for (const seg4 of splitChains(seg3.latex)) {
           if (seg4.latex === undefined) { out.push(seg4); continue; }
           for (const sub of splitAbs(seg4.latex)) {
-            if (sub.latex !== undefined && withRadicals) out.push(...splitRadicals(sub.latex));
-            else out.push(sub);
+            if (sub.latex === undefined || !withRadicals) { out.push(sub); continue; }
+            for (const part of splitFractions(sub.latex)) {
+              if (part.latex !== undefined && !part.inNum) out.push(...splitRadicals(part.latex));
+              else out.push(part);
+            }
           }
         }
       }
@@ -679,10 +712,11 @@ function splitSpecialsRaw(latex, withRadicals) {
 
 /* --------------------- radical grouping by voice change ------------------ */
 
-// a radicand worth marking: contains an operator or a nested structure, i.e.
-// the "where does the root end?" ambiguity actually exists. \sqrt{2}, \sqrt{ab}
+// a radicand worth marking: contains an operator, a power or a nested
+// structure, i.e. the "where does the root end?" ambiguity actually exists
+// (√(4a²) and √4·a² were the same words, one pause apart). \sqrt{2}, \sqrt{ab}
 // stay whole-span.
-const COMPLEX_RADICAND = /[+\-±×÷]|\\(?:frac|sqrt|pm|times|div|cdot)\b/;
+const COMPLEX_RADICAND = /[+\-±×÷^]|\\(?:frac|sqrt|pm|times|div|cdot)(?![A-Za-z])/;
 
 const parenBalanced = (s) => {
   let d = 0;
@@ -735,6 +769,83 @@ function splitRadicals(latex) {
   if (plain.trim()) segs.push({ latex: plain });
   return segs;
 }
+
+/* ------------------ fractions with a long denominator -------------------- */
+
+// The denominator is said first, so one with several terms runs straight into
+// 분의 and the numerator: a/(2²×3×5) was "이 제곱 곱하기 삼 곱하기 오 분의 a" in
+// one breath, too fast to follow and no different from 2²×3×(a/5) (reported
+// 2026-11-25). Such a denominator is its own segment: a pause before it when
+// something comes first, one between its terms, a longer one before 분의, and
+// one after it before the numerator.
+// A numerator with several terms has the other half of the problem: (2x-1)/3
+// and 2x/3-1 were the same audio. It is said in one run after a pause ("삼
+// 분의 ‖ 이 x 마이너스 일"), where 2x/3-1 pauses before the 마이너스 instead,
+// and what follows the fraction waits for a pause.
+// SSML only, and only a fraction outside every bracket and brace, where the
+// pieces around it still read on their own.
+const LONG_TERM = /[+\-±×÷]|\\(?:pm|times|div|cdot)(?![A-Za-z])/;
+const BUNUI = { text: '분의', sign: true, frac: true }; // sign: a "-" after it is 마이너스
+const DEN_START_PAUSE = '<break time="400ms"/>';
+const DEN_TERM_PAUSE = '<break time="250ms"/>';
+const DEN_END_PAUSE = '<break time="400ms"/>';
+const NUM_PAUSE = '<break time="300ms"/>';
+const NUM_END_PAUSE = '<break time="350ms"/>';
+const isLong = (latex) => LONG_TERM.test(latex.replace(/^\s*[+-]/, ''));
+
+const braceGroup = (latex, at) => {
+  let j = at;
+  while (latex[j] === ' ') j++;
+  if (latex[j] !== '{') return null;
+  let depth = 1;
+  let k = j + 1;
+  while (k < latex.length && depth) {
+    if (latex[k] === '{') depth++;
+    else if (latex[k] === '}') depth--;
+    k++;
+  }
+  return depth ? null : { inner: latex.slice(j + 1, k - 1), end: k };
+};
+
+function splitFractions(latex) {
+  const segs = [];
+  let plain = '';
+  let depth = 0;
+  let i = 0;
+  while (i < latex.length) {
+    const frac = !depth && latex.slice(i).match(/^\\[dt]?frac(?![A-Za-z])/);
+    if (frac) {
+      const num = braceGroup(latex, i + frac[0].length);
+      const den = num && braceGroup(latex, num.end);
+      if (den && num.inner.trim() && den.inner.trim() && (isLong(den.inner) || isLong(num.inner))) {
+        if (plain.trim()) segs.push({ latex: plain });
+        plain = '';
+        // the numerator may hold a root that takes the other voice
+        const numSegs = isLong(num.inner)
+          ? splitRadicals(num.inner).map((seg) => ({ ...seg, inNum: true })) : [{ latex: num.inner }];
+        if (numSegs[0].inNum) numSegs[numSegs.length - 1].numEnd = true;
+        segs.push({ den: den.inner, long: isLong(den.inner) }, BUNUI, ...numSegs);
+        i = den.end;
+        continue;
+      }
+    }
+    if ('{(['.includes(latex[i])) depth++;
+    else if ('})]'.includes(latex[i])) depth--;
+    plain += latex[i++];
+  }
+  if (!segs.length) return [{ latex }];
+  if (plain.trim()) segs.push({ latex: plain });
+  return segs;
+}
+
+// a pause before each operator inside the denominator, unless one is there
+// already or the word is a sign ("곱하기 마이너스 삼")
+const OPERATOR_KO = '곱하기|나누기|더하기|빼기|플러스|마이너스';
+const pauseDenominator = (den) => den.replace(
+  new RegExp(`(\\S)(\\s+)(?=(?:${OPERATOR_KO})(?![가-힣]))`, 'g'),
+  (m, last, gap, at) => (last === '>' && /<break\b[^>]*>$/.test(den.slice(0, at + 1))
+    || new RegExp(`(?:^|\\s)(?:${OPERATOR_KO})$`).test(den.slice(0, at + 1))
+    ? m : `${last} ${DEN_TERM_PAUSE}${gap}`));
 
 /**
  * Well-formedness check for the assembled SSML (issue #11). The Azure envelope
@@ -817,6 +928,26 @@ function joinTextWords(latex, speech) {
     for (const word of m[1].match(/[가-힣]{2,}/g) ?? []) {
       out = out.replace(new RegExp(`(?<![가-힣])${[...word].join('\\s+')}(?![가-힣])`, 'g'), word);
     }
+  }
+  return out;
+}
+
+/** SRE drops the brackets around a fraction of two single digits: (2/3)² came
+ * out "3 분의 2 제곱", the same words as 2²/3 (found 2026-11-25). Where the
+ * LaTeX has such a bracketed fraction under a power, the brackets are said. */
+const BRACKETED_FRACTION = /(?:\\left\s*)?\(\s*\\[dt]?frac\s*\{\s*(\d)\s*\}\s*\{\s*(\d)\s*\}\s*(?:\\right\s*)?\)\s*\^/g;
+function keepFractionBrackets(latex, speech) {
+  let out = speech;
+  let from = 0;
+  for (const [, num, den] of latex.matchAll(BRACKETED_FRACTION)) {
+    const GAP = '(?:\\s|<[^>]*>)+';
+    const said = new RegExp(`(?<![\\d.])${den}${GAP}분의${GAP}${num}(?=${GAP}(?:의${GAP})?\\S)`, 'g');
+    said.lastIndex = from;
+    const m = said.exec(out);
+    if (!m || /괄호 열고(?:\s|<[^>]*>)*$/.test(out.slice(0, m.index))) continue;
+    const put = `괄호 열고 ${m[0]} 괄호 닫고`;
+    out = out.slice(0, m.index) + put + out.slice(m.index + m[0].length);
+    from = m.index + put.length;
   }
   return out;
 }
@@ -929,7 +1060,7 @@ async function main() {
       wanted.add(part.latex);
       for (const ssml of modes) {
         for (const seg of splitSpecials(part.latex, ssml)) {
-          if (seg.text === undefined) wanted.add(seg.root ?? seg.latex);
+          if (seg.text === undefined) wanted.add(seg.root ?? seg.den ?? seg.latex);
         }
       }
     }
@@ -970,7 +1101,7 @@ async function main() {
           continue;
         }
         try {
-          speech.get(latex).set(key, joinTextWords(latex, fixMisreads(sre.toSpeech(conv.mathml))));
+          speech.get(latex).set(key, keepFractionBrackets(latex, joinTextWords(latex, fixMisreads(sre.toSpeech(conv.mathml)))));
         } catch (err) {
           speech.get(latex).set(key, { error: String(err) });
         }
@@ -1012,14 +1143,14 @@ async function main() {
         // radicand switches to the alternate-gender voice (SSML only). Any
         // segment without clean speech falls back to the whole-span path.
         const segs = splitSpecials(latex, ssml);
-        if (segs.some((s) => s.text !== undefined || s.root !== undefined)) {
+        if (segs.some((s) => s.text !== undefined || s.root !== undefined || s.den !== undefined)) {
           const rendered = [];
           for (const [si, seg] of segs.entries()) {
             if (seg.text !== undefined) {
-              rendered.push(` ${escape(seg.text)} `);
+              rendered.push(seg.frac ? ` ${seg.text} ${NUM_PAUSE} ` : ` ${escape(seg.text)} `);
               continue;
             }
-            let segOut = speech.get(seg.root ?? seg.latex)?.get(stitchKey);
+            let segOut = speech.get(seg.root ?? seg.den ?? seg.latex)?.get(stitchKey);
             if (typeof segOut !== 'string' || !segOut.trim()) {
               rendered.length = 0;
               break;
@@ -1045,8 +1176,14 @@ async function main() {
             // \x01/\x02 mark the alt-voice region; Azure forbids a <voice>
             // inside a <voice>, so the envelope assembly turns the markers
             // into SIBLING voice elements instead of nesting them.
+            // a long numerator is one run: SRE's own pauses inside it go
+            const inner = seg.inNum ? ssmlInner(segOut).replace(/\s*<break\b[^>]*\/>/g, '') : ssml && ssmlInner(segOut);
+            const numEnd = seg.numEnd && si + 1 < segs.length ? ` ${NUM_END_PAUSE} ` : '';
             rendered.push(seg.root !== undefined
-              ? ` 루트 \x01${ssmlInner(segOut)}\x02 `
+              ? ` 루트 \x01${inner}\x02 ${numEnd}`
+              : seg.den !== undefined ? (seg.long
+                ? ` ${rendered.length ? DEN_START_PAUSE : ''} ${pauseDenominator(inner)} ${DEN_END_PAUSE} ` : ` ${inner} `)
+              : seg.inNum ? ` ${inner} ${numEnd}`
               : ssml ? ` ${ssmlInner(segOut)} ` : ` ${segOut.trim()} `);
           }
           if (rendered.length) {
@@ -1077,7 +1214,7 @@ async function main() {
         console.log(hr);
         const joined = doc.parts
           .map((part) =>
-            part.latex === undefined ? escapeXml(part.prose) : spellNumbers(renderSpan(part.latex, escapeXml))
+            part.latex === undefined ? escapeXml(part.prose) : spellNumbers(keepRootTwo(slowTwo(pauseAfterPowers(renderSpan(part.latex, escapeXml)))))
           )
           .join('')
           .replace(/ +/g, ' ')
@@ -1136,7 +1273,7 @@ async function main() {
 
 module.exports = { SPAN, checkWellFormed, splitRadicals, splitRepeating, splitSegments,
                    splitFences, splitChains, splitAbs, splitSpecials, endsWithJong,
-                   fixMisreads, joinTextWords, speakProblemLabels, capRate, slowDown, speakMarks, sinoKorean, spellNumbers };
+                   fixMisreads, joinTextWords, speakProblemLabels, capRate, slowDown, pauseAfterPowers, slowTwo, keepRootTwo, keepFractionBrackets, splitFractions, pauseDenominator, speakMarks, sinoKorean, spellNumbers };
 
 if (require.main === module) {
   main().catch((err) => {
