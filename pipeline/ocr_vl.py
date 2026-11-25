@@ -7,12 +7,13 @@ file — they were established by running the model, not assumed.
 
 THE $...$ CONVENTION (what LATEX/SPAN and everything downstream depend on)
   PaddleOCR-VL emits inline math wrapped in single dollars. Observed verbatim
-  in real output on the repo fixtures (output/*.md), e.g. from
-  "kr question 2.png":
+  in real output on the question images this repo started with (only the
+  first is still here, fixtures/question_1.png; the rest are in git history),
+  e.g. from the second:
 
       4.  $ -2^5 \\div \\{(-2)^4 \\times (-2)\\} $를 계산하시오.
 
-  and from "kr question 1.png" (note the mis-placed closing $ — the case
+  and from question_1.png (note the mis-placed closing $ — the case
   normalize.py's _emit_inline repairs):
 
       ... 범위는 $p\\leq k<q(p, q$는 상수)이다. 이때 $p^{2}+9q^{2}$의 값을 ...

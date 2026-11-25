@@ -70,13 +70,13 @@ MAX_WORKERS = 2                # concurrent GPU containers
 SCALEDOWN_S = 90               # idle seconds before a worker container stops
 # The OCR model runs in a child process (backend/ocr_proc.py). An OCR call
 # still running after OCR_CUTOFF_S is a hang: the worker SIGKILLs the child,
-# which frees the GPU, and retires the container (FINDINGS.md, 2026-10-16).
+# which frees the GPU, and retires the container (docs/FINDINGS.md, 2026-10-16).
 # Modal's own function timeout is only a backstop above that: it raises
 # InputCancellation in the main thread and cannot stop a hung native call.
 OCR_CUTOFF_S = 300
 # Paddle's default auto_growth GPU allocator hangs the first OCR call in a fresh
 # process most of the time; naive_best_fit went 10/10 on a T4 with identical
-# output (PaddleOCR #17693, #17640; FINDINGS.md, 2026-10-16). Set in the OCR
+# output (PaddleOCR #17693, #17640; docs/FINDINGS.md, 2026-10-16). Set in the OCR
 # child's environment before paddle is imported.
 OCR_ENV = {"FLAGS_allocator_strategy": "naive_best_fit"}
 JOB_TIMEOUT_S = OCR_CUTOFF_S + 120   # + speech (speak.js has its own 120 s limit) + TTS
@@ -84,7 +84,7 @@ STARTUP_TIMEOUT_S = 300              # container start + model load in the child
 RETENTION_S = 24 * 3600        # uploads, audio and job records
 # GET /jobs asks Modal whether a queued/running job's call has ended (crashed)
 # only when its record has gone this long without an update: the check adds
-# ~0.24 s to a poll (FINDINGS.md, 2026-10-19), and a live worker writes at each stage.
+# ~0.24 s to a poll (docs/FINDINGS.md, 2026-10-19), and a live worker writes at each stage.
 LOST_CHECK_AFTER_S = 10
 # A running job's record is written at every stage and Modal stops the call at
 # JOB_TIMEOUT_S, so a running record this old has no worker behind it, whatever
@@ -94,7 +94,7 @@ RUNNING_LOST_AFTER_S = JOB_TIMEOUT_S + 60
 # it after this long lost its spawn (the web container died between the two).
 SPAWN_LOST_AFTER_S = 60
 # One throwaway OCR call when a worker starts: the first inference in a fresh
-# process takes ~6.5 s against ~3.7 s after it (FINDINGS.md, 2026-10-19), and
+# process takes ~6.5 s against ~3.7 s after it (docs/FINDINGS.md, 2026-10-19), and
 # loading the model alone does not pay that. Hidden behind POST /warmup.
 WARMUP_IMAGE = "fixtures/question_1.png"
 WARMUP_CALL_S = 60             # cutoff for that call (it takes ~6.5 s)
@@ -135,7 +135,7 @@ def pipeline_image(paddle="gpu"):
     paddle="gpu" is the worker's image. paddle="cpu" swaps in the CPU build of
     the same Paddle version, for CPU-only diagnostics (scripts/modal_diagnostics.py):
     paddlepaddle-gpu cannot even be imported without the NVIDIA driver
-    (FINDINGS.md, 2026-10-16). Every other layer is the same.
+    (docs/FINDINGS.md, 2026-10-16). Every other layer is the same.
     """
     image = (
         modal.Image.debian_slim(python_version="3.11")
@@ -245,7 +245,7 @@ def _record_failure(job_id, code, message):
 
 
 def _trace(job_id, event, **fields):
-    """One latency-profiling log line (FINDINGS.md, 2026-10-19). Logging only.
+    """One latency-profiling log line (docs/FINDINGS.md, 2026-10-19). Logging only.
     Wall-clock epoch, so worker and web lines can be merged."""
     extra = "".join(f" {k}={v}" for k, v in fields.items())
     print(f"[trace] {job_id} {time.time():.3f} {event}{extra}", flush=True)
@@ -416,7 +416,7 @@ class Worker:
                     print(f"[job {job_id}] problem {i} audio {pa['status']}: {pdetail}")
             if result["audio"]["status"] == "ready":
                 # in the Dict, not on the volume: no commit/reload between the worker
-                # and GET /audio (FINDINGS.md, 2026-10-19). Written before "done".
+                # and GET /audio (docs/FINDINGS.md, 2026-10-19). Written before "done".
                 data = (workdir / job.AUDIO_NAME).read_bytes()
                 store.put(_audio_key(job_id), {"data": data, "created": rec["created"]})
                 _trace(job_id, "audio_put", bytes=len(data))

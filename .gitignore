@@ -17,11 +17,8 @@ inbox/
 runs/
 pages/
 output/
-output_kma/
 stitched/
-stitched_kma/
 audio/
-audio_kma/
 
 # Local tool config
 .claude/settings.local.json

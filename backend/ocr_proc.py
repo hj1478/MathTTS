@@ -3,7 +3,7 @@
 On a T4, PaddleOCR-VL's first OCR call in a fresh container often never
 returns: it blocks in a native op (_C_ops.embedding) with the GPU idle. Neither
 Modal's timeout nor retiring the container reliably frees the GPU, because a
-thread cannot be killed (FINDINGS.md, 2026-10-16). A process can. So the model
+thread cannot be killed (docs/FINDINGS.md, 2026-10-16). A process can. So the model
 lives in a child process, every call waits with a cutoff, and on a hang the
 worker SIGKILLs the child's whole process group. The GPU memory goes with it.
 

@@ -13,7 +13,7 @@ for running as a service rather than as a CLI:
     SSML wavs for A/B listening; a service needs one, and one call per job
     halves what the Azure F0 quota pays for. It asks Azure for MP3 (24 kHz,
     48 kbit/s mono) instead of azure_tts's WAV: about 1/8 the size, so it can
-    be served from the job store and downloads faster (FINDINGS.md, 2026-10-19).
+    be served from the job store and downloads faster (docs/FINDINGS.md, 2026-10-19).
   - Stage 3 runs the plain and SSML speak.js passes at the same time instead
     of one after the other, each with only the clearspeak combo the stitched
     output uses. They write different files. When the plain pass fails

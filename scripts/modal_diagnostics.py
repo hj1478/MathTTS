@@ -18,7 +18,7 @@ backend/modal_app.py itself so this module can import it in the container. All u
 same OcrProcess as the worker. An OCR call still running after DIAG_HANG_S is
 killed with its process group (the child dumps its own stacks to the log just
 before), and the container is retired. retries=0 throughout. Background:
-FINDINGS.md, 2026-10-16.
+docs/FINDINGS.md, 2026-10-16.
 """
 import os
 import time
@@ -150,7 +150,7 @@ def warm_calls_l4(image_bytes, ext, n):
 def ocr_outputs_t4(images, allocator, attempts=3):
     """OCR every image in one child process -> {name: markdown}, plus what happened.
 
-    The first call in a process can hang (FINDINGS.md, 2026-10-16); then the
+    The first call in a process can hang (docs/FINDINGS.md, 2026-10-16); then the
     child is killed and a fresh one tried, up to `attempts` processes.
     """
     from backend.ocr_proc import OcrFailed, OcrProcess, OcrTimeout

@@ -15,12 +15,12 @@ Steps 0–2 are reading and deciding. Nothing needs to be written until step 2, 
 Six commands. Each one shows you a place that says something about where `dot_check.py` belongs.
 
 ```sh
-sed -n '1,12p' dot_check.py              # how does it describe its own position?
-sed -n '1,16p' run.py                    # which stages does the driver list?
-grep -n 'dot' run.py                     # ...and how many times does it mention this one?
+sed -n '1,12p' pipeline/dot_check.py              # how does it describe its own position?
+sed -n '1,16p' pipeline/run.py                    # which stages does the driver list?
+grep -n 'dot' pipeline/run.py                     # ...and how many times does it mention this one?
 grep -n -A5 'Credentials' README.md      # which group is the OpenAI key filed under?
 grep -n 'dot_check' README.md            # what does the README say about it elsewhere?
-grep -n 'dot_check\|restore_dots' inbox_eval.py   # how does the eval harness use it?
+grep -n 'dot_check\|restore_dots' scripts/inbox_eval.py   # how does the eval harness use it?
 ```
 
 Make a table: one row per source, one line for what it claims. Then mark which rows are consistent with each other.
@@ -75,7 +75,7 @@ If any of these has no answer yet, that is itself the answer to "should it be on
 **Prediction 2.** Look at how `--skip-ocr` collects its input:
 
 ```sh
-grep -n -A3 'skip_ocr' run.py
+grep -n -A3 'skip_ocr' pipeline/run.py
 ```
 
 Write down what that glob will match on a *second* run, once a patched page exists next to the original. Then create a dummy patched page and run it with `--skip-ocr --skip-speak --skip-tts` and see whether you were right. Count the files stage 2 reports.
@@ -93,13 +93,13 @@ Whatever you decided, the four places from step 0 have to say the same thing. De
 - the README's Approach table gains a row, or does not
 - the README's *Credentials* note says which stages need which key — and a reader can work out what a single run costs before starting
 
-The test for this step: someone reading only the README should be able to say which stages a plain `python run.py image.png` executes. Right now they cannot.
+The test for this step: someone reading only the README should be able to say which stages a plain `python pipeline/run.py image.png` executes. Right now they cannot.
 
 ---
 
 ## Step 6 — Record it
 
-A `FINDINGS.md` entry. The decision, the sentence from step 2, and anything the predictions in step 4 got wrong — that last part is the most useful thing in the entry, and the easiest to leave out.
+A `docs/FINDINGS.md` entry. The decision, the sentence from step 2, and anything the predictions in step 4 got wrong — that last part is the most useful thing in the entry, and the easiest to leave out.
 
 ---
 
@@ -109,7 +109,7 @@ A `FINDINGS.md` entry. The decision, the sentence from step 2, and anything the 
 - [ ] If a plain run can reach it: a run with the flag off and a run with it on both behave sensibly, and you checked the second-run case from prediction 2
 - [ ] If it stays tooling: `Limitations` explains that the repair exists but is not part of the pipeline, so a reader is not left thinking it runs
 - [ ] The README lets a reader work out which stages cost money
-- [ ] `FINDINGS.md` has the entry
+- [ ] `docs/FINDINGS.md` has the entry
 
 ---
 

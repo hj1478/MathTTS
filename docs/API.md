@@ -68,7 +68,7 @@ rather than starting a second cold worker.
 - A cold start (no worker running) takes about 30 s before a job can start
   OCR. Calling `/warmup` early moves that time off the user's wait: with
   `/warmup` sent 20 s before the upload, a cold job finished in 35 s instead
-  of 50 s (FINDINGS.md, 2026-10-17). About 30 s of lead hides it fully.
+  of 50 s ([FINDINGS.md](FINDINGS.md), 2026-10-17). About 30 s of lead hides it fully.
 - If a worker is already idle, the call does nothing except restart its idle
   timer.
 - A worker stays up for 90 s after its last call (`/warmup` or a job), then

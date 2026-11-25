@@ -67,7 +67,7 @@ That last question is the whole point of the project. This pipeline is not built
 
 Ground your answer in what textbooks use, how a teacher reads it aloud in class, and what sounds natural when you say it yourself. There may be more than one workable answer — in that case, **why you chose the one you chose** is the result.
 
-**Write the decision into `FINDINGS.md` before writing any code.** Skip this step and whatever SRE happens to emit becomes your target by default. That is not a decision; that is an accident.
+**Write the decision into `docs/FINDINGS.md` before writing any code.** Skip this step and whatever SRE happens to emit becomes your target by default. That is not a decision; that is an accident.
 
 ---
 
@@ -91,7 +91,7 @@ Two things worth thinking about before step 3:
 - Does that change where the fix can live? A notation change would have belonged in `normalize.py` almost by definition. A reading rule is less obvious.
 - SRE is a rule engine with its own locale files. Adding a Korean rule *inside* SRE is a third option nobody has weighed here. What would make that a good idea, and what would make it a bad one for a project this size? (Consider who maintains it, and what happens on the next SRE release.)
 
-**If you do try other notations, record what you find in `FINDINGS.md` either way** — especially a negative result. It stops the next person retrying it, and a finding about a tool's limits is a real research result. Note the version and the date; a future SRE release could change the answer.
+**If you do try other notations, record what you find in `docs/FINDINGS.md` either way** — especially a negative result. It stops the next person retrying it, and a finding about a tool's limits is a real research result. Note the version and the date; a future SRE release could change the answer.
 
 ---
 
@@ -122,7 +122,7 @@ Why this matters here: failures in this pipeline are not crashes. It runs to com
 
 ## Step 5 — Record it
 
-One entry in `FINDINGS.md`. Three lines is fine.
+One entry in `docs/FINDINGS.md`. Three lines is fine.
 
 - What you observed (the output you saw yourself in step 0)
 - The reading you chose and **why** ← the most valuable part
@@ -138,7 +138,7 @@ One entry in `FINDINGS.md`. Three lines is fine.
 - [ ] `$0.2̇4̇$` produces it — **verified by running the chain, not by reading the code**
 - [ ] A regression check exists, and you can explain why it would have failed before
 - [ ] The entry for this can be deleted from *Limitations* in `README.md` (it is no longer a limitation)
-- [ ] `FINDINGS.md` has the entry
+- [ ] `docs/FINDINGS.md` has the entry
 
 ---
 

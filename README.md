@@ -364,11 +364,11 @@ in `scripts/modal_diagnostics.py`, run with `modal run` and never deployed (its
 docstring lists the commands). The deployed `mathtts` app has only the worker,
 the web API and the hourly cleanup.
 
-Known OCR error: in `kr question 2.png` (no longer in the repo; see git
-history) the model drops the braces in
+Known OCR error: on a question image that is no longer in the repo (it was
+`kr question 2.png`; see git history) the model drops the braces in
 −2⁵ ÷ {(−2)⁴ × (−2)}, on GPU and CPU alike, which changes the math that is read
-aloud. `output/kr question 2.md` has the braces but is not raw model output
-(it appears to have been edited by hand), so don't use it as an OCR reference
+aloud. Its saved output from then, which had the braces, was not raw model
+output (it appears to have been edited by hand) and was never an OCR reference
 (docs/FINDINGS.md, 2026-10-16).
 
 ## Limitations and what is unverified

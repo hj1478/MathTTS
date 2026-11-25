@@ -4,7 +4,7 @@ Issue: [#12](https://github.com/hj1478/MathTTS/issues/12)
 
 *A working document, not a reference. It is scaffolding for one open question — delete it when #12 closes.*
 
-Four sections of `README.md` are still `TODO`, and `FINDINGS.md` has no entries. These are the parts nobody else can write — not because they are hard, but because the answers are only in your head.
+Four sections of `README.md` are still `TODO`, and `docs/FINDINGS.md` has no entries. These are the parts nobody else can write — not because they are hard, but because the answers are only in your head.
 
 ---
 
@@ -13,14 +13,14 @@ Four sections of `README.md` are still `TODO`, and `FINDINGS.md` has no entries.
 ```sh
 grep -n 'TODO' README.md                 # what is still empty
 grep -c 'Guidance' README.md             # leftover scaffolding blocks
-sed -n '/^## Entries/,$p' FINDINGS.md    # the log, and its candidate list
+sed -n '/^## Entries/,$p' docs/FINDINGS.md    # the log, and its candidate list
 ```
 
 | Written | Still `TODO` |
 |---|---|
 | Approach, Running it, Limitations, Verified versions, Tools used | The problem, Research questions, Results, Worked example |
 
-`FINDINGS.md`: scaffold and a list of eight candidate entries; no entries written.
+`docs/FINDINGS.md`: scaffold and a list of eight candidate entries; no entries written.
 
 ---
 
@@ -66,7 +66,7 @@ Two to four questions, one or two sentences each:
 
 ```sh
 sed -n '1,15p' sre-probe/index.js       # what is this probe asking?
-sed -n '1,30p' tts_probe.py             # and what do its four test cases check?
+sed -n '1,30p' scripts/tts_probe.py             # and what do its four test cases check?
 ```
 
 Read those two docstrings and the questions are largely there in prose already. Your job is to state them as questions and say which ones mattered.
@@ -101,10 +101,10 @@ Give what did not work the same weight as what did. In research a negative resul
 
 ## Step 4 — Worked example
 
-One problem, shown at every stage. `kr question 1.png` is a good candidate: its OCR output contains the broken-parenthesis case that `normalize.py` repairs, so the example shows *why* stage 2 exists rather than just showing a success.
+One problem, shown at every stage. `fixtures/question_1.png` is a good candidate: its OCR output contains the broken-parenthesis case that `normalize.py` repairs, so the example shows *why* stage 2 exists rather than just showing a success.
 
 ```sh
-python run.py "kr question 1.png" --skip-tts
+python pipeline/run.py fixtures/question_1.png --skip-tts
 ```
 
 `run.py` prints the path of each artifact it writes; open them in order — the OCR markdown, the `.norm.md`, then the `.stitched.txt` under `stitched/`. Paste each one into the section as a code block. Add the wav if you run stage 4.
@@ -115,7 +115,7 @@ This doubles as a reference point later: "this is what it used to produce."
 
 ---
 
-## Step 5 — The first `FINDINGS.md` entry
+## Step 5 — The first `docs/FINDINGS.md` entry
 
 The file has a template and eight candidates. Two things about them:
 
@@ -142,7 +142,7 @@ Each guidance block goes when its section is written. The header notice and the 
 
 The README already carries the test — the self-check block at the bottom of the file. Work through it as written; if any line has no answer, that section is not finished.
 
-The one line it does not cover: `FINDINGS.md` should have at least one entry that someone else could learn from.
+The one line it does not cover: `docs/FINDINGS.md` should have at least one entry that someone else could learn from.
 
 ---
 
