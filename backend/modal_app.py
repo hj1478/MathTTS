@@ -176,14 +176,14 @@ def pipeline_image(paddle="gpu"):
 
 def _with_pipeline_source(image):
     """Pipeline source last: editing it doesn't rebuild the layers above.
-    Only the stage files job.py runs — never .env (tts_probe would load it)."""
+    Only the stage files job.py runs — never .env (azure_tts would load it)."""
     return (
         image
         .add_local_file(REPO / "sre-probe" / "speak.js", "/root/sre-probe/speak.js")
         .add_local_file(REPO / "sre-probe" / "casual.js", "/root/sre-probe/casual.js")
         .add_local_file(REPO / "pipeline" / "normalize.py", "/root/pipeline/normalize.py")
         .add_local_file(REPO / "pipeline" / "ocr_vl.py", "/root/pipeline/ocr_vl.py")
-        .add_local_file(REPO / "pipeline" / "tts_probe.py", "/root/pipeline/tts_probe.py")
+        .add_local_file(REPO / "pipeline" / "azure_tts.py", "/root/pipeline/azure_tts.py")
         .add_local_file(REPO / "backend" / "job.py", "/root/backend/job.py")
         .add_local_file(REPO / "backend" / "limits.py", "/root/backend/limits.py")
         .add_local_file(REPO / "backend" / "ocr_proc.py", "/root/backend/ocr_proc.py")
@@ -209,7 +209,7 @@ tts_image = (
     .apt_install("ca-certificates", "libssl3", "libasound2")
     .uv_pip_install("azure-cognitiveservices-speech==1.50.0")
     .add_local_file(REPO / "pipeline" / "normalize.py", "/root/pipeline/normalize.py")
-    .add_local_file(REPO / "pipeline" / "tts_probe.py", "/root/pipeline/tts_probe.py")
+    .add_local_file(REPO / "pipeline" / "azure_tts.py", "/root/pipeline/azure_tts.py")
     .add_local_file(REPO / "backend" / "job.py", "/root/backend/job.py")
     .add_local_file(REPO / "backend" / "limits.py", "/root/backend/limits.py")
     .add_local_file(REPO / "backend" / "problems.py", "/root/backend/problems.py")
@@ -269,7 +269,7 @@ def _retire_container():
 class Worker:
     @modal.enter()
     def load(self):
-        # tts_probe.make_config reads AZURE_SPEECH_*; the Modal secret is named
+        # azure_tts.make_config reads AZURE_SPEECH_*; the Modal secret is named
         # SPEECH_*. Map once here so the stage code stays unchanged.
         os.environ["AZURE_SPEECH_KEY"] = os.environ.get("SPEECH_KEY", "")
         os.environ["AZURE_SPEECH_REGION"] = os.environ.get("SPEECH_REGION", "")
@@ -442,7 +442,7 @@ class Worker:
 def formal_tts(ssml):
     """One formal reading through Azure -> (status, detail, MP3 bytes or None).
     Runs only when a listener presses the button (POST /jobs/{id}/formal-audio)."""
-    # tts_probe.make_config reads AZURE_SPEECH_*; the Modal secret is named SPEECH_*
+    # azure_tts.make_config reads AZURE_SPEECH_*; the Modal secret is named SPEECH_*
     os.environ["AZURE_SPEECH_KEY"] = os.environ.get("SPEECH_KEY", "")
     os.environ["AZURE_SPEECH_REGION"] = os.environ.get("SPEECH_REGION", "")
     os.environ.pop("AZURE_SPEECH_ENDPOINT", None)

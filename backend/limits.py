@@ -66,7 +66,7 @@ def check_decodes(data):
 
 
 # What the Speech SDK puts in cancellation_details.error_details when the F0
-# quota (or F0's request-rate limit) is exhausted. tts_probe.synth folds that
+# quota (or F0's request-rate limit) is exhausted. azure_tts.synth folds that
 # text into its detail string, which is all the worker sees. Matched loosely on
 # purpose: the exact wording is not documented and has not been observed here
 # against a real exhausted quota — only "429" / "Too many requests" is.

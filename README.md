@@ -50,7 +50,7 @@ TODO
 >
 > Where to find them: two tools here were built to answer specific questions
 > already. What question is `sre-probe/index.js` asking? What is each of the four
-> test cases in `tts_probe.py` checking? Those are your candidates — this is a
+> test cases in `scripts/tts_probe.py` checking? Those are your candidates — this is a
 > matter of writing down what you already know.
 >
 > Do not put the answers here. The answers go under **Results**.
@@ -78,7 +78,7 @@ turning LaTeX into *Korean* math speech, which only SRE attempts.
 
 Two files are investigation tools, not stages: `sre-probe/index.js` (does SRE
 support Korean math speech at all, and in which domains/styles?) and
-`tts_probe.py` (is the resulting Korean speech intelligible by ear? A/B wavs).
+`scripts/tts_probe.py` (is the resulting Korean speech intelligible by ear? A/B wavs).
 Their docstrings record what each one established.
 
 ## Results
@@ -209,7 +209,7 @@ exists to test.
 
 | Path | What is there |
 |---|---|
-| `pipeline/` | `run.py` runs the whole pipeline, image or PDF → wav. One file per stage: `pdf_to_images.py` (0), `ocr_vl.py` (1), `dot_check.py` (1.5), `normalize.py` (2), `tts_full.py` (4); `llm.py` and `tts_probe.py` are their OpenAI and Azure clients |
+| `pipeline/` | `run.py` runs the whole pipeline, image or PDF → wav. One file per stage: `pdf_to_images.py` (0), `ocr_vl.py` (1), `dot_check.py` (1.5), `normalize.py` (2), `tts_full.py` (4); `llm.py` and `azure_tts.py` are their OpenAI and Azure clients |
 | `sre-probe/` | Stage 3, LaTeX → Korean speech (Node) |
 | `backend/` | The pipeline as a web API on Modal |
 | `scripts/` | Eval harnesses, listening probes and the backend smoke test — nothing the pipeline needs |

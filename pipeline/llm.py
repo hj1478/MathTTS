@@ -11,7 +11,7 @@ import time
 
 import requests
 
-from tts_probe import load_dotenv
+from azure_tts import load_dotenv
 
 
 def openai_cfg(model_flag=None):

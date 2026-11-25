@@ -3,7 +3,7 @@
 
 Same stages, same order and same guards as run.py — this calls the stage code
 (ocr_vl.run_image, normalize.normalize_math, sre-probe/speak.js --strict,
-tts_probe.synth) and changes none of it. Where it differs from run.py, it is
+azure_tts.synth) and changes none of it. Where it differs from run.py, it is
 for running as a service rather than as a CLI:
 
   - The OCR model stays loaded between jobs. run.py drops it before spawning
@@ -12,7 +12,7 @@ for running as a service rather than as a CLI:
   - Stage 4 synthesizes the SSML version only. tts_full.py writes plain AND
     SSML wavs for A/B listening; a service needs one, and one call per job
     halves what the Azure F0 quota pays for. It asks Azure for MP3 (24 kHz,
-    48 kbit/s mono) instead of tts_probe's WAV: about 1/8 the size, so it can
+    48 kbit/s mono) instead of azure_tts's WAV: about 1/8 the size, so it can
     be served from the job store and downloads faster (FINDINGS.md, 2026-10-19).
   - Stage 3 runs the plain and SSML speak.js passes at the same time instead
     of one after the other, each with only the clearspeak combo the stitched
@@ -124,10 +124,10 @@ def _speak(norm_path, out_dir, ssml, casual=True):
 
 
 def _synthesize(ssml_text, audio_path):
-    """Stage 4 via tts_probe (the code tts_full.py uses), with tts_full's one retry.
-    MP3 instead of tts_probe's WAV (see the module docstring)."""
+    """Stage 4 via azure_tts (the code tts_full.py uses), with tts_full's one retry.
+    MP3 instead of azure_tts's WAV (see the module docstring)."""
     import azure.cognitiveservices.speech as speechsdk
-    from tts_probe import make_config, synth
+    from azure_tts import make_config, synth
     try:
         cfg = make_config(VOICE)
     except SystemExit:  # make_config exits when credentials are missing

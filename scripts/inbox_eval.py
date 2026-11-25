@@ -21,7 +21,7 @@ Findings land in:
                              good ones into eval/cases.json (add "known": <why>
                              when documenting a struggle instead of fixing it).
 
-.env keys (same loader as tts_probe.py; real env wins):
+.env keys (same loader as pipeline/azure_tts.py; real env wins):
   OPENAI_API_KEY    required for the judge
   OPENAI_MODEL      default gpt-4o
   OPENAI_BASE_URL   default https://api.openai.com/v1

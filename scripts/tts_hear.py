@@ -13,7 +13,7 @@ spells out each word as heard.
 One problem line per input line. Read the output by eye: the recognizer mishears
 too (letters, short words), so a difference is a lead, not a verdict. Numbers,
 missing words and English unit names are the things to look for.
-Needs the Azure key that tts_probe.make_config uses.
+Needs the Azure key that azure_tts.make_config uses.
 """
 import argparse
 import json
@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parent.parent  # the repo root
 sys.path.insert(0, str(ROOT / "pipeline"))      # the stage modules
 
 import normalize  # noqa: E402
-from tts_probe import make_config  # noqa: E402
+from azure_tts import make_config  # noqa: E402
 
 VOICE = "ko-KR-SunHiNeural"
 ENVELOPE = ('<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="ko-KR">'

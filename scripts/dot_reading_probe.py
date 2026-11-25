@@ -30,7 +30,7 @@ Usage:
   python scripts/dot_reading_probe.py --dry-run       # print texts/table, no Azure calls
   python scripts/dot_reading_probe.py --voice ko-KR-InJoonNeural --out ./audio/exp17
 
-Credentials: reuses tts_probe.py's loader (AZURE_SPEECH_KEY +
+Credentials: reuses pipeline/azure_tts.py's loader (AZURE_SPEECH_KEY +
 AZURE_SPEECH_ENDPOINT / AZURE_SPEECH_REGION from env or .env). Never hardcoded.
 """
 import argparse
@@ -171,7 +171,7 @@ def main():
 
     failures = 0
     if not a.dry_run:
-        from tts_probe import make_config, synth
+        from azure_tts import make_config, synth
         out = Path(a.out)
         out.mkdir(parents=True, exist_ok=True)
         cfg = make_config(a.voice)

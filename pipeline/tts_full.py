@@ -7,7 +7,7 @@ Input: stitched files produced by  sre-probe/speak.js --write ../stitched
                    structural <break>s, <say-as> character, prosody rate)
 
 Output: ./audio/<name>-full-plain.wav and <name>-full-ssml.wav for A/B listening.
-Reuses tts_probe.py for .env loading, SpeechConfig, and verified synthesis.
+Uses azure_tts.py for .env loading, SpeechConfig, and verified synthesis.
 
 Note: the voice INSIDE a .ssml file's <voice> tag was fixed when speak.js wrote
 it (its --voice flag); --voice here only affects the plain versions.
@@ -18,7 +18,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from tts_probe import make_config, synth
+from azure_tts import make_config, synth
 
 
 def main():

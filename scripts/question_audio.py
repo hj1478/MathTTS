@@ -135,7 +135,7 @@ def main():
     if proc.returncode != 0:
         sys.exit(f"speak.js failed:\n{proc.stderr[-2000:]}")
 
-    from tts_probe import make_config, synth
+    from azure_tts import make_config, synth
     cfg = make_config(a.voice)
     out_root = Path(a.out)
     out_root.mkdir(parents=True, exist_ok=True)   # manifest.tsv is written even
