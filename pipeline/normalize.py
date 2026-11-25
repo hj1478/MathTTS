@@ -68,8 +68,8 @@ DOESN'T (documented misses, chosen to avoid false positives):
     which reads them natively; a lone letter after a digit is usually a variable
 
 CLI:
-  python pipeline/normalize.py output/question_1.md       # print normalized text
-  python pipeline/normalize.py --dir output                # normalize every *.md -> *.norm.md
+  python pipeline/normalize.py work/output/question_1.md  # print normalized text
+  python pipeline/normalize.py --dir work/output           # normalize every *.md -> *.norm.md
   cat file.md | python pipeline/normalize.py -             # stdin -> stdout
 """
 import re

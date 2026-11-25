@@ -14,8 +14,8 @@ Credentials and synthesis: pipeline/azure_tts.py (AZURE_SPEECH_KEY and an
 endpoint or region, from the environment or the repo's .env).
 
 Usage:
-  python scripts/tts_probe.py                          # all cases -> ./audio/
-  python scripts/tts_probe.py --voice ko-KR-InJoonNeural --break-ms 400 --out ./audio
+  python scripts/tts_probe.py                          # all cases -> ./work/audio/
+  python scripts/tts_probe.py --voice ko-KR-InJoonNeural --break-ms 400 --out ./work/audio
 """
 import argparse
 import sys
@@ -53,7 +53,7 @@ def main():
     ap.add_argument("--voice", default="ko-KR-SunHiNeural",
                     help="Korean neural voice (default ko-KR-SunHiNeural; alt ko-KR-InJoonNeural)")
     ap.add_argument("--break-ms", type=int, default=300, help="pause length for (b) versions")
-    ap.add_argument("--out", default="./audio", help="output folder (default ./audio)")
+    ap.add_argument("--out", default="./work/audio", help="output folder (default ./work/audio)")
     a = ap.parse_args()
 
     out = Path(a.out)
@@ -77,7 +77,7 @@ def main():
             print(f"  [{'ok' if ok else 'FAIL':>4}] {path.name:<28} {detail}")
 
     print("\n" + "=" * 72)
-    print("A/B LISTENING GUIDE  (play with: afplay audio/<file>)")
+    print("A/B LISTENING GUIDE  (play with: afplay <out>/<file>)")
     print("=" * 72)
     for num, slug, plain, body, listen in TESTS:
         print(f'\n  {num}a vs {num}b ({slug}):  "{plain}"')

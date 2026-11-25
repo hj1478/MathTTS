@@ -429,7 +429,7 @@ def run_job(image, workdir, device, tts=True, on_stage=lambda stage: None, ocr=N
 def main():
     ap = argparse.ArgumentParser(description="Run the backend job on one image, locally.")
     ap.add_argument("image")
-    ap.add_argument("--workdir", default="./runs/backend-job")
+    ap.add_argument("--workdir", default="./work/runs/backend-job")
     ap.add_argument("--device", choices=["cpu", "gpu"])
     ap.add_argument("--skip-tts", action="store_true")
     ap.add_argument("--photo", action="store_true", help="a camera photo: clean the page up before OCR")

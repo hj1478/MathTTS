@@ -7,7 +7,7 @@ a deploy never ships them. Nothing here is deployed; each check runs with
     modal run scripts/modal_diagnostics.py::selftest       # CPU only: hard kill of a fake hang
     modal run scripts/modal_diagnostics.py::fresh_test     # first OCR call in N fresh processes
         --gpu T4|L4  --allocator naive_best_fit|default  --n 10
-    modal run scripts/modal_diagnostics.py::output_check   # golden images: OCR text vs output/
+    modal run scripts/modal_diagnostics.py::output_check   # golden images: OCR text vs work/output/
     modal run scripts/modal_diagnostics.py::stack_check    # native state of a default-allocator hang
     modal run scripts/modal_diagnostics.py::cpu_check      # one image, device="cpu", no GPU
     modal run scripts/modal_diagnostics.py::warm_timing    # load, 1 first call, N warm calls
@@ -308,10 +308,10 @@ def hardkill_selftest(cutoff_s=5):
 
 @app.local_entrypoint()
 def cpu_check(image: str = str(REPO / "fixtures" / "question_1.png")):
-    """One image through OCR on CPU, printed next to the saved output/<stem>.md."""
+    """One image through OCR on CPU, printed next to the saved work/output/<stem>.md."""
     path = Path(image)
     r = ocr_cpu.remote(path.read_bytes(), path.name)
-    saved = REPO / "output" / f"{path.stem}.md"
+    saved = REPO / "work" / "output" / f"{path.stem}.md"
     print(f"\n===== CPU OCR: {path.name} =====")
     print({k: v for k, v in r.items() if k != "markdown"})
     print(f"[cpu]   {r.get('markdown')!r}")
@@ -387,7 +387,7 @@ def fresh_test(gpu: str = "T4", allocator: str = "naive_best_fit", n: int = 10,
 
 @app.local_entrypoint()
 def output_check(allocator: str = "naive_best_fit", report: str = ""):
-    """Golden images on T4 with `allocator`, vs the saved output/<stem>.md and vs
+    """Golden images on T4 with `allocator`, vs the saved work/output/<stem>.md and vs
     the default allocator on the same GPU."""
     import difflib
     import json
@@ -413,13 +413,13 @@ def output_check(allocator: str = "naive_best_fit", report: str = ""):
         print(name)
         flag_md = runs[allocator]["outputs"].get(name)
         default_md = runs["default"]["outputs"].get(name)
-        saved = REPO / "output" / f"{Path(name).stem}.md"
+        saved = REPO / "work" / "output" / f"{Path(name).stem}.md"
         saved_md = saved.read_text(encoding="utf-8") if saved.exists() else None
         if flag_md is None:
             differs = True
             print(f"  {allocator}: no output")
             continue
-        compare(name, allocator, flag_md, "output/ (saved)", saved_md)
+        compare(name, allocator, flag_md, "work/output/ (saved)", saved_md)
         if default_md is None:
             print("  default: no output (hung in every process tried)")
         else:

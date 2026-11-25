@@ -201,7 +201,7 @@ def main():
     ap.add_argument("--fixtures", default=str(ROOT / "fixtures"), help="folder of clean originals (default: fixtures/)")
     ap.add_argument("--only", help="comma-separated fixture names to keep (without extension)")
     ap.add_argument("--configs", default="off,both", help="comma-separated, of: " + ", ".join(CONFIGS))
-    ap.add_argument("--out", default=str(ROOT / "runs" / "photo_eval"))
+    ap.add_argument("--out", default=str(ROOT / "work" / "runs" / "photo_eval"))
     ap.add_argument("--device", choices=["cpu", "gpu"])
     ap.add_argument("--no-shrink", action="store_true", help="do not apply the app's resize/JPEG step")
     a = ap.parse_args()

@@ -61,12 +61,12 @@ TODO
 
 | Stage | Entry point | In → out | What it does |
 |---|---|---|---|
-| 0 (optional) | `pdf_to_images.py` | `*.pdf` → `pages/*.png` | Renders PDF pages to PNGs the OCR can read (200 DPI default) |
-| 1. OCR | `ocr_vl.py` | `*.png` → `output/*.md` | PaddleOCR-VL, locally on CPU: Korean prose + inline `$...$` LaTeX |
+| 0 (optional) | `pdf_to_images.py` | `*.pdf` → `work/pages/*.png` | Renders PDF pages to PNGs the OCR can read (200 DPI default) |
+| 1. OCR | `ocr_vl.py` | `*.png` → `work/output/*.md` | PaddleOCR-VL, locally on CPU: Korean prose + inline `$...$` LaTeX |
 | 1.5 Dots (opt-in) | `dot_check.py` | `*.md` → `*.dots.md` | `run.py --dots` only. Text-only LLM pass restoring 순환소수 dots the OCR dropped; writes beside the raw page, which stage 2 then prefers |
 | 2. Normalize | `normalize.py` | `*.md` → `*.norm.md` | Canonicalizes the OCR's inconsistent math (unicode, bare runs, stray `$`) into `$...$` LaTeX |
-| 3. Math → speech | `sre-probe/speak.js` | `*.norm.md` → `stitched/*.stitched.txt` / `.ssml` | temml → MathML → SRE (locale ko); stitches Korean speech back into the prose. `--casual` (what the service uses) reads it as a person would: "A 1", "x 마이너스 1 분의 x 플러스 1", "3 이상" (`sre-probe/casual.js`) |
-| 4. TTS | `tts_full.py` | `stitched/*` → `audio/*.wav` | Azure Neural TTS; plain and SSML versions per problem for A/B listening |
+| 3. Math → speech | `sre-probe/speak.js` | `*.norm.md` → `work/stitched/*.stitched.txt` / `.ssml` | temml → MathML → SRE (locale ko); stitches Korean speech back into the prose. `--casual` (what the service uses) reads it as a person would: "A 1", "x 마이너스 1 분의 x 플러스 1", "3 이상" (`sre-probe/casual.js`) |
+| 4. TTS | `tts_full.py` | `work/stitched/*` → `work/audio/*.wav` | Azure Neural TTS; plain and SSML versions per problem for A/B listening |
 
 The split exists because no single tool crosses the whole gap: the OCR emits
 math notation, not words, so its output cannot go straight to a TTS voice
@@ -128,7 +128,7 @@ shapes the whole design:
 - *Single-span measurement overstated coverage.* The 60-notation sweep used one
   labelled span each and reported `5cm` as correct. It is — but the form real
   worksheets produce, `$r = 3 cm$` with a space, was spelled "3 c m" until it
-  was caught by running the whole `runs/` corpus through the chain instead. The
+  was caught by running the whole `work/runs/` corpus through the chain instead. The
   method, not the engine, was the failure.
 
 **Not checked.** Everything above is the LaTeX → Korean stage. Whether the
@@ -155,7 +155,7 @@ as digits, how the Azure voice pronounces it is unmeasured.
 `fixtures/question_1.png`, a 중3 inequality problem, at every stage. It is the useful
 example precisely because the OCR gets something wrong.
 
-**1. OCR** — `python pipeline/ocr_vl.py fixtures/question_1.png` → `output/question_1.md`
+**1. OCR** — `python pipeline/ocr_vl.py fixtures/question_1.png` → `work/output/question_1.md`
 
 ```
 24. $x$에 대한 일차부등식 $3(x-k)\leq2x+5$가 모든 음의 정수 $x$에 대하여
@@ -166,7 +166,7 @@ $p\leq k<q(p, q$는 상수)이다. 이때 $p^{2}+9q^{2}$의 값을 구하시오.
 Note `$p\leq k<q(p, q$` — the model put the closing `$` too late, so the math
 span swallowed "(p, q" and the Korean that follows it.
 
-**2. Normalize** — `python pipeline/normalize.py output/question_1.md`
+**2. Normalize** — `python pipeline/normalize.py work/output/question_1.md`
 
 ```
 24. $x$에 대한 일차부등식 $3(x-k)\leq2x+5$가 모든 음의 정수 $x$에 대하여
@@ -178,7 +178,7 @@ Two changes: the span is cut at the unmatched `(` so the prose is ejected back
 out of the math, and `^{2}` is canonicalized to `^2`. This is the one place
 `normalize.py` deliberately cuts up content it was handed.
 
-**3. Speech** — `node sre-probe/speak.js --write ./stitched "…norm.md"`
+**3. Speech** — `node sre-probe/speak.js --write ./work/stitched "…norm.md"`
 
 ```
 24. x 에 대한 일차부등식 3 곱하기 괄호 열고 x 빼기 k 괄호 닫고 는 2 x 더하기 5
@@ -197,7 +197,7 @@ With `--casual`, which the web service uses, the same problem reads:
 Had the span not been repaired at stage 2, "(p, q" would have been read as
 arithmetic and the Korean inside it spelled out letter by letter.
 
-**4. Audio** — `python pipeline/tts_full.py` → `audio/question_1-full-plain.wav` and
+**4. Audio** — `python pipeline/tts_full.py` → `work/audio/question_1-full-plain.wav` and
 `-full-ssml.wav`, for A/B listening.
 
 One weakness is visible in the text above, and it is a known gap rather than a
@@ -218,8 +218,10 @@ exists to test.
 | `tests/` | pytest suite |
 | `docs/` | API reference, the findings log (`docs/FINDINGS.md`), worksheets |
 
-`inbox/`, `runs/`, `pages/`, `output*/`, `stitched*/` and `audio*/` are written
-by the pipeline and the eval scripts, and are not in git.
+Everything the pipeline and the eval scripts write goes under `work/`, which is
+not in git: `work/pages/`, `work/output/`, `work/stitched/` and `work/audio/`
+from the stages, `work/runs/` from the eval scripts, and `work/inbox/`, where
+you drop PDFs for `inbox_eval.py`.
 
 ## Running it
 
@@ -257,7 +259,7 @@ export the same variables.
 ```sh
 python pipeline/run.py fixtures/question_1.png          # image → wav
 python pipeline/run.py fixtures/kma_sheet_13_8_prob.pdf      # PDF → pages → wav
-python pipeline/run.py --dir pages --skip-tts       # stop before Azure synthesis
+python pipeline/run.py --dir work/pages --skip-tts       # stop before Azure synthesis
 ```
 
 Per-stage skip flags (`--skip-ocr`, `--skip-normalize`, `--skip-speak`,
@@ -265,10 +267,10 @@ Per-stage skip flags (`--skip-ocr`, `--skip-normalize`, `--skip-speak`,
 runnable alone:
 
 ```sh
-python pipeline/ocr_vl.py fixtures/question_1.png --out ./output
-python pipeline/normalize.py --dir output
-node sre-probe/speak.js --ssml --write ./stitched --dir ./output
-python pipeline/tts_full.py --stitched ./stitched --out ./audio
+python pipeline/ocr_vl.py fixtures/question_1.png --out ./work/output
+python pipeline/normalize.py --dir work/output
+node sre-probe/speak.js --ssml --write ./work/stitched --dir ./work/output
+python pipeline/tts_full.py --stitched ./work/stitched --out ./work/audio
 ```
 
 Checks:
@@ -285,7 +287,7 @@ python pipeline/ocr_vl.py --eval fixtures       # OCR each image, score against 
   non-zero when a formula stitched as salvage or a placeholder (`run.py` uses
   this to stop before paying Azure to read a placeholder aloud).
 - Larger harnesses, in `scripts/`: `tts_eval.py` (golden cases + lint),
-  `inbox_eval.py` (drop PDFs in `inbox/`, OCR → stitch → LLM judge),
+  `inbox_eval.py` (drop PDFs in `work/inbox/`, OCR → stitch → LLM judge),
   `dot_eval.py` (순환소수 dot restoration), `photo_eval.py` (phone photos of a
   fixture read with and without PaddleOCR's page clean-up, scored against the
   clean original), `tts_hear.py` (what Azure's recognizer hears in the audio).

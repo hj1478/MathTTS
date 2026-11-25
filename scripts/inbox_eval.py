@@ -4,7 +4,7 @@
 Put any worksheet PDF (or image) into ./inbox and run this script. Each input
 goes through the real pipeline, then two reviewers go over the spoken output:
 
-  1. PaddleOCR-VL (ocr_vl.py)   each page  -> runs/<name>/<name>_<p>.md
+  1. PaddleOCR-VL (ocr_vl.py)   each page  -> work/runs/<name>/<name>_<p>.md
   2. dot_check.restore (text-only LLM)     -> <name>_<p>.dots.md when it
      restored 순환소수 dots OCR dropped     (skipped with --no-llm / --no-dots)
   3. normalize.normalize_math              -> <name>_<p>.norm.md
@@ -15,8 +15,8 @@ goes through the real pipeline, then two reviewers go over the spoken output:
          side and flags places a listening student would be misled.
 
 Findings land in:
-  runs/<name>/review.json    machine-readable (all pages, lint + judge)
-  runs/<name>/review.md      human summary
+  work/runs/<name>/review.json    machine-readable (all pages, lint + judge)
+  work/runs/<name>/review.md      human summary
   eval/suggested_cases.json  judge-proposed golden cases. Review them, move the
                              good ones into eval/cases.json (add "known": <why>
                              when documenting a struggle instead of fixing it).
@@ -27,7 +27,7 @@ Findings land in:
   OPENAI_BASE_URL   default https://api.openai.com/v1
 
 Usage:
-  python scripts/inbox_eval.py                  # process inbox/, lint + judge
+  python scripts/inbox_eval.py                  # process work/inbox/, lint + judge
   python scripts/inbox_eval.py --no-llm         # pipeline + lint only, no API calls
   python scripts/inbox_eval.py --no-dots        # keep the judge, skip dot restoration
   python scripts/inbox_eval.py --force          # redo reviews (cached OCR is reused)
@@ -35,7 +35,7 @@ Usage:
   python scripts/inbox_eval.py --stitched DIR [--source DIR]
                                         # judge existing *.stitched.txt (no OCR);
                                         # --source pairs <name>.norm.md as ground truth
-A finished input (runs/<name>/review.json exists) is skipped unless --force.
+A finished input (work/runs/<name>/review.json exists) is skipped unless --force.
 Exit code 1 if any error-level lint or judge finding was produced.
 """
 import argparse
@@ -53,8 +53,8 @@ from tts_eval import lint_text
 
 ROOT = Path(__file__).resolve().parent.parent  # the repo root
 
-INBOX = ROOT / "inbox"
-RUNS = ROOT / "runs"
+INBOX = ROOT / "work" / "inbox"
+RUNS = ROOT / "work" / "runs"
 SUGGESTED = ROOT / "eval" / "suggested_cases.json"
 CASES = ROOT / "eval" / "cases.json"
 INPUT_EXTS = {".pdf", ".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
@@ -355,7 +355,7 @@ def process_inbox(cfg, force, force_ocr=False, no_dots=False):
                     if p.is_file() and p.suffix.lower() in INPUT_EXTS) if INBOX.is_dir() else []
     if not inputs:
         INBOX.mkdir(exist_ok=True)
-        print(f"inbox/ is empty — drop PDFs or images into {INBOX} and rerun.")
+        print(f"work/inbox/ is empty — drop PDFs or images into {INBOX} and rerun.")
         return 0
 
     # Phase 1: OCR every input (model stays loaded across files, loaded at most once).
@@ -416,7 +416,7 @@ def process_stitched(cfg, dirs, source_dir):
 
 def main():
     ap = argparse.ArgumentParser(
-        description="Run inbox/ PDFs through the pipeline and LLM-judge the speech.")
+        description="Run work/inbox/ PDFs through the pipeline and LLM-judge the speech.")
     ap.add_argument("--no-llm", action="store_true", help="pipeline + lint only")
     ap.add_argument("--no-dots", action="store_true",
                     help="skip the 순환소수 dot-restore LLM pass (judge still runs)")
@@ -429,7 +429,7 @@ def main():
                          "slower, but the laptop stays cool and usable")
     ap.add_argument("--model", help="override OPENAI_MODEL for the judge")
     ap.add_argument("--stitched", nargs="+", metavar="DIR",
-                    help="judge existing *.stitched.txt dirs instead of inbox/")
+                    help="judge existing *.stitched.txt dirs instead of work/inbox/")
     ap.add_argument("--source", metavar="DIR",
                     help="with --stitched: dir holding matching <name>.norm.md")
     a = ap.parse_args()

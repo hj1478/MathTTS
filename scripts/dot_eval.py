@@ -134,7 +134,7 @@ def run_score(cfg, paths):
             text = p.read_text(encoding="utf-8")
         else:
             from pipeline import ocr_vl  # heavy — imported only when an image needs OCR
-            text, _ = ocr_vl.run_image(p, ROOT / "output", ocr_vl.auto_device())
+            text, _ = ocr_vl.run_image(p, ROOT / "work" / "output", ocr_vl.auto_device())
         stage2 = stage1 = dotted_numbers(text)
         if dot_check.needs_check(text):
             patched, _, err = dot_check.restore(cfg, text, p.name)

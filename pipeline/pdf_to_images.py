@@ -9,8 +9,8 @@ repo's own image fixtures (question_1.png, page.png) are in that range. Raise it
 fraction bars or small subscripts come out broken.
 
 Usage:
-  python pipeline/pdf_to_images.py fixtures/kma_sheet_13_8_prob.pdf --out ./pages
-  python pipeline/ocr_vl.py --eval ./pages --out ./output
+  python pipeline/pdf_to_images.py fixtures/kma_sheet_13_8_prob.pdf --out ./work/pages
+  python pipeline/ocr_vl.py --eval ./work/pages --out ./work/output
 """
 import argparse
 import sys
@@ -37,7 +37,7 @@ def render(pdf_path, out_dir, dpi):
 def main():
     ap = argparse.ArgumentParser(description="Render PDF pages to PNGs for ocr_vl.py.")
     ap.add_argument("pdf", help="path to a PDF")
-    ap.add_argument("--out", default="./pages", help="output folder (default ./pages)")
+    ap.add_argument("--out", default="./work/pages", help="output folder (default ./work/pages)")
     ap.add_argument("--dpi", type=int, default=200, help="render resolution (default 200)")
     a = ap.parse_args()
 

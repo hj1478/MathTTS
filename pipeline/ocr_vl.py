@@ -206,7 +206,7 @@ def main():
     ap = argparse.ArgumentParser(description="Local PaddleOCR-VL harness (Korean + math). No paid API.")
     ap.add_argument("input", nargs="?", help="path to a single image")
     ap.add_argument("--eval", metavar="FOLDER", help="run every image in FOLDER, print a summary table")
-    ap.add_argument("--out", default="./output", help="output folder (default ./output)")
+    ap.add_argument("--out", default="./work/output", help="output folder (default ./work/output)")
     ap.add_argument("--device", choices=["cpu", "gpu"], help="force device (default: auto)")
     ap.add_argument("--photo", action="store_true",
                     help="single image only: a camera photo - turn it upright and flatten it first")

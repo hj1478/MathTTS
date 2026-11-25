@@ -6,7 +6,7 @@ Input: stitched files produced by  sre-probe/speak.js --write ../stitched
   *.stitched.ssml  Azure-enveloped SSML (SRE markup:ssml,  -> speak_ssml_async
                    structural <break>s, <say-as> character, prosody rate)
 
-Output: ./audio/<name>-full-plain.wav and <name>-full-ssml.wav for A/B listening.
+Output: ./work/audio/<name>-full-plain.wav and <name>-full-ssml.wav for A/B listening.
 Uses azure_tts.py for .env loading, SpeechConfig, and verified synthesis.
 
 Note: the voice INSIDE a .ssml file's <voice> tag was fixed when speak.js wrote
@@ -23,8 +23,8 @@ from pipeline.azure_tts import make_config, synth
 
 def main():
     ap = argparse.ArgumentParser(description="Speak whole stitched problems (plain vs SSML A/B).")
-    ap.add_argument("--stitched", default="./stitched", help="folder with *.stitched.txt/.ssml")
-    ap.add_argument("--out", default="./audio", help="output folder (default ./audio)")
+    ap.add_argument("--stitched", default="./work/stitched", help="folder with *.stitched.txt/.ssml (default ./work/stitched)")
+    ap.add_argument("--out", default="./work/audio", help="output folder (default ./work/audio)")
     ap.add_argument("--voice", default="ko-KR-SunHiNeural", help="voice for the PLAIN versions")
     a = ap.parse_args()
 

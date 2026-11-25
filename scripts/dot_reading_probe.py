@@ -28,7 +28,7 @@ Predictions go in docs/findings/17_repeating_decimals.md BEFORE listening
 Usage:
   python scripts/dot_reading_probe.py                 # scaffold findings + synth all wavs
   python scripts/dot_reading_probe.py --dry-run       # print texts/table, no Azure calls
-  python scripts/dot_reading_probe.py --voice ko-KR-InJoonNeural --out ./audio/exp17
+  python scripts/dot_reading_probe.py --voice ko-KR-InJoonNeural --out ./work/audio/exp17
 
 Credentials: reuses pipeline/azure_tts.py's loader (AZURE_SPEECH_KEY +
 AZURE_SPEECH_ENDPOINT / AZURE_SPEECH_REGION from env or .env). Never hardcoded.
@@ -155,7 +155,7 @@ def scaffold_findings():
 def main():
     ap = argparse.ArgumentParser(
         description="Generate A/B audio for candidate 순환소수 readings (#17).")
-    ap.add_argument("--out", default="./audio/exp17", help="wav folder (default ./audio/exp17)")
+    ap.add_argument("--out", default="./work/audio/exp17", help="wav folder (default ./work/audio/exp17)")
     ap.add_argument("--voice", default="ko-KR-SunHiNeural")
     ap.add_argument("--dry-run", action="store_true", help="print texts, no Azure calls")
     a = ap.parse_args()

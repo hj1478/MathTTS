@@ -4,12 +4,12 @@
 Chains the stages with the same default folders they use standalone, so any
 stage can still be re-run in isolation with its own CLI:
 
-  0. (PDF only)  pdf_to_images.py     *.pdf        -> pages/*.png
-  1. OCR         ocr_vl.py            *.png        -> output/*.md
+  0. (PDF only)  pdf_to_images.py     *.pdf        -> work/pages/*.png
+  1. OCR         ocr_vl.py            *.png        -> work/output/*.md
   1.5 Dots       dot_check.py         *.md         -> *.dots.md   (--dots only)
   2. Normalize   normalize.py         *.md         -> *.norm.md
-  3. Speech      sre-probe/speak.js   *.norm.md    -> stitched/*.stitched.txt + .ssml
-  4. TTS         tts_full.py          stitched/*   -> audio/*.wav  (needs Azure creds)
+  3. Speech      sre-probe/speak.js   *.norm.md    -> work/stitched/*.stitched.txt + .ssml
+  4. TTS         tts_full.py          work/stitched/* -> work/audio/*.wav  (needs Azure creds)
 
 speak.js is resolved relative to THIS file, not the caller's cwd, and runs
 with --strict: a span that would stitch as a placeholder stops the pipeline
@@ -32,7 +32,7 @@ unpatched page stays inspectable; stage 2 then prefers the patched file and
 says so.
 
 Skip flags reuse whatever artifacts the skipped stage left behind, so e.g.
---skip-ocr re-normalizes/re-stitches existing output/*.md without paying the
+--skip-ocr re-normalizes/re-stitches existing work/output/*.md without paying the
 slow OCR step again.
 """
 import argparse
@@ -73,10 +73,10 @@ def main():
     ap = argparse.ArgumentParser(description="image/PDF -> wav through all four stages.")
     ap.add_argument("input", nargs="?", help="an image or a PDF")
     ap.add_argument("--dir", help="run every image in this folder instead")
-    ap.add_argument("--output", default="./output", help="stage 1/2 folder (default ./output)")
-    ap.add_argument("--stitched", default="./stitched", help="stage 3 folder (default ./stitched)")
-    ap.add_argument("--audio", default="./audio", help="stage 4 folder (default ./audio)")
-    ap.add_argument("--pages", default="./pages", help="stage 0 folder for PDF pages")
+    ap.add_argument("--output", default="./work/output", help="stage 1/2 folder (default ./work/output)")
+    ap.add_argument("--stitched", default="./work/stitched", help="stage 3 folder (default ./work/stitched)")
+    ap.add_argument("--audio", default="./work/audio", help="stage 4 folder (default ./work/audio)")
+    ap.add_argument("--pages", default="./work/pages", help="stage 0 folder for PDF pages (default ./work/pages)")
     ap.add_argument("--dpi", type=int, default=200, help="PDF render DPI (default 200)")
     ap.add_argument("--voice", default="ko-KR-SunHiNeural", help="Azure voice")
     ap.add_argument("--device", choices=["cpu", "gpu"], help="OCR device (default: auto)")
@@ -87,9 +87,9 @@ def main():
     ap.add_argument("--lenient", action="store_true",
                     help="don't stop when a formula stitches as salvage/placeholder "
                          "(drops speak.js --strict)")
-    ap.add_argument("--skip-ocr", action="store_true", help="reuse existing output/*.md")
+    ap.add_argument("--skip-ocr", action="store_true", help="reuse the *.md already in the stage 1/2 folder")
     ap.add_argument("--skip-normalize", action="store_true", help="reuse existing *.norm.md")
-    ap.add_argument("--skip-speak", action="store_true", help="reuse existing stitched/*")
+    ap.add_argument("--skip-speak", action="store_true", help="reuse what is already in the stage 3 folder")
     ap.add_argument("--skip-tts", action="store_true", help="stop before Azure synthesis")
     a = ap.parse_args()
     if bool(a.input) == bool(a.dir):
@@ -174,7 +174,7 @@ def main():
 
     # --- stage 3: Korean math speech (plain + SSML, for the A/B wavs) ------
     if a.skip_speak:
-        print("[stage 3] skipped — reusing stitched/*")
+        print(f"[stage 3] skipped — reusing {a.stitched}/*")
     else:
         stitch_dir = Path(a.stitched).resolve()
         base = ["node", SPEAK_JS, "--voice", a.voice, "--write", stitch_dir]

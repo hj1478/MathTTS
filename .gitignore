@@ -12,13 +12,8 @@ __pycache__/
 # Node (sre-probe)
 node_modules/
 
-# Generated pipeline artifacts
-inbox/
-runs/
-pages/
-output/
-stitched/
-audio/
+# Everything the pipeline and the eval scripts write (and the eval inbox)
+work/
 
 # Local tool config
 .claude/settings.local.json

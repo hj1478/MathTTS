@@ -17,9 +17,9 @@ Two layers, no listening required (the pipeline is deterministic text -> text):
    letter-by-letter spellouts, known SRE misreads, unbalanced spoken brackets.
 
 Usage:
-  python scripts/tts_eval.py                          # cases + lint stitched/
+  python scripts/tts_eval.py                          # cases + lint work/stitched/
   python scripts/tts_eval.py --cases eval/cases.json  # cases only
-  python scripts/tts_eval.py --lint stitched          # lint only
+  python scripts/tts_eval.py --lint work/stitched     # lint only
 Exit code 1 on any unexpected case failure or error-level lint finding.
 """
 import json
@@ -153,7 +153,7 @@ def main():
     cases_path, lint_dirs = None, []
     if not args:
         cases_path = ROOT / "eval" / "cases.json"
-        lint_dirs = [d for d in (ROOT / "stitched",) if d.is_dir()]
+        lint_dirs = [d for d in (ROOT / "work" / "stitched",) if d.is_dir()]
     i = 0
     while i < len(args):
         if args[i] == "--cases":

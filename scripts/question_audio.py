@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """One wav per QUESTION: split cached OCR pages into individual questions and
-synthesize each separately (audio/questions/<source>/<label>.wav).
+synthesize each separately (work/audio/questions/<source>/<label>.wav).
 
 A convenience driver over the normal stages, not a new stage: it re-normalizes
-the cached raw OCR (output/*.md for the root images, runs/<name>/*_<p>.md for
+the cached raw OCR (work/output/*.md for the root images, work/runs/<name>/*_<p>.md for
 every previously processed PDF), splits each page at question markers, runs
 ONE speak.js --ssml pass over all chunks, then synthesizes every chunk with
 Azure. Also emits a few synthetic 순환소수 questions (source "repeating_
@@ -16,10 +16,10 @@ chunk when it is long enough to matter. Choice/answer markers like "(1)" or
 "1)" deliberately do NOT split — they belong to their question.
 
 Usage:
-  python scripts/question_audio.py              # everything -> audio/questions/
+  python scripts/question_audio.py              # everything -> work/audio/questions/
   python scripts/question_audio.py --dry-run    # show the chunk table, no Azure calls
 
-Writes audio/questions/manifest.tsv (file, chars, text preview) for browsing.
+Writes work/audio/questions/manifest.tsv (file, chars, text preview) for browsing.
 """
 import argparse
 import re
@@ -75,12 +75,12 @@ def split_questions(text, page):
 def collect():
     """-> [(source, label, raw_text)] for every cached question."""
     out = []
-    for md in sorted((ROOT / "output").glob("*.md")):
+    for md in sorted((ROOT / "work" / "output").glob("*.md")):
         if md.name.endswith(".norm.md") or md.stem.startswith("page"):
             continue  # page.png is the English salvage fixture, not a question
         src = md.stem.replace(" ", "_")
         out.append((src, "q1", md.read_text(encoding="utf-8")))
-    for run in sorted((ROOT / "runs").iterdir()):
+    for run in sorted((ROOT / "work" / "runs").iterdir()):
         if not run.is_dir():
             continue
         for md in sorted(run.glob(f"{run.name}_*.md"), key=_page_key):
@@ -104,7 +104,7 @@ def collect():
 
 def main():
     ap = argparse.ArgumentParser(description="One wav per question from cached OCR.")
-    ap.add_argument("--out", default="./audio/questions")
+    ap.add_argument("--out", default="./work/audio/questions")
     ap.add_argument("--voice", default="ko-KR-SunHiNeural")
     ap.add_argument("--dry-run", action="store_true", help="chunk table only, no Azure")
     a = ap.parse_args()
