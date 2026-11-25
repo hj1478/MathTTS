@@ -16,10 +16,10 @@ with --strict: a span that would stitch as a placeholder stops the pipeline
 before stage 4 pays Azure to read the placeholder aloud.
 
 Usage:
-  python pipeline/run.py "fixtures/kr question 1.png"
+  python pipeline/run.py fixtures/question_1.png
   python pipeline/run.py fixtures/kma_sheet_13_8_prob.pdf
   python pipeline/run.py --dir somefolder
-  python pipeline/run.py "fixtures/kr question 1.png" --skip-ocr --skip-tts   # redo middle stages
+  python pipeline/run.py fixtures/question_1.png --skip-ocr --skip-tts   # redo middle stages
   python pipeline/run.py sheet.pdf --dots                            # + 순환소수 repair
 
 Stage 1.5 is OFF by default and is the only stage besides 4 that costs money

@@ -1,6 +1,6 @@
 """The math-span grammar must behave identically in Python and JS (issue #4).
 
-eval/fixtures/span_cases.json holds the tricky inputs; this test checks the
+fixtures/span_cases.json holds the tricky inputs; this test checks the
 Python side (normalize.SPAN), sre-probe/span.test.js checks the JS copy in
 speak.js against the same file. Editing one grammar and forgetting the other
 fails one of the two suites instead of going unnoticed.
@@ -19,7 +19,7 @@ from pipeline import normalize, ocr_vl
 
 ROOT = Path(__file__).resolve().parent.parent
 
-CASES = json.loads((ROOT / "eval" / "fixtures" / "span_cases.json").read_text(encoding="utf-8"))
+CASES = json.loads((ROOT / "fixtures" / "span_cases.json").read_text(encoding="utf-8"))
 
 
 @pytest.mark.parametrize("case", CASES, ids=[c["name"] for c in CASES])

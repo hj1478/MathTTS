@@ -155,7 +155,7 @@ def print_stages(body):
 def main():
     ap = argparse.ArgumentParser(description="Smoke-test the deployed MathTTS backend.")
     ap.add_argument("base_url", help="e.g. https://<workspace>--mathtts.us-east.modal.run")
-    ap.add_argument("--image", default=str(ROOT / "fixtures" / "kr question 1.png"))
+    ap.add_argument("--image", default=str(ROOT / "fixtures" / "question_1.png"))
     ap.add_argument("--repeat", type=int, default=1,
                     help="submit the image this many times in a row (2 = cold then warm)")
     ap.add_argument("--warmup-lead", type=float, metavar="S",

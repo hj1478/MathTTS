@@ -64,7 +64,7 @@ const { casualLatex, casualSpeech } = require('./casual');
 // stage consumes normalize.py output, which only ever emits $..$ / $$..$$).
 // Inline may not contain Hangul/'$'/newline so a stray '$' in prose can't
 // swallow text. JS cannot share Python's regex, so this copy is held in sync
-// by the shared fixtures in ../eval/fixtures/span_cases.json — span.test.js
+// by the shared fixtures in ../fixtures/span_cases.json — span.test.js
 // here and tests/test_span_grammar.py both check their regex against it.
 const SPAN = /\$\$.+?\$\$|\$[^$\n가-힣]+?\$/gs;
 

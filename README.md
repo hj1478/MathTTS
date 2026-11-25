@@ -148,14 +148,14 @@ as digits, how the Azure voice pronounces it is unmeasured.
 > Why bother: it is faster to understand than any description, and it doubles as
 > a reference point later — "this is what it used to produce".
 >
-> Which problem: `kr question 1.png` is the candidate. Its OCR output contains a
+> Which problem: `question_1.png` is the candidate. Its OCR output contains a
 > real broken-parenthesis case, so the example itself shows what the normalize
 > stage is for. That is more useful than an example where everything already works.
 
-`fixtures/kr question 1.png`, a 중3 inequality problem, at every stage. It is the useful
+`fixtures/question_1.png`, a 중3 inequality problem, at every stage. It is the useful
 example precisely because the OCR gets something wrong.
 
-**1. OCR** — `python pipeline/ocr_vl.py "fixtures/kr question 1.png"` → `output/kr question 1.md`
+**1. OCR** — `python pipeline/ocr_vl.py fixtures/question_1.png` → `output/question_1.md`
 
 ```
 24. $x$에 대한 일차부등식 $3(x-k)\leq2x+5$가 모든 음의 정수 $x$에 대하여
@@ -166,7 +166,7 @@ $p\leq k<q(p, q$는 상수)이다. 이때 $p^{2}+9q^{2}$의 값을 구하시오.
 Note `$p\leq k<q(p, q$` — the model put the closing `$` too late, so the math
 span swallowed "(p, q" and the Korean that follows it.
 
-**2. Normalize** — `python pipeline/normalize.py "output/kr question 1.md"`
+**2. Normalize** — `python pipeline/normalize.py output/question_1.md`
 
 ```
 24. $x$에 대한 일차부등식 $3(x-k)\leq2x+5$가 모든 음의 정수 $x$에 대하여
@@ -197,7 +197,7 @@ With `--casual`, which the web service uses, the same problem reads:
 Had the span not been repaired at stage 2, "(p, q" would have been read as
 arithmetic and the Korean inside it spelled out letter by letter.
 
-**4. Audio** — `python pipeline/tts_full.py` → `audio/kr question 1-full-plain.wav` and
+**4. Audio** — `python pipeline/tts_full.py` → `audio/question_1-full-plain.wav` and
 `-full-ssml.wav`, for A/B listening.
 
 One weakness is visible in the text above, and it is a known gap rather than a
@@ -213,7 +213,7 @@ exists to test.
 | `sre-probe/` | Stage 3, LaTeX → Korean speech (Node) |
 | `backend/` | The pipeline as a web API on Modal |
 | `scripts/` | Eval harnesses, listening probes and the backend smoke test — nothing the pipeline needs |
-| `fixtures/` | Sample inputs with their `.expect` sidecars |
+| `fixtures/` | Sample inputs with their `.expect` sidecars, and the span-grammar cases both test suites read |
 | `eval/` | Golden cases and the record of problems found |
 | `tests/` | pytest suite |
 | `docs/` | API reference, the findings log (`docs/FINDINGS.md`), worksheets |
@@ -255,7 +255,7 @@ export the same variables.
 `pipeline/run.py` chains everything:
 
 ```sh
-python pipeline/run.py "fixtures/kr question 1.png"          # image → wav
+python pipeline/run.py fixtures/question_1.png          # image → wav
 python pipeline/run.py fixtures/kma_sheet_13_8_prob.pdf      # PDF → pages → wav
 python pipeline/run.py --dir pages --skip-tts       # stop before Azure synthesis
 ```
@@ -265,7 +265,7 @@ Per-stage skip flags (`--skip-ocr`, `--skip-normalize`, `--skip-speak`,
 runnable alone:
 
 ```sh
-python pipeline/ocr_vl.py "fixtures/kr question 1.png" --out ./output
+python pipeline/ocr_vl.py fixtures/question_1.png --out ./output
 python pipeline/normalize.py --dir output
 node sre-probe/speak.js --ssml --write ./stitched --dir ./output
 python pipeline/tts_full.py --stitched ./stitched --out ./audio
@@ -286,7 +286,9 @@ python pipeline/ocr_vl.py --eval fixtures       # OCR each image, score against 
   this to stop before paying Azure to read a placeholder aloud).
 - Larger harnesses, in `scripts/`: `tts_eval.py` (golden cases + lint),
   `inbox_eval.py` (drop PDFs in `inbox/`, OCR → stitch → LLM judge),
-  `dot_eval.py` (순환소수 dot restoration).
+  `dot_eval.py` (순환소수 dot restoration), `photo_eval.py` (phone photos of a
+  fixture read with and without PaddleOCR's page clean-up, scored against the
+  clean original), `tts_hear.py` (what Azure's recognizer hears in the audio).
 
 ## Web backend (Modal)
 
@@ -358,7 +360,7 @@ covers the upload, quota and rate-limit helpers and the per-stage status
 (`backend/progress.py`) without Modal.
 
 The OCR checks behind those findings are a separate Modal app, `mathtts-diag`
-in `backend/diagnostics.py`, run with `modal run` and never deployed (its
+in `scripts/modal_diagnostics.py`, run with `modal run` and never deployed (its
 docstring lists the commands). The deployed `mathtts` app has only the worker,
 the web API and the hourly cleanup.
 

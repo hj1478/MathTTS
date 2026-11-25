@@ -16,6 +16,8 @@ corrupts a correct number, so false positives are the failures to watch.
    (prints FIXED when it starts passing, like tts_eval.py).
    Costs one temperature-0 API call per non-gated case — run on demand after a
    prompt/model change, not in per-commit CI.
+   eval/dot_cases_extra.json is a second set in the same format (7 positive,
+   8 negative), run with --cases; it has no "known" marks yet.
 
 2. SCORE (--score PATH ...): end-to-end detection rate against ground truth.
    PATH is a page image (OCR'd first — tens of sec/page on CPU) or an

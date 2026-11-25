@@ -4,17 +4,17 @@ Kept out of the production app (backend/modal_app.py: Worker, web, cleanup) so
 a deploy never ships them. Nothing here is deployed; each check runs with
 `modal run` and stops when it is done:
 
-    modal run backend/diagnostics.py::selftest       # CPU only: hard kill of a fake hang
-    modal run backend/diagnostics.py::fresh_test     # first OCR call in N fresh processes
+    modal run scripts/modal_diagnostics.py::selftest       # CPU only: hard kill of a fake hang
+    modal run scripts/modal_diagnostics.py::fresh_test     # first OCR call in N fresh processes
         --gpu T4|L4  --allocator naive_best_fit|default  --n 10
-    modal run backend/diagnostics.py::output_check   # golden images: OCR text vs output/
-    modal run backend/diagnostics.py::stack_check    # native state of a default-allocator hang
-    modal run backend/diagnostics.py::cpu_check      # one image, device="cpu", no GPU
-    modal run backend/diagnostics.py::warm_timing    # load, 1 first call, N warm calls
+    modal run scripts/modal_diagnostics.py::output_check   # golden images: OCR text vs output/
+    modal run scripts/modal_diagnostics.py::stack_check    # native state of a default-allocator hang
+    modal run scripts/modal_diagnostics.py::cpu_check      # one image, device="cpu", no GPU
+    modal run scripts/modal_diagnostics.py::warm_timing    # load, 1 first call, N warm calls
         --gpu T4|L4  --n 5
 
 The images are the production ones (modal_app.pipeline_image), plus
-modal_app.py itself so this module can import it in the container. All use the
+backend/modal_app.py itself so this module can import it in the container. All use the
 same OcrProcess as the worker. An OCR call still running after DIAG_HANG_S is
 killed with its process group (the child dumps its own stacks to the log just
 before), and the container is retired. retries=0 throughout. Background:
@@ -26,14 +26,14 @@ from pathlib import Path
 
 import modal
 
-from modal_app import (REPO, STARTUP_TIMEOUT_S, _retire_container, pipeline_image,
-                       worker_image)
+from backend.modal_app import (REPO, STARTUP_TIMEOUT_S, _retire_container, pipeline_image,
+                               worker_image)
 
 app = modal.App("mathtts-diag")
 
 
 def _with_app_module(image):
-    return image.add_local_file(REPO / "backend" / "modal_app.py", "/root/modal_app.py")
+    return image.add_local_file(REPO / "backend" / "modal_app.py", "/root/backend/modal_app.py")
 
 
 gpu_image = _with_app_module(worker_image)               # the worker's image
@@ -47,7 +47,7 @@ selftest_image = _with_app_module(
 
 DIAG_HANG_S = 60
 DIAG_PARALLEL = 4
-DIAG_IMAGES = ["kr question 1.png", "page.png"]
+DIAG_IMAGES = ["question_1.png", "page.png"]
 DIAG_KW = dict(memory=16384, retries=0, startup_timeout=STARTUP_TIMEOUT_S,
                timeout=STARTUP_TIMEOUT_S + 8 * DIAG_HANG_S)
 
@@ -112,7 +112,7 @@ def _warm_calls(image_bytes, ext, n):
     image, as a warm worker would. Times are the worker's view (OcrProcess.run)."""
     from backend.ocr_proc import OcrProcess
 
-    from modal_app import OCR_ENV
+    from backend.modal_app import OCR_ENV
     out = {"gpu": _nvidia_smi("name")}
     ocr = OcrProcess("gpu", env=OCR_ENV)
     t = time.monotonic()
@@ -307,7 +307,7 @@ def hardkill_selftest(cutoff_s=5):
 
 
 @app.local_entrypoint()
-def cpu_check(image: str = str(REPO / "fixtures" / "kr question 1.png")):
+def cpu_check(image: str = str(REPO / "fixtures" / "question_1.png")):
     """One image through OCR on CPU, printed next to the saved output/<stem>.md."""
     path = Path(image)
     r = ocr_cpu.remote(path.read_bytes(), path.name)
@@ -322,7 +322,7 @@ def cpu_check(image: str = str(REPO / "fixtures" / "kr question 1.png")):
 def stack_check(report: str = ""):
     """What the threads of a hung first call (default allocator) are doing natively."""
     import json
-    r = native_stack.remote((REPO / "fixtures" / "kr question 1.png").read_bytes(), ".png")
+    r = native_stack.remote((REPO / "fixtures" / "question_1.png").read_bytes(), ".png")
     print("\n===== native stack of a hung first call (default allocator, T4) =====")
     for line in r.get("log", []):
         print(line)
@@ -346,7 +346,7 @@ def selftest():
 
 @app.local_entrypoint()
 def fresh_test(gpu: str = "T4", allocator: str = "naive_best_fit", n: int = 10,
-               image: str = str(REPO / "fixtures" / "kr question 1.png"), report: str = ""):
+               image: str = str(REPO / "fixtures" / "question_1.png"), report: str = ""):
     import json
     import statistics
     fn = {"T4": first_call_t4, "L4": first_call_l4}[gpu]
@@ -431,7 +431,7 @@ def output_check(allocator: str = "naive_best_fit", report: str = ""):
 
 
 @app.local_entrypoint()
-def warm_timing(gpu: str = "L4", n: int = 5, image: str = str(REPO / "fixtures" / "kr question 1.png")):
+def warm_timing(gpu: str = "L4", n: int = 5, image: str = str(REPO / "fixtures" / "question_1.png")):
     import statistics
     fn = {"T4": warm_calls_t4, "L4": warm_calls_l4}[gpu]
     path = Path(image)

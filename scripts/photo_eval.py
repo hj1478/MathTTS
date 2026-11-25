@@ -6,12 +6,12 @@ was decided for born-digital worksheet PDFs. A camera photo is neither flat nor
 reliably upright, so this script reads the same photos with those two models
 off and on, and scores each reading against the clean original.
 
-  reference   the clean fixture (kr question 1.png, ...) read with both models
+  reference   the clean fixture (question_1.png, ...) read with both models
               off - what the pipeline produces today on a perfect input. Saved
               as OUT/ref/<fixture>.md; correct a file by hand and it is kept.
   photo       a picture of that fixture. It belongs to the fixture whose name
-              its file name starts with: "kr question 1.jpg",
-              "kr question 1 tilted.heic.jpg", ...
+              its file name starts with: "question_1.jpg",
+              "question_1 tilted.heic.jpg", ...
   configs     off | orient | unwarp | both   (which clean-up models run)
 
 Scores, per photo and config (the reference is 0 / 100% by construction):

@@ -18,7 +18,7 @@ unchanged. This file is only the hosting around it:
                 and audio older than RETENTION_S, and expired rate-limit slots.
 
 Those three are the whole app. The OCR diagnostics are a separate app,
-"mathtts-diag", in backend/diagnostics.py; they share pipeline_image().
+"mathtts-diag", in scripts/modal_diagnostics.py; they share pipeline_image().
 
 State:
   Volume "mathtts-data"   /data/jobs/<id>/  upload.<ext>, ocr/, stitched/, audio.mp3
@@ -96,7 +96,7 @@ SPAWN_LOST_AFTER_S = 60
 # One throwaway OCR call when a worker starts: the first inference in a fresh
 # process takes ~6.5 s against ~3.7 s after it (FINDINGS.md, 2026-10-19), and
 # loading the model alone does not pay that. Hidden behind POST /warmup.
-WARMUP_IMAGE = "fixtures/kr question 1.png"
+WARMUP_IMAGE = "fixtures/question_1.png"
 WARMUP_CALL_S = 60             # cutoff for that call (it takes ~6.5 s)
 GPU = "T4"
 # The image build step that bakes the weights only needs paddle importable with
@@ -133,7 +133,7 @@ def pipeline_image(paddle="gpu"):
     """The image with the whole pipeline: OCR, speak.js, Azure TTS.
 
     paddle="gpu" is the worker's image. paddle="cpu" swaps in the CPU build of
-    the same Paddle version, for CPU-only diagnostics (backend/diagnostics.py):
+    the same Paddle version, for CPU-only diagnostics (scripts/modal_diagnostics.py):
     paddlepaddle-gpu cannot even be imported without the NVIDIA driver
     (FINDINGS.md, 2026-10-16). Every other layer is the same.
     """

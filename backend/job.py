@@ -38,7 +38,7 @@ audio is "skipped", and Azure is never asked to read a placeholder aloud.
 
 The CLI below loads the OCR model, so run it only on a machine sized for it
 (not the dev laptop), e.g. inside the worker image:
-  python -m backend.job "fixtures/kr question 1.png" --skip-tts
+  python -m backend.job fixtures/question_1.png --skip-tts
 """
 import argparse
 import json
