@@ -38,7 +38,6 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent  # the repo root
-sys.path.insert(0, str(ROOT / "pipeline"))      # the stage modules
 
 FINDINGS = ROOT / "docs" / "findings" / "17_repeating_decimals.md"
 
@@ -171,7 +170,7 @@ def main():
 
     failures = 0
     if not a.dry_run:
-        from azure_tts import make_config, synth
+        from pipeline.azure_tts import make_config, synth
         out = Path(a.out)
         out.mkdir(parents=True, exist_ok=True)
         cfg = make_config(a.voice)

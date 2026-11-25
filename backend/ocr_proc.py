@@ -133,8 +133,7 @@ def _serve(conn, device):
     """Child: load the model once, then answer OCR requests until told to stop."""
     import faulthandler
 
-    sys.path.insert(0, str(ROOT / "pipeline"))
-    import ocr_vl
+    from pipeline import ocr_vl
     ocr_vl.pipeline(device, photo_models=True)  # a photo job must not reload the model
     import paddle
     flag = "FLAGS_allocator_strategy"

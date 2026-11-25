@@ -4,14 +4,11 @@ backend/progress.py: per-stage status for GET /jobs/{id}.
 No Modal or network needed; the web API in backend/modal_app.py is the caller.
 """
 import io
-import sys
 import time
-from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from backend import limits, progress  # noqa: E402
+from backend import limits, progress
 
 PIL = pytest.importorskip("PIL.Image")
 

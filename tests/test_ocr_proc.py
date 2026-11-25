@@ -5,14 +5,11 @@ a call that hangs is cut off at its timeout and leaves NO process behind,
 even when the child ignores SIGTERM and has a grandchild of its own.
 """
 import os
-import sys
 import time
-from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from backend.ocr_proc import OcrFailed, OcrProcess, OcrTimeout  # noqa: E402
+from backend.ocr_proc import OcrFailed, OcrProcess, OcrTimeout
 
 FAKE = "tests.fake_ocr_child"
 

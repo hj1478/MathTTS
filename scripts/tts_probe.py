@@ -21,10 +21,7 @@ import argparse
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent  # the repo root
-sys.path.insert(0, str(ROOT / "pipeline"))      # the stage modules
-
-from azure_tts import make_config, synth  # noqa: E402
+from pipeline.azure_tts import make_config, synth
 
 # {br} marks where the disambiguation pause goes in the SSML (b) version.
 # (id, slug, plain_text, ssml_body_with_{br}, what_to_listen_for)

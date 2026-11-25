@@ -47,13 +47,11 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent  # the repo root
-sys.path.insert(0, str(ROOT / "pipeline"))      # the stage modules
+from pipeline import dot_check, normalize
+from pipeline.llm import chat_json, openai_cfg
+from tts_eval import lint_text
 
-import dot_check  # noqa: E402
-import normalize  # noqa: E402
-from llm import chat_json, openai_cfg  # noqa: E402
-from tts_eval import lint_text  # noqa: E402
+ROOT = Path(__file__).resolve().parent.parent  # the repo root
 
 INBOX = ROOT / "inbox"
 RUNS = ROOT / "runs"
@@ -78,7 +76,7 @@ def page_key(p):
 
 def ocr_pages(path, run_dir):
     """OCR one input (a PDF yields one result per page) -> ordered .md files."""
-    import ocr_vl  # heavy import + lazy model load stay out of --stitched mode
+    from pipeline import ocr_vl  # heavy import + lazy model load stay out of --stitched mode
     run_dir.mkdir(parents=True, exist_ok=True)
     device = ocr_vl.auto_device()
     print(f"  [ocr] {path.name} (device={device} — CPU is tens of sec/page)")
@@ -346,7 +344,7 @@ def review_pages(cfg, page_texts, sources, run_dir, name):
 def release_ocr():
     """Drop the multi-GB VL model before spawning node — it starved speak.js."""
     import gc
-    mod = sys.modules.get("ocr_vl")
+    mod = sys.modules.get("pipeline.ocr_vl")
     if mod is not None:
         mod._pipeline = None
     gc.collect()

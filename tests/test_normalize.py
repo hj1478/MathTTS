@@ -3,14 +3,11 @@
 The SHOULD-NOT cases matter as much as the SHOULD cases: they are what stops
 the heuristic from wrapping ordinary Korean text as if it were math.
 """
-import sys
-from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "pipeline"))
 
-from normalize import normalize_math
+from pipeline.normalize import normalize_math
 
 TRANSFORMS = [
     # unicode -> LaTeX
@@ -173,7 +170,6 @@ def test_array_column_spec(src, want):
 ])
 def test_double_slash_is_parallel(src, want):
     assert normalize_math(src) == want
-
 
 
 @pytest.mark.parametrize("src, want", [

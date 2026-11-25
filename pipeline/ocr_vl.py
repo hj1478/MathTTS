@@ -33,7 +33,7 @@ WHY engine="transformers" MUST NOT BE ADDED
 
 INSTALL GOTCHA
   `pip install paddleocr` alone raises DependencyError at pipeline creation;
-  `pip install "paddlex[ocr]==3.7.2"` is also required (see requirements.txt).
+  `pip install "paddlex[ocr]==3.7.2"` is also required (see pyproject.toml).
   Model weights (PP-DocLayoutV3 + PaddleOCR-VL) auto-download from HuggingFace
   to ~/.paddlex/official_models/ on first run — hundreds of MB.
 """
@@ -46,7 +46,7 @@ IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
 # sre-probe/speak.js keeps a JS copy of the inline rule; the shared fixtures in
 # eval/fixtures/span_cases.json are checked by both test suites so the two
 # languages cannot silently drift apart.
-from normalize import SPAN as LATEX
+from pipeline.normalize import SPAN as LATEX
 HANGUL = re.compile(r"[가-힣ᄀ-ᇿ]")
 
 _pipeline = None

@@ -2,7 +2,7 @@
 """Stage 0 (optional): render a PDF's pages to PNGs that ocr_vl.py can read.
 
 The pipeline proper starts at images; this closes the gap for PDF sources
-like fixtures/kma_sheet_13_8_prob.pdf. Rendering uses pypdfium2 — pinned in requirements.txt.
+like fixtures/kma_sheet_13_8_prob.pdf. Rendering uses pypdfium2 — pinned in pyproject.toml.
 
 DPI default is 200: PaddleOCR-VL works from photo-resolution input, and the
 repo's own fixtures ("kr question N.png") are in that range. Raise it if thin

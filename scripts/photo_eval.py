@@ -37,10 +37,9 @@ reads what is new.
 import argparse, hashlib, io, json, re, sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent  # the repo root
-sys.path.insert(0, str(ROOT / "pipeline"))      # the stage modules
+from pipeline.normalize import SPAN
 
-from normalize import SPAN  # noqa: E402
+ROOT = Path(__file__).resolve().parent.parent  # the repo root
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
 MAX_SIDE, JPEG_QUALITY = 2400, 90   # as the app's src/lib/image.ts (its own repository)
@@ -73,7 +72,7 @@ def read(image_bytes, suffix, config, device, cache_dir):
     cached = cache_dir / f"{key}.{config}.md"
     if cached.exists():
         return cached.read_text(encoding="utf-8")
-    from ocr_vl import markdown_of
+    from pipeline.ocr_vl import markdown_of
     cache_dir.mkdir(parents=True, exist_ok=True)
     tmp = cache_dir / f"{key}{suffix}"
     tmp.write_bytes(image_bytes)
@@ -212,7 +211,7 @@ def main():
     if bad := [c for c in configs if c not in CONFIGS]:
         ap.error(f"unknown config {bad}")
 
-    from ocr_vl import auto_device
+    from pipeline.ocr_vl import auto_device
     device = a.device or auto_device()
     out, cache = Path(a.out), Path(a.out) / "cache"
     fixtures = {p.stem: p for p in images_in(a.fixtures)}

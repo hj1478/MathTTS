@@ -3,14 +3,11 @@ backend/job.py: per-problem audio and the page audio built from it.
 backend/progress.py: the tts stage on a page of problems.
 """
 import json
-import sys
 from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
-from backend import job, problems, progress  # noqa: E402
+from backend import job, problems, progress
 
 
 def block(label, bbox, text, order):

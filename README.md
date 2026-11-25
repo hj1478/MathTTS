@@ -226,9 +226,14 @@ by the pipeline and the eval scripts, and are not in git.
 Two dependency trees — Python **and** Node:
 
 ```sh
-python3.11 -m venv venv && venv/bin/pip install -r requirements.txt
+python3.11 -m venv venv && venv/bin/pip install -e ".[all]"
 cd sre-probe && npm install && cd ..
 ```
+
+The install is editable: it puts `pipeline/` and `backend/` on the path as
+packages, which the scripts and the backend import from. The dependencies are
+grouped in `pyproject.toml`, so a smaller install works too — `.[tts]` for
+stage 4 alone, `.[test]` for the tests without the OCR stack.
 
 **First run is expensive:** `ocr_vl.py` downloads model weights (hundreds of
 MB) to `~/.paddlex/official_models/`, and CPU inference takes tens of seconds
@@ -300,7 +305,7 @@ synthesizes only the SSML version, and an exhausted Azure quota still returns
 the text stages, reported as `audio.status: "quota_reached"`.
 
 Everything heavy runs on Modal: the image builds remotely and OCR runs on a T4.
-Your machine only needs the Modal client (`pip install modal`, then
+Your machine only needs the Modal client (`pip install -e ".[backend]"`, then
 `modal setup`). Azure credentials come from a Modal Secret, never from `.env`:
 
 ```sh

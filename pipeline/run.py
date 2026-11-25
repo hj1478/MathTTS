@@ -41,7 +41,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-import normalize
+from pipeline import normalize
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent  # the repo root
@@ -50,13 +50,13 @@ SPEAK_JS = ROOT / "sre-probe" / "speak.js"
 
 def collect_images(a):
     """input/--dir -> list of image paths (rendering a PDF to pages first)."""
-    import ocr_vl
+    from pipeline import ocr_vl
     if a.dir:
         return sorted(p for p in Path(a.dir).iterdir()
                       if p.is_file() and p.suffix.lower() in ocr_vl.IMAGE_EXTS)
     src = Path(a.input)
     if src.suffix.lower() == ".pdf":
-        import pdf_to_images
+        from pipeline import pdf_to_images
         print(f"[stage 0] {src.name} -> {a.pages}/")
         return pdf_to_images.render(src, a.pages, a.dpi)
     return [src]
@@ -109,7 +109,7 @@ def main():
                      if not p.name.endswith((".norm.md", ".dots.md")))
         print(f"[stage 1] skipped — reusing {len(mds)} .md file(s) in {out}")
     else:
-        import ocr_vl
+        from pipeline import ocr_vl
         images = collect_images(a)
         if not images:
             sys.exit("no images to OCR")
@@ -129,7 +129,7 @@ def main():
 
     # --- stage 1.5: 순환소수 dot restoration (opt-in; costs an LLM call) ----
     if a.dots:
-        import dot_check
+        from pipeline import dot_check
         cfg = dot_check.openai_cfg(a.model)
         print(f"[stage 1.5] dot restore ({cfg['model']}) — {len(mds)} page(s)")
         patched_n = failed = 0

@@ -29,10 +29,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent  # the repo root
-sys.path.insert(0, str(ROOT / "pipeline"))      # the stage modules
+from pipeline import normalize
 
-import normalize  # noqa: E402
+ROOT = Path(__file__).resolve().parent.parent  # the repo root
 
 # ------------------------------------------------------------ lint detectors
 

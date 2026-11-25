@@ -11,16 +11,13 @@ than normalize.SPAN (which also accepts raw \\(..\\), \\[..\\] and
 \\begin{..}..\\end{..} from the OCR).
 """
 import json
-import sys
 from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "pipeline"))
+from pipeline import normalize, ocr_vl
 
-import normalize
-import ocr_vl
+ROOT = Path(__file__).resolve().parent.parent
 
 CASES = json.loads((ROOT / "eval" / "fixtures" / "span_cases.json").read_text(encoding="utf-8"))
 

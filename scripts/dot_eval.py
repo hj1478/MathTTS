@@ -33,11 +33,10 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent  # the repo root
-sys.path.insert(0, str(ROOT / "pipeline"))      # the stage modules
+from pipeline import dot_check
+from pipeline.llm import openai_cfg
 
-import dot_check  # noqa: E402
-from llm import openai_cfg  # noqa: E402
+ROOT = Path(__file__).resolve().parent.parent  # the repo root
 
 DOT = dot_check._DOT
 _LATEX_DOT = re.compile(r"\\dot\{([0-9])\}")
@@ -132,7 +131,7 @@ def run_score(cfg, paths):
         if p.suffix.lower() == ".md":
             text = p.read_text(encoding="utf-8")
         else:
-            import ocr_vl  # heavy — imported only when an image needs OCR
+            from pipeline import ocr_vl  # heavy — imported only when an image needs OCR
             text, _ = ocr_vl.run_image(p, ROOT / "output", ocr_vl.auto_device())
         stage2 = stage1 = dotted_numbers(text)
         if dot_check.needs_check(text):

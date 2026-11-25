@@ -49,7 +49,7 @@ import re
 import sys
 from pathlib import Path
 
-from llm import chat_json, openai_cfg
+from pipeline.llm import chat_json, openai_cfg
 
 _DOT = "̇"                                    # combining dot above
 _DECIMAL = re.compile(r"[0-9]\.[0-9]")

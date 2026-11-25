@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mathtts"
+version = "0.1.0"
+description = "Korean math OCR-to-speech pipeline and its Modal web backend"
+requires-python = ">=3.11"
+# Nothing is needed by every use: each stage's packages are an extra below, so
+# stage 4 or the tests install without the paddle/OCR stack. Direct
+# dependencies only, hand-written; developed on macOS arm64 / Python 3.11, and
+# every package publishes Linux and Windows wheels too.
+#
+# The Node side is separate: `npm install` inside sre-probe/ (stage 3).
+dependencies = []
+
+[project.optional-dependencies]
+# Stage 1, OCR (pipeline/ocr_vl.py), and stage 0, PDF -> page images
+# (pipeline/pdf_to_images.py). paddlex[ocr] is required explicitly: paddleocr
+# alone raises DependencyError at pipeline creation (verified with paddleocr
+# 3.7.0 / paddlex 3.7.2). This is the CPU paddle build; the Modal worker image
+# installs the CUDA build of the same version (backend/modal_app.py).
+ocr = [
+    "paddleocr==3.7.0",
+    "paddlex[ocr]==3.7.2",
+    "paddlepaddle==3.3.1",
+    "pypdfium2==5.11.0",
+]
+# Stage 4, Azure TTS (pipeline/tts_full.py, pipeline/azure_tts.py): the only
+# package it needs.
+tts = ["azure-cognitiveservices-speech==1.50.0"]
+# Eval harnesses that call an LLM (pipeline/llm.py, pipeline/dot_check.py,
+# scripts/inbox_eval.py).
+eval = ["requests==2.34.2"]
+# Deploying the web API (backend/modal_app.py). The versions the containers run
+# are pinned in that file's image definitions, not here.
+backend = ["modal>=1.6,<2"]
+# tests/. fastapi, httpx and python-multipart (form uploads) are what the web
+# API's own tests need (tests/test_backend.py skips them when fastapi is
+# missing); pillow builds their sample uploads.
+test = [
+    "pytest==9.1.1",
+    "fastapi==0.115.12",
+    "httpx",
+    "python-multipart",
+    "pillow",
+    "modal>=1.6,<2",
+]
+all = ["mathtts[ocr,tts,eval,backend,test]"]
+
+[tool.setuptools]
+# pipeline/ and backend/ are imported as packages (`from pipeline import
+# normalize`). Neither has an __init__.py: the Modal images copy their files
+# one by one (backend/modal_app.py), and a namespace package needs no extra
+# file there.
+packages = ["pipeline", "backend"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]   # the tests run from a checkout without installing it

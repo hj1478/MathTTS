@@ -146,7 +146,7 @@ def pipeline_image(paddle="gpu"):
                       "apt-get install -y nodejs")
     )
     if paddle == "gpu":
-        # requirements.txt pins the CPU paddlepaddle==3.3.1; the worker needs the
+        # pyproject.toml pins the CPU paddlepaddle==3.3.1; the worker needs the
         # CUDA build of the same version, which is published on Paddle's own index.
         image = image.pip_install("paddlepaddle-gpu==3.3.1", extra_index_url=PADDLE_GPU_INDEX)
     else:

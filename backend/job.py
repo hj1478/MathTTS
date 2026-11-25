@@ -38,7 +38,7 @@ audio is "skipped", and Azure is never asked to read a placeholder aloud.
 
 The CLI below loads the OCR model, so run it only on a machine sized for it
 (not the dev laptop), e.g. inside the worker image:
-  python backend/job.py "fixtures/kr question 1.png" --skip-tts
+  python -m backend.job "fixtures/kr question 1.png" --skip-tts
 """
 import argparse
 import json
@@ -48,13 +48,10 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-for _p in (ROOT / "pipeline", ROOT):   # the stage modules, and the backend package
-    if str(_p) not in sys.path:
-        sys.path.insert(0, str(_p))
+from backend import limits, problems
+from pipeline import normalize
 
-import normalize                 # noqa: E402  (needs pipeline/ on sys.path)
-from backend import limits, problems  # noqa: E402
+ROOT = Path(__file__).resolve().parent.parent
 
 SPEAK_JS = ROOT / "sre-probe" / "speak.js"
 VOICE = "ko-KR-SunHiNeural"      # run.py's default
@@ -127,7 +124,7 @@ def _synthesize(ssml_text, audio_path):
     """Stage 4 via azure_tts (the code tts_full.py uses), with tts_full's one retry.
     MP3 instead of azure_tts's WAV (see the module docstring)."""
     import azure.cognitiveservices.speech as speechsdk
-    from azure_tts import make_config, synth
+    from pipeline.azure_tts import make_config, synth
     try:
         cfg = make_config(VOICE)
     except SystemExit:  # make_config exits when credentials are missing
@@ -293,7 +290,7 @@ def run_job(image, workdir, device, tts=True, on_stage=lambda stage: None, ocr=N
     ssml, strict_ok, summary), on the page and on each problem. It has no
     audio here: see formal_audio.
     """
-    import ocr_vl
+    from pipeline import ocr_vl
 
     ocr = ocr or ocr_vl.run_image
     workdir = Path(workdir)
@@ -437,7 +434,7 @@ def main():
     ap.add_argument("--skip-tts", action="store_true")
     ap.add_argument("--photo", action="store_true", help="a camera photo: clean the page up before OCR")
     a = ap.parse_args()
-    import ocr_vl
+    from pipeline import ocr_vl
     device = a.device or ocr_vl.auto_device()
     try:
         result = run_job(a.image, a.workdir, device, tts=not a.skip_tts, photo=a.photo,

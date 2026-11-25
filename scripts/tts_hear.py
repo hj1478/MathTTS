@@ -21,7 +21,6 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -29,11 +28,10 @@ from pathlib import Path
 
 import azure.cognitiveservices.speech as sdk
 
-ROOT = Path(__file__).resolve().parent.parent  # the repo root
-sys.path.insert(0, str(ROOT / "pipeline"))      # the stage modules
+from pipeline import normalize
+from pipeline.azure_tts import make_config
 
-import normalize  # noqa: E402
-from azure_tts import make_config  # noqa: E402
+ROOT = Path(__file__).resolve().parent.parent  # the repo root
 
 VOICE = "ko-KR-SunHiNeural"
 ENVELOPE = ('<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="ko-KR">'

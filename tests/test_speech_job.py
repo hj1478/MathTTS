@@ -1,13 +1,10 @@
 """backend/job.py's speak.js call: a hang is a speech-stage failure, not internal_error."""
 import subprocess
-import sys
-from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from backend import job  # noqa: E402
+from backend import job
 
 
 def test_speak_timeout_is_speech_stage_failed(tmp_path, monkeypatch):

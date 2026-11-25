@@ -11,7 +11,7 @@ import time
 
 import requests
 
-from azure_tts import load_dotenv
+from pipeline.azure_tts import load_dotenv
 
 
 def openai_cfg(model_flag=None):

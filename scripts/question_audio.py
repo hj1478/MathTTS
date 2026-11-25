@@ -28,10 +28,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent  # the repo root
-sys.path.insert(0, str(ROOT / "pipeline"))      # the stage modules
+from pipeline import normalize
 
-import normalize  # noqa: E402
+ROOT = Path(__file__).resolve().parent.parent  # the repo root
 
 QMARK = re.compile(r"^\s*(?:(\d{1,2})\.\s|\[(\d{1,2})\]\s?)")
 TAGS = re.compile(r"<[^>]+>")
@@ -135,7 +134,7 @@ def main():
     if proc.returncode != 0:
         sys.exit(f"speak.js failed:\n{proc.stderr[-2000:]}")
 
-    from azure_tts import make_config, synth
+    from pipeline.azure_tts import make_config, synth
     cfg = make_config(a.voice)
     out_root = Path(a.out)
     out_root.mkdir(parents=True, exist_ok=True)   # manifest.tsv is written even

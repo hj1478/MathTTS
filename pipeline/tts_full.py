@@ -18,7 +18,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from azure_tts import make_config, synth
+from pipeline.azure_tts import make_config, synth
 
 
 def main():
